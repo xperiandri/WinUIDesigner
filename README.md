@@ -21,6 +21,7 @@ The MSBuild properties `WinUIDesignerTargetPlatform` (for example `android`) and
 - Uno Platform [platform-specific XAML](https://platform.uno/docs/articles/platform-specific-xaml.html) (`win:`, `not_win:`, `android:`, ...) is previewed as the Windows build renders it; other target platforms cannot be previewed yet.
 - A custom XAML condition (`IXamlCondition`) runs without the app's state: code that sets feature flags at startup does not run in the designer.
 - A conditional XAML namespace is evaluated once per designer surface process; a condition that changes afterwards has no effect until that process is started again.
+- Visual Studio's XAML editor reports `XLS0310 '<prefix>:<Type>' is an invalid conditional method` for a custom XAML condition. The error comes from Visual Studio's own validation, which knows only the `ApiInformation` methods; the preview is not affected.
 
 ## Structure
 
