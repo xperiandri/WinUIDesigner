@@ -19,6 +19,8 @@ The MSBuild properties `WinUIDesignerTargetPlatform` (for example `android`) and
 - Windows App SDK 2.5.1 is required.
 - In a multi-targeted project (for example an Uno Platform project), the Windows target (`net*-windows10.0.*`) must be the active target framework of the project that contains the XAML file. Uno.Sdk projects select the Windows App SDK version with the `WinAppSdkVersion` property.
 - Uno Platform [platform-specific XAML](https://platform.uno/docs/articles/platform-specific-xaml.html) (`win:`, `not_win:`, `android:`, ...) is previewed as the Windows build renders it; other target platforms cannot be previewed yet.
+- A custom XAML condition (`IXamlCondition`) runs without the app's state: code that sets feature flags at startup does not run in the designer.
+- A conditional XAML namespace is evaluated once per designer surface process; a condition that changes afterwards has no effect until that process is started again.
 
 ## Structure
 
