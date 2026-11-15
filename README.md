@@ -17,6 +17,7 @@ Download and open a vsix file from Visual Studio Marketplace. WinUI 3 designer w
 - Windows App SDK 2.5.1 is required.
 - A custom XAML condition (`IXamlCondition`) runs without the app's state: code that sets feature flags at startup does not run in the designer.
 - A conditional XAML namespace is evaluated once per designer surface process; a condition that changes afterwards has no effect until that process is started again.
+- A resource dictionary merged through `ResourceDictionary.Source` is read when the designer loads; an edit of that dictionary shows after the designer is reloaded.
 
 ## Structure
 
