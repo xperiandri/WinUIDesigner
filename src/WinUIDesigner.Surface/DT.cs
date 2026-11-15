@@ -55,6 +55,28 @@ public static class DT
         return (bool)owner.GetValue(ShouldDisableImplicitStyleProperty);
     }
 
+    /// <summary>
+    /// Marks, in prepared XAML, an element that holds a collection the namespace policies removed elements from.
+    /// </summary>
+    /// <remarks>
+    /// The XAML reader sets the mark on the object it creates for the element, and the surface hears of it while it
+    /// loads the document: that is how it finds the object of an element that is not part of the visual tree, such as
+    /// a style or a resource dictionary. The value identifies the element within one load; the surface clears it again.
+    /// </remarks>
+    public static readonly DependencyProperty DroppedChildOwnerProperty = DependencyProperty.RegisterAttached(
+        "DroppedChildOwner", typeof(string), typeof(DT), new PropertyMetadata(null, static (owner, args) =>
+            WinUIDesigner.Surface.Services.DroppedChildOwners.OnMarked(owner, args.NewValue as string)));
+
+    public static void SetDroppedChildOwner(DependencyObject owner, string value)
+    {
+        owner.SetValue(DroppedChildOwnerProperty, value);
+    }
+
+    public static string GetDroppedChildOwner(DependencyObject owner)
+    {
+        return (string)owner.GetValue(DroppedChildOwnerProperty);
+    }
+
     // Metadata callbacks run after the attached properties have been registered.
     public static readonly DependencyProperty RootWidthProperty = DependencyProperty.RegisterAttached(
         "RootWidth", typeof(double), typeof(DT), new PropertyMetadata(double.NaN, static (dependencyObject, _) => UpdateWidthOrHeight(dependencyObject, FrameworkElement.WidthProperty, RootWidthProperty!, DesignWidthProperty!, RuntimeWidthProperty!)));

@@ -121,7 +121,7 @@ The policies apply on both loading paths, so a member is treated the same way on
 | Path | Where the policies apply |
 | --- | --- |
 | Prepared XAML | The surface parses the prepared XAML once, rewrites that document, and passes the result to the XAML reader. Source mapping uses the same document: a dropped element cannot claim a source position, and line information still refers to the prepared file. XAML snippets that are parsed on their own go through the same rewrite. |
-| Construction actions | Actions carry CLR names only, so the surface cannot tell which prefix a member had. The instance manager asks, for each property it is about to build, whether the property was written under a dropped prefix. An element under a dropped prefix gets an instance builder that creates nothing; the root is exempt. |
+| Construction actions | Actions carry CLR names only, so the surface cannot tell which prefix a member had. The instance manager asks, for each property it is about to build, whether the property was written under a dropped prefix. An element under a dropped prefix gets an instance builder that creates nothing in the preview; the root is exempt. An item of a collection keeps its index through a stand-in, see [Child indices](#child-indices). |
 
 A document without a policy namespace is recognized early and is not processed further: the surface looks at its `xmlns` declarations, and the Visual Studio side scans the text once each time it changes. A policy that fails is logged and skipped; it does not fail document construction.
 
@@ -241,7 +241,6 @@ Nothing waits for the surface while a document is being built, and answers take 
 ##### Limitations
 
 - Visual Studio's document model keeps one value per property. Of `c8:CornerRadius="8" c8n:CornerRadius="0"` it keeps the second attribute; when that one is dropped, the first value is gone and the property stays unset on the construction-action path. The extension logs a warning for attributes. Prepared XAML is not affected. Writing the branch that applies last avoids the difference.
-- The live tree has no object for a dropped element, but construction actions address children by their index in the document. After an element is inserted or removed next to a dropped sibling, the preview can differ from the document until it is reloaded.
 - A dictionary that the XAML reader loads by itself, such as the compiled resources of a control library, is not rewritten. The reader evaluates its predicates, with its own answers in the surface process, and it still ends the process on a predicate it cannot handle, such as a custom condition whose type it does not find.
 - A custom condition runs without the state of the application: the designer does not run the code that sets feature flags at startup.
 - Visual Studio's XAML language service reports `XLS0310 '<prefix>:<Type>' is an invalid conditional method` for a custom condition. Its validation (`UwpNamespaceCondition.Validate` in `Microsoft.VisualStudio.DesignTools.XamlLanguageServiceBase.dll`) accepts only the six `ApiInformation` methods, and it has no extension point: the platform metadata returns an internal namespace generator. The error stays in the Error List; it does not affect the preview.
@@ -287,6 +286,47 @@ Limitations:
 - A platform prefix that is missing from `mc:Ignorable` is dropped from prepared XAML, but its object elements are nodes of an unknown type in the document model and appear as such when the document is built from construction actions.
 
 Implementation: [prefix table and classification](../src/WinUIDesigner.Shared/Markup/UnoPlatformPrefixes.cs), [surface target](../src/WinUIDesigner.Surface/Services/SurfaceService.NamespacePolicies.PlatformPrefixes.cs), [document preparation](../src/WinUIDesigner.Vsix/Platform/WinUIDesignerInstanceManager.PlatformPrefixes.cs), [second cleaning](../src/WinUIDesigner.Vsix/Platform/WinUISurfaceProcessMarkupProvider.PlatformPrefixes.cs), [fallback suppression](../src/WinUIDesigner.Vsix/Platform/WinUIInstanceBuilderPlatform.PlatformPrefixes.cs), and the [sample page](../samples/WinUIDesignerSampleApp/PlatformPrefixesPage.xaml).
+
+#### Child indices
+
+Visual Studio addresses the children of a collection by their index in its document model: construction actions and every later edit add, remove and look up a child at the index of its node. The document model keeps the elements a policy drops, such as the branch of a conditional namespace that does not apply; the live collection has no object for them. In the `StackPanel` of the [sample page](../samples/WinUIDesignerSampleApp/ConditionalXamlPage.xaml), the element after "Contract 99 is not present." is child 5 of the document model and child 3 of the live collection.
+
+Each live collection that lost elements therefore keeps the model positions of its dropped elements, its holes, and every child action on the collection goes through them:
+
+| Action | Effect |
+| --- | --- |
+| `AddChild` of the stand-in of a dropped element | Records a hole at the index. The live collection does not change. |
+| `AddChild` | Inserts at the index minus the holes before it. The holes at and after the index move up by one. |
+| `RemoveChild` | At a hole, removes the hole and nothing else. Otherwise removes the object at the index minus the holes before it. The holes after the index move down by one. |
+| `GetChild` | At a hole, a stand-in: Visual Studio builds nothing beneath a dropped element, so the path ends there. Otherwise the object at the index minus the holes before it. |
+| `ClearCollectionProperty` | Forgets the holes of the collection. Visual Studio adds every child again afterwards, stand-ins included. |
+
+Visual Studio sends the child actions of a collection in an order that is consistent when they are applied one after the other; the stock surface depends on that as well. Applying them to the holes in the same order keeps both views in step through insertions, removals, moves, replacements, undo and redo, including edits that add or remove dropped elements themselves. With or without holes, a removal at an index past the end changes nothing and is logged as a warning instead of failing the batch, a lookup there finds nothing, and an insertion past the end appends, as it did before. A collection without holes uses the indices exactly as Visual Studio sends them.
+
+The holes come from both ways a document is built:
+
+- **Construction actions.** The instance builder of a dropped item of an indexed collection, such as a child of a panel, an item, a column definition, a setter or a merged dictionary, creates a stand-in of type `XSurfUwp.DroppedElement` instead of nothing. Only the surface knows the type; Visual Studio passes the name on, as it does for its own fallback controls. The parent's builder then adds the stand-in with the index of its node, during the first build and for every edit (`CoreInstanceBuilder.UpdateChild` and `ModifyChild` in `RuntimeHostBase.dll`), and removes and looks it up like any other child. The surface records the hole instead of adding anything. A dropped property value or dictionary entry still creates nothing: its parent addresses it by property or by key.
+- **Prepared XAML.** The rewrite reports every element it removes from a collection: the element that holds the collection, the property element the item was written in or the content, and the position of the item among the items of that collection as the document model counts them. Before the XAML reader loads the document, the surface marks each such element with the attached property `DT.DroppedChildOwner`. The reader sets the mark on the object it creates, so the surface hears of the object of every marked element, also of a style or a resource dictionary, which no source mapping reaches. Once the document is loaded, the surface finds the collection, the content property from the `ContentPropertyAttribute` of the type or the property of the property element, gives it its holes and clears the marks.
+
+The position of a removed element counts the items that precede it in its collection, as far as the document model has a node for them:
+
+| Preceding element | Counted |
+| --- | --- |
+| An object element that is kept or left as written | Yes |
+| An element of a conditional namespace whose condition does not hold | Yes, as a hole |
+| An object element under an Uno platform prefix that is not listed in `mc:Ignorable` | Yes, as a hole: the document model has a node of an unknown type for it |
+| An element under a prefix listed in `mc:Ignorable` that no policy keeps, such as `not_win:` or `skia:` | No: the document model has no node for it, and the XAML reader skips it |
+| A property element | No |
+
+An element such as `<skia:ColumnDefinition>` in the [sample page](../samples/WinUIDesignerSampleApp/PlatformPrefixesPage.xaml) therefore needs no hole: neither the document model nor the live collection has it, so their indices agree. Measured with Windows App SDK 2.5.1, the marks, the content properties and the projected collections (`UIElementCollection`, `ColumnDefinitionCollection`, `SetterBaseCollection`, `ItemCollection`, `MergedDictionaries`) behave as described; the runtime hands out the same collection object as long as the surface holds it, which its maps do.
+
+Limitations:
+
+- A collection whose element has text content, such as the inlines of a `TextBlock`, receives no holes from prepared XAML: text becomes items there and the positions cannot be told reliably. Visual Studio rebuilds an inline collection on every edit, and that rebuild carries the stand-ins.
+- A collection of an element the XAML reader does not create while it loads the document, such as template content, receives no holes from prepared XAML. The reader can set the mark only on a `DependencyObject`; on any other object, such as a plain CLR class of the project that holds a collection, it fails the whole document. The surface then loads the document again without marks and logs a warning, so that none of its collections receive holes from prepared XAML.
+- Setters are added at the end of their batch, because WinUI accepts only complete setters. Their positions are decided when the action arrives, counting the setters that are still waiting. A batch that adds a setter and afterwards removes another one of the same style applies the removal to a collection that does not have the waiting setter yet, so one of them can end up one place off; this was the case before as well.
+
+Implementation: [hole bookkeeping](../src/WinUIDesigner.Surface/Common/ChildIndexMap.cs), [maps per collection](../src/WinUIDesigner.Surface/Common/ChildIndexMaps.cs), [translation of the child actions](../src/WinUIDesigner.Surface/Common/ChildIndexTranslator.cs), [action handling](../src/WinUIDesigner.Surface/Services/SurfaceService.XamlActions.cs), [WinUI collections and loaded documents](../src/WinUIDesigner.Surface/Services/DroppedChildren.cs), [positions of the rewrite](../src/WinUIDesigner.Surface/Markup/XamlNamespaceRewriter.cs), [owner marks](../src/WinUIDesigner.Surface/Markup/DroppedChildOwnerMarks.cs), [stand-in name](../src/WinUIDesigner.Shared/Markup/DroppedElementStandIn.cs), and [builder of the stand-in](../src/WinUIDesigner.Vsix/Platform/WinUIInstanceBuilderPlatform.Conditional.cs).
 
 ## Embedding the surface
 

@@ -14,6 +14,11 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DocumentConstructionException.cs" Link="DocumentConstructionException.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ObjectIdentityRegistry.cs" Link="ObjectIdentityRegistry.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DocumentScope.cs" Link="DocumentScope.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ChildIndexMap.cs" Link="ChildIndexMap.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ChildIndexMaps.cs" Link="ChildIndexMaps.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ChildIndexTranslator.cs" Link="ChildIndexTranslator.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/DroppedElement.cs" Link="DroppedElement.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Shared/Diagnostics/**/*.cs" Link="Shared/Diagnostics/%(RecursiveDir)%(Filename)%(Extension)" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Shared/Markup/**/*.cs" Link="Shared/Markup/%(RecursiveDir)%(Filename)%(Extension)" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Shared/Protocol/**/*.cs" Link="Shared/Protocol/%(RecursiveDir)%(Filename)%(Extension)" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Markup/**/*.cs" Link="Surface/Markup/%(RecursiveDir)%(Filename)%(Extension)" Visible="false" />

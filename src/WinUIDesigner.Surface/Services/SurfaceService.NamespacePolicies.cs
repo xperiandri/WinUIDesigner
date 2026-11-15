@@ -2,6 +2,7 @@
 // Licensed under MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.Xml.Linq;
 using WinUIDesigner.Markup;
 using WinUIDesigner.Surface.Markup;
@@ -22,8 +23,26 @@ internal sealed partial class SurfaceService
     /// </remarks>
     private XDocument LoadPreparedXaml(string xaml, int documentId)
     {
+        return LoadPreparedXaml(xaml, documentId, out _);
+    }
+
+    /// <summary>
+    /// Parses prepared XAML once, with line information, and applies the namespace policies to the result.
+    /// </summary>
+    /// <param name="xaml">The prepared XAML.</param>
+    /// <param name="documentId">The document, for logging.</param>
+    /// <param name="droppedChildren">
+    /// The elements the policies removed from a collection that Visual Studio's document model still counts;
+    /// empty when nothing was removed or the policies failed.
+    /// </param>
+    /// <remarks>
+    /// A policy failure never fails the document: it is logged and the XAML is used as prepared.
+    /// </remarks>
+    private XDocument LoadPreparedXaml(string xaml, int documentId, out IReadOnlyList<XamlDroppedChild> droppedChildren)
+    {
         const LoadOptions options = LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo;
 
+        droppedChildren = Array.Empty<XamlDroppedChild>();
         XDocument document = XDocument.Parse(xaml, options);
         try
         {
@@ -35,6 +54,7 @@ internal sealed partial class SurfaceService
                 WinUIDesignerLogger.LogTrace("Surface", $"Namespace policies rewrote document {documentId}: dropped {result.DroppedElements} element(s) and {result.DroppedAttributes} attribute(s), normalized {result.NormalizedMembers} member(s).");
             }
 
+            droppedChildren = result.DroppedChildren;
             return document;
         }
         catch (Exception ex)

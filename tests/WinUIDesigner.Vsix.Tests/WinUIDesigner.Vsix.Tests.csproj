@@ -19,6 +19,8 @@
 		<Compile Include="../WinUIDesigner.Surface.Tests/XamlConditionServiceTests.cs" Link="Shared/XamlConditionServiceTests.cs" Visible="false" />
 		<Compile Include="../WinUIDesigner.Surface.Tests/XamlConditionExchangeTests.cs" Link="Shared/XamlConditionExchangeTests.cs" Visible="false" />
 		<Compile Include="../WinUIDesigner.Surface.Tests/XamlConditionProtocolTests.cs" Link="Shared/XamlConditionProtocolTests.cs" Visible="false" />
+		<!-- So is the name of the stand-in for a dropped item of a collection. -->
+		<Compile Include="../WinUIDesigner.Surface.Tests/DroppedElementStandInTests.cs" Link="Shared/DroppedElementStandInTests.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>
