@@ -38,6 +38,13 @@ public sealed class VsDesignerApiShapeTests
     private const string _SurfaceProcessMarkupProviderContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessMarkupProvider";
     private const string _SurfaceProcessDocumentContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessDocument";
     private const string _MarkupDocument = "Microsoft.VisualStudio.DesignTools.Markup.IMarkupDocument";
+    private const string _CreateInstanceAction = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Shared.CreateInstanceAction";
+    private const string _ChildAction = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Shared.ChildAction";
+    private const string _CoreInstanceBuilder = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Core.CoreInstanceBuilder";
+    private const string _DocumentNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentNode";
+    private const string _PlatformMetadata = "Microsoft.VisualStudio.DesignTools.Markup.Metadata.IPlatformMetadata";
+    private const string _KnownTypes = "Microsoft.VisualStudio.DesignTools.Markup.Metadata.IKnownTypes";
+    private const string _TypeId = "Microsoft.VisualStudio.DesignTools.Markup.Metadata.ITypeId";
 
     private static readonly Lazy<DesignerAssemblies> _Assemblies = new(DesignerAssemblies.Load);
 
@@ -327,6 +334,103 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(_LiveNodeProxy, "Invalidate");
 
         Assert.IsTrue(method.IsPublic && !method.IsStatic, $"Expected a public instance method: {Describe(method)}");
+    }
+
+    [TestMethod]
+    public void LiveNodeProxyCanBeMarkedCreatedAndNamesItsHandleAndNode()
+    {
+        // The builder for a dropped item of a collection creates a stand-in and marks its proxy created, so that
+        // the parent adds it with the index of the node.
+        MethodDefinition makeCreated = RequireMethod(_LiveNodeProxy, "MakeCreated");
+        Assert.IsTrue(makeCreated.IsPublic && !makeCreated.IsStatic, $"Expected a public instance method: {Describe(makeCreated)}");
+
+        PropertyDefinition liveHandle = RequireProperty(_LiveNodeProxy, "LiveHandle");
+        Assert.IsTrue(liveHandle.GetMethod is { IsPublic: true, IsStatic: false }, $"{_LiveNodeProxy}.LiveHandle needs a public instance getter.");
+        Assert.AreEqual("Int64", liveHandle.PropertyType.Name, $"Unexpected type of {_LiveNodeProxy}.LiveHandle.");
+
+        PropertyDefinition documentNode = RequireProperty(_LiveNodeProxy, "DocumentNode");
+        Assert.IsTrue(documentNode.GetMethod is { IsPublic: true, IsStatic: false }, $"{_LiveNodeProxy}.DocumentNode needs a public instance getter.");
+        Assert.AreEqual("DocumentNode", documentNode.PropertyType.Name, $"Unexpected type of {_LiveNodeProxy}.DocumentNode.");
+    }
+
+    [TestMethod]
+    public void InstanceBuilderContextTakesActions()
+    {
+        MethodDefinition method = RequireMethod(_InstanceBuilderContext, "AddAction", "XamlAction");
+
+        Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
+    }
+
+    [TestMethod]
+    public void ConstructionActionCreatesAnInstanceOfAnyNamedType()
+    {
+        // The stand-in for a dropped item is created by type name; only the surface knows the type.
+        TypeDefinition type = RequireType(_CreateInstanceAction);
+        MethodDefinition? constructor = type.Methods.FirstOrDefault(method =>
+            method.IsConstructor
+            && !method.IsStatic
+            && method.IsPublic
+            && method.Parameters.Count >= 2
+            && method.Parameters[0].ParameterType.Name == "Int64"
+            && method.Parameters[1].ParameterType.Name == "String"
+            && method.Parameters.Skip(2).All(parameter => parameter.HasDefault));
+
+        Assert.IsNotNull(
+            constructor,
+            $"{type.FullName} needs a public constructor (Int64 liveHandle, String typeName, ...defaults). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}");
+        Assert.IsTrue(type.Fields.Any(field => field.Name == "TypeName" && field.IsPublic && field.FieldType.Name == "String"), $"{type.FullName} needs a public TypeName field.");
+    }
+
+    [TestMethod]
+    public void InstanceBuildersAddEveryChildWithTheIndexOfItsNode()
+    {
+        // The parent builders emit AddChild and RemoveChild through ModifyChild, with the index of the node in the
+        // document model, both when they build a collection and when they apply an edit.
+        MethodDefinition modifyChild = RequireMethod(_CoreInstanceBuilder, "ModifyChild", "IInstanceBuilderContext", "LiveNodeProxy", "LiveNodeProxy", "Int32");
+        AssertOverridable(modifyChild);
+
+        MethodDefinition buildChildren = RequireMethod(_CoreInstanceBuilder, "BuildChildren", "IInstanceBuilderContext", "LiveNodeProxy", "DocumentCompositeNode", "BuildOrder");
+        AssertOverridable(buildChildren);
+
+        MethodDefinition updateChild = RequireMethod(_CoreInstanceBuilder, "UpdateChild", "IInstanceBuilderContext", "DocumentCompositeNode", "DocumentNode", "DocumentNode", "Int32");
+        AssertOverridable(updateChild);
+
+        TypeDefinition childAction = RequireType(_ChildAction);
+        Assert.IsTrue(childAction.Fields.Any(field => field.Name == "Index" && field.IsPublic && field.FieldType.Name == "Int32"), $"{childAction.FullName} needs a public Index field.");
+    }
+
+    [TestMethod]
+    public void DocumentNodeTellsAnItemOfItsParentFromAPropertyValue()
+    {
+        foreach ((string name, string type) in new[]
+        {
+            ("IsChild", "Boolean"),
+            ("Parent", "DocumentCompositeNode"),
+            ("Type", "IType"),
+            ("PlatformMetadata", "IPlatformMetadata"),
+        })
+        {
+            PropertyDefinition property = RequireProperty(_DocumentNode, name);
+            Assert.IsTrue(property.GetMethod is { IsPublic: true, IsStatic: false }, $"{_DocumentNode}.{name} needs a public instance getter.");
+            Assert.AreEqual(type, property.PropertyType.Name, $"Unexpected type of {_DocumentNode}.{name}.");
+        }
+    }
+
+    [TestMethod]
+    public void PlatformMetadataKnowsTheDictionaryTypes()
+    {
+        // A dropped dictionary entry gets no stand-in: its parent adds entries by key, not by index.
+        PropertyDefinition knownTypes = RequireProperty(_PlatformMetadata, "KnownTypes");
+        Assert.AreEqual("IKnownTypes", knownTypes.PropertyType.Name, $"Unexpected type of {_PlatformMetadata}.KnownTypes.");
+
+        foreach (string name in new[] { "DictionaryEntry", "IDictionary", "ResourceDictionary" })
+        {
+            PropertyDefinition property = RequireProperty(_KnownTypes, name);
+            Assert.AreEqual("IType", property.PropertyType.Name, $"Unexpected type of {_KnownTypes}.{name}.");
+        }
+
+        MethodDefinition isAssignableFrom = RequireMethod(_TypeId, "IsAssignableFrom", "ITypeId");
+        Assert.AreEqual("Boolean", isAssignableFrom.ReturnType.Name, $"Unexpected return type: {Describe(isAssignableFrom)}");
     }
 
     [TestMethod]

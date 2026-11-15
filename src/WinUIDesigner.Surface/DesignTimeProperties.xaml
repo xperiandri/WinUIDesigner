@@ -4,7 +4,8 @@
     XAML metadata only when compiled markup mentions it, and XamlReader.Load resolves the members of a type
     from a using: namespace through that metadata alone. Prepared documents carry their sizes as the DT
     attached properties below; without this file every document that sets a width or a height fails to
-    load and is built from construction actions instead.
+    load and is built from construction actions instead. DT.DroppedChildOwner marks the elements whose
+    collections lost elements to a namespace policy.
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -14,6 +15,7 @@
         x:Key="DesignTimeSizeProperties"
         dt:DT.DesignHeight="0"
         dt:DT.DesignWidth="0"
+        dt:DT.DroppedChildOwner="0"
         dt:DT.RootHeight="0"
         dt:DT.RootWidth="0"
         dt:DT.RuntimeHeight="0"

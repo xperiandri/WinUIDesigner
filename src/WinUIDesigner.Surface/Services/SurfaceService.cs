@@ -33,6 +33,7 @@ internal sealed partial class SurfaceService : IDisposable
         _objectIdentity.RegisterProcessObject(ApplicationLiveHandle, Application.Current);
         _visualTreeService = new(protocolHandler, objectIdentity);
         _resourceScopes = new ResourceScopeService(objectIdentity, ApplyNamespacePoliciesToSnippet);
+        _droppedChildren = new DroppedChildren(objectIdentity.Track);
         _diagnosticsPropertySource = new DiagnosticsPropertySourceService();
         _serializer = new LiveValueSerializer(objectIdentity);
 
@@ -77,6 +78,7 @@ internal sealed partial class SurfaceService : IDisposable
     {
         _actionObjects.Clear();
         _trackedActionObjects.Clear();
+        _droppedChildren.Clear();
 
         foreach (int registrationId in _registrationIds)
         {

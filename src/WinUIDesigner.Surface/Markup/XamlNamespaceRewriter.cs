@@ -223,8 +223,10 @@ internal static class XamlNamespaceRewriter
     /// <summary>
     /// An element whose children are still being visited, with the scope changes to undo afterwards.
     /// </summary>
-    private sealed class Frame(List<XElement> children, List<KeyValuePair<string, Binding?>>? shadowed, List<Binding>? ignorable)
+    private sealed class Frame(XElement element, List<XElement> children, List<KeyValuePair<string, Binding?>>? shadowed, List<Binding>? ignorable)
     {
+        public XElement Element { get; } = element;
+
         public List<XElement> Children { get; } = children;
 
         public int NextChild { get; set; }
@@ -232,6 +234,12 @@ internal static class XamlNamespaceRewriter
         public List<KeyValuePair<string, Binding?>>? Shadowed { get; } = shadowed;
 
         public List<Binding>? Ignorable { get; } = ignorable;
+
+        /// <summary>
+        /// Gets or sets the number of children visited so far that Visual Studio's document model counts as items of
+        /// the collection the element holds, dropped ones included.
+        /// </summary>
+        public int ItemCount { get; set; }
     }
 
     /// <summary>
@@ -245,6 +253,7 @@ internal static class XamlNamespaceRewriter
         private readonly HashSet<Binding> _ignorable = [];
         private readonly Dictionary<(string Prefix, string Uri, bool IsIgnorable), XamlPrefixDisposition> _verdicts = [];
         private readonly List<string> _diagnostics = [];
+        private readonly List<XamlDroppedChild> _droppedChildren = [];
         private readonly Func<string, string?> _resolveInScope;
         private int _droppedElements;
         private int _droppedAttributes;
@@ -272,7 +281,7 @@ internal static class XamlNamespaceRewriter
 
             // Walk without recursion: the nesting depth of a document must not be able to exhaust the stack.
             var frames = new Stack<Frame>();
-            Frame? rootFrame = Open(root, isRoot: true);
+            Frame? rootFrame = Open(root, parent: null);
             if (rootFrame is not null)
             {
                 frames.Push(rootFrame);
@@ -283,7 +292,7 @@ internal static class XamlNamespaceRewriter
                 Frame frame = frames.Peek();
                 if (frame.NextChild < frame.Children.Count)
                 {
-                    Frame? childFrame = Open(frame.Children[frame.NextChild++], isRoot: false);
+                    Frame? childFrame = Open(frame.Children[frame.NextChild++], frame);
                     if (childFrame is not null)
                     {
                         frames.Push(childFrame);
@@ -301,7 +310,8 @@ internal static class XamlNamespaceRewriter
                 _droppedAttributes,
                 _normalizedMembers,
                 _repointedDeclarations,
-                _diagnostics);
+                _diagnostics,
+                _droppedChildren);
         }
 
         /// <summary>
@@ -386,8 +396,11 @@ internal static class XamlNamespaceRewriter
         /// <summary>
         /// Processes one element and returns a frame when its children still have to be visited.
         /// </summary>
-        private Frame? Open(XElement element, bool isRoot)
+        /// <param name="element">The element.</param>
+        /// <param name="parent">The frame of the parent element, or <see langword="null"/> for the root.</param>
+        private Frame? Open(XElement element, Frame? parent)
         {
+            bool isRoot = parent is null;
             List<KeyValuePair<string, Binding?>>? shadowed = null;
             List<Binding>? declared = null;
             XAttribute? ignorableAttribute = null;
@@ -426,9 +439,10 @@ internal static class XamlNamespaceRewriter
             XamlPrefixDisposition disposition = ClassifyMember(elementPrefix, element.Name.NamespaceName, out Binding? elementBinding);
             if (disposition == XamlPrefixDisposition.Drop)
             {
-                if (!isRoot)
+                if (parent is not null)
                 {
                     Report($"Dropped element {Describe(element, elementPrefix)}.");
+                    RecordDroppedChild(parent, element, elementBinding);
                     element.Remove();
                     _droppedElements++;
                     RestoreScope(shadowed, ignorable);
@@ -436,6 +450,10 @@ internal static class XamlNamespaceRewriter
                 }
 
                 Report($"The root element {Describe(element, elementPrefix)} is under a dropped prefix; it is kept because a document needs its root.");
+            }
+            else if (parent is not null && IsCollectionItem(element, disposition, elementBinding))
+            {
+                parent.ItemCount++;
             }
 
             // A root that stays under a prefix whose declaration is re-pointed moves to the bare namespace with it.
@@ -471,7 +489,95 @@ internal static class XamlNamespaceRewriter
                 return null;
             }
 
-            return new Frame(children, shadowed, ignorable);
+            return new Frame(element, children, shadowed, ignorable);
+        }
+
+        /// <summary>
+        /// Returns whether Visual Studio's document model counts an element that stays in the document as an item of
+        /// the collection its parent holds.
+        /// </summary>
+        /// <remarks>
+        /// A property element sets a property and is no item. Neither is an element whose prefix is listed in
+        /// <c>mc:Ignorable</c> and that no policy decided about: the XAML reader skips it, and the document model has
+        /// no node for a namespace it does not understand.
+        /// </remarks>
+        private bool IsCollectionItem(XElement element, XamlPrefixDisposition disposition, Binding? binding)
+        {
+            if (IsPropertyElement(element))
+            {
+                return false;
+            }
+
+            return disposition != XamlPrefixDisposition.Leave || binding is null || !_ignorable.Contains(binding);
+        }
+
+        /// <summary>
+        /// Records the position of a dropped element among the items of its parent's collection, when Visual Studio's
+        /// document model has a node for it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The model keeps the elements of a conditional namespace whose condition does not hold, and the object
+        /// element of an Uno platform prefix that is not listed in <c>mc:Ignorable</c> as a node of an unknown type.
+        /// It has no node for an element under an ignorable namespace it does not understand, such as an Uno platform
+        /// namespace: that element is neither recorded nor counted.
+        /// </para>
+        /// <para>
+        /// The position counts the items that precede the element in the document as written, dropped ones included,
+        /// which is how the model counts them. Text content would be counted as items of some collections as well,
+        /// so a parent with text is left out: its positions could not be told reliably.
+        /// </para>
+        /// </remarks>
+        private void RecordDroppedChild(Frame parent, XElement element, Binding? binding)
+        {
+            if (IsPropertyElement(element))
+            {
+                return;
+            }
+
+            bool hasModelNode = binding is null || binding.Uri.IsConditional || !_ignorable.Contains(binding);
+            if (!hasModelNode)
+            {
+                return;
+            }
+
+            int index = parent.ItemCount++;
+            if (HasSignificantText(parent.Element))
+            {
+                return;
+            }
+
+            // The items of a property element belong to the property of the object element around it.
+            XElement holder = parent.Element;
+            if (IsPropertyElement(holder))
+            {
+                if (holder.Parent is XElement owner)
+                {
+                    _droppedChildren.Add(new XamlDroppedChild(owner, holder.Name, index, element));
+                }
+            }
+            else
+            {
+                _droppedChildren.Add(new XamlDroppedChild(holder, property: null, index, element));
+            }
+        }
+
+        private static bool IsPropertyElement(XElement element)
+        {
+            return element.Name.LocalName.IndexOf('.') >= 0;
+        }
+
+        private static bool HasSignificantText(XElement element)
+        {
+            foreach (XNode node in element.Nodes())
+            {
+                if (node is XText text && !string.IsNullOrWhiteSpace(text.Value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void RestoreScope(List<KeyValuePair<string, Binding?>>? shadowed, List<Binding>? ignorable)

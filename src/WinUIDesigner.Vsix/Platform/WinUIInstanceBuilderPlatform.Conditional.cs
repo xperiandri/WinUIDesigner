@@ -1,9 +1,11 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System;
 using Microsoft.VisualStudio.DesignTools.Markup.DocumentModel;
 using Microsoft.VisualStudio.DesignTools.Markup.Metadata;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders;
+using Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Shared;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.Pipeline;
 using WinUIDesigner.Markup;
@@ -17,12 +19,12 @@ internal partial class WinUIInstanceBuilderPlatform
     /// <summary>
     /// Chooses the builder that turns <paramref name="node"/> into construction actions. An element written
     /// under a dropped prefix, such as the branch of a conditional namespace that does not apply, gets a
-    /// builder that creates nothing.
+    /// builder that creates nothing in the preview.
     /// </summary>
     /// <remarks>
     /// Properties are filtered by the instance manager, but an element in a collection or a dictionary is not
-    /// a property of its parent: the builders create it through this method and skip it when no object results.
-    /// The root is exempt, because a document needs its root.
+    /// a property of its parent: the builders create it through this method. The root is exempt, because a
+    /// document needs its root.
     /// </remarks>
     public override IInstanceBuilder GetInstanceBuilder(IInstanceBuilderContext context, DocumentNode node)
     {
@@ -35,12 +37,49 @@ internal partial class WinUIInstanceBuilderPlatform
     }
 
     /// <summary>
-    /// Builds nothing for a node, and nothing beneath it.
+    /// Returns whether <paramref name="node"/> is an item of a collection that its parent addresses by index,
+    /// such as a child of a panel, a column definition or a setter, rather than a property value or a dictionary entry.
+    /// A node that cannot be judged counts as no such item, which leaves it built as nothing, as before.
+    /// </summary>
+    internal static bool IsIndexedCollectionItem(DocumentNode? node)
+    {
+        try
+        {
+            DocumentCompositeNode? parent = node?.Parent;
+            if (node is null || parent is null || !node.IsChild)
+            {
+                return false;
+            }
+
+            // A resource dictionary keeps its entries by key; its builder adds them as dictionary entries.
+            IKnownTypes knownTypes = node.PlatformMetadata.KnownTypes;
+            return !knownTypes.DictionaryEntry.IsAssignableFrom(node.Type)
+                && !knownTypes.IDictionary.IsAssignableFrom(parent.Type)
+                && !knownTypes.ResourceDictionary.IsAssignableFrom(parent.Type);
+        }
+        catch (Exception ex)
+        {
+            WinUIDesignerLogger.LogTrace("Platform", $"Judging whether a dropped node is an item of an indexed collection failed: {ex}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Builds nothing in the preview for a node, and nothing beneath it.
     /// </summary>
     /// <remarks>
-    /// The node has no object in the surface process. Everything the pipeline may ask of its builder ends
-    /// with the node marked invalid, which is how builders tell their callers that there is nothing to attach.
-    /// Edits inside the node therefore change nothing in the preview.
+    /// <para>
+    /// The node has no object in the surface process. A property value, a dictionary entry or a key is marked
+    /// invalid, which is how builders tell their callers that there is nothing to attach. Edits inside the node
+    /// change nothing in the preview.
+    /// </para>
+    /// <para>
+    /// An item of an indexed collection is different: the parent addresses its children by their index in the
+    /// document model, which counts this node. The builder creates a stand-in that only the surface knows, and the
+    /// parent adds it, removes it and looks it up like any other child, with the index of the node. The surface
+    /// keeps the position as a hole of the live collection, so that the indices of the other children still
+    /// reach the right objects, during the first build and after every edit.
+    /// </para>
     /// </remarks>
     private sealed class DroppedNodeBuilder : UwpInstanceBuilder
     {
@@ -52,6 +91,13 @@ internal partial class WinUIInstanceBuilderPlatform
 
         public override void Instantiate(IInstanceBuilderContext context, LiveNodeProxy liveNode)
         {
+            if (IsIndexedCollectionItem(liveNode.DocumentNode))
+            {
+                context.AddAction(new CreateInstanceAction(liveNode.LiveHandle, DroppedElementStandIn.TypeName));
+                liveNode.MakeCreated();
+                return;
+            }
+
             liveNode.Invalidate();
         }
 

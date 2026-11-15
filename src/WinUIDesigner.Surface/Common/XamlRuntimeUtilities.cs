@@ -596,18 +596,74 @@ internal static class XamlRuntimeUtilities
         throw new InvalidOperationException($"'{parent.GetType().FullName}' does not expose a mutable child collection.");
     }
 
-    public static void RemoveChild(object parent, int index)
+    /// <summary>
+    /// Returns the collection the child actions of Visual Studio address through <paramref name="parent"/>: its
+    /// <c>Children</c> or <c>Items</c>, or the parent itself when it is a collection; <see langword="null"/> otherwise.
+    /// </summary>
+    public static object? GetChildCollection(object parent)
+    {
+        return GetChildCollectionOrSelf(parent);
+    }
+
+    /// <summary>
+    /// Returns the number of items in <paramref name="collection"/>, or <see langword="null"/> when it does not tell.
+    /// </summary>
+    public static int? GetChildCount(object? collection)
+    {
+        if (collection is null)
+        {
+            return null;
+        }
+
+        if (collection is ICollection nonGenericCollection)
+        {
+            return nonGenericCollection.Count;
+        }
+
+        PropertyInfo? countProperty = collection.GetType().GetProperty("Count", BindingFlags.Public | BindingFlags.Instance);
+        if (countProperty?.PropertyType == typeof(int) && countProperty.GetValue(collection) is int count)
+        {
+            return count;
+        }
+
+        // A projected collection can implement ICollection<T>.Count explicitly only.
+        foreach (Type interfaceType in collection.GetType().GetInterfaces())
+        {
+            if (interfaceType.IsGenericType
+                && (interfaceType.GetGenericTypeDefinition() == typeof(ICollection<>) || interfaceType.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>))
+                && interfaceType.GetProperty("Count")?.GetValue(collection) is int interfaceCount)
+            {
+                return interfaceCount;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Removes the child at <paramref name="index"/>.
+    /// </summary>
+    /// <returns>
+    /// <see langword="false"/> when the parent is a collection that has no child at <paramref name="index"/>: an index
+    /// that points nowhere changes nothing, instead of failing the whole batch of actions.
+    /// </returns>
+    public static bool RemoveChild(object parent, int index)
     {
         object? collection = GetChildCollectionOrSelf(parent);
         if (collection is IList list && index >= 0 && index < list.Count)
         {
             list.RemoveAt(index);
-            return;
+            return true;
+        }
+
+        if (collection is not null && GetChildCount(collection) is int count && (index < 0 || index >= count))
+        {
+            return false;
         }
 
         if (TryInvokeCollectionMutation(collection, "RemoveAt", index))
         {
-            return;
+            return true;
         }
 
         if (index == 0)
@@ -617,7 +673,7 @@ internal static class XamlRuntimeUtilities
             if (content?.CanWrite == true)
             {
                 content.SetValue(parent, null);
-                return;
+                return true;
             }
         }
 
