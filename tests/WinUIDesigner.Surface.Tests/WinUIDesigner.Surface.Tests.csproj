@@ -18,6 +18,9 @@
 		<Compile Include="../../src/WinUIDesigner.Shared/Protocol/**/*.cs" Link="Shared/Protocol/%(RecursiveDir)%(Filename)%(Extension)" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Markup/**/*.cs" Link="Surface/Markup/%(RecursiveDir)%(Filename)%(Extension)" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlConditionAnswers.cs" Link="Vsix/XamlConditionAnswers.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/DeferredInsertionQueue.cs" Link="DeferredInsertionQueue.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ReplacedValueTracker.cs" Link="ReplacedValueTracker.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/XamlDiagnosticsPropertyName.cs" Link="XamlDiagnosticsPropertyName.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>
