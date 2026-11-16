@@ -185,6 +185,7 @@ internal sealed partial class DesignerSurface : IDisposable
         _viewportRoot.Measure(new Size(_viewportRoot.Width, _viewportRoot.Height));
         _viewportRoot.Arrange(new Rect(0, 0, _viewportRoot.Width, _viewportRoot.Height));
         _viewportRoot.UpdateLayout();
+        PreviewContentDialog();
         _ = NativeMethods.InvalidateRect(parentHwnd, IntPtr.Zero, true);
     }
 
@@ -216,6 +217,8 @@ internal sealed partial class DesignerSurface : IDisposable
         _transformRoot.Arrange(new Rect(0, 0, width, height));
         _transformRoot.UpdateLayout();
 
+        // The size of the device was just given to the root, and a dialog that is shown does not take it.
+        FitContentDialog();
     }
 
     public void ReplaceContent(FrameworkElement newContent)
@@ -225,6 +228,8 @@ internal sealed partial class DesignerSurface : IDisposable
             RefreshLayout();
             return;
         }
+
+        HideContentDialogPreview();
 
         _transformRoot.Children.Remove(_content);
         _content = newContent;
@@ -241,6 +246,12 @@ internal sealed partial class DesignerSurface : IDisposable
         }
 
         SetDeviceSize(_deviceWidth > 0 ? _deviceWidth : 800, _deviceHeight > 0 ? _deviceHeight : 600);
+
+        // The new root is in the tree of the island by now; a dialog has to be put into its open state again.
+        if (_xamlSource is not null)
+        {
+            PreviewContentDialog();
+        }
 
     }
 
