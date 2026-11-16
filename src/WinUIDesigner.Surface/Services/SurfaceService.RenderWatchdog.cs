@@ -5,6 +5,7 @@ using Microsoft.VisualStudio.DesignTools.RuntimeHost.Networking;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.TapOM;
 using System;
 using System.Linq;
+using WinUIDesigner.Recovery;
 
 namespace WinUIDesigner.Surface.Services;
 
@@ -95,7 +96,8 @@ internal sealed partial class SurfaceService
     {
         _renderStallReported = true;
 
-        const string Message = "The XAML framework reported an unspecified error and has not drawn a frame since. Reload the designer to continue.";
+        // The text is also how the extension knows that nothing in this process draws any more, and restarts the process.
+        const string Message = RenderStallReport.Message;
         WinUIDesignerLogger.LogError("Surface", $"{Message} {DescribeState()}", exception);
 
         // Visual Studio shows the error on the view of the document that it names, and ignores one that names none.
