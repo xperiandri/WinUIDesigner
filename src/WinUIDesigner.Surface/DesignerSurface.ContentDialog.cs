@@ -11,6 +11,9 @@ internal sealed partial class DesignerSurface
     // The dialog that this surface has put into its island, so that it is shown once.
     private ContentDialog? _shownDialog;
 
+    // What happened to the card of the dialog is logged once.
+    private bool _loggedDialogCard;
+
     /// <summary>
     /// A <see cref="ContentDialog"/> draws nothing where it stands: it reports no size until it is shown, and showing
     /// it puts it into a popup. Show the dialog of a document that has one as its root in the island of the document,
@@ -74,6 +77,12 @@ internal sealed partial class DesignerSurface
         // The template exists once the dialog is shown; Loaded calls this again for the card.
         if (FindDialogCard(dialog) is not { } card)
         {
+            if (dialog.IsLoaded && !_loggedDialogCard)
+            {
+                _loggedDialogCard = true;
+                WinUIDesignerLogger.LogInformation("Surface", "The template of the ContentDialog has no part named BackgroundElement; its card keeps the size of its content.");
+            }
+
             return;
         }
 
@@ -92,6 +101,12 @@ internal sealed partial class DesignerSurface
         if (!double.IsNaN(card.Height) && card.MaxHeight < card.Height)
         {
             card.MaxHeight = card.Height;
+        }
+
+        if (!_loggedDialogCard)
+        {
+            _loggedDialogCard = true;
+            WinUIDesignerLogger.LogInformation("Surface", $"The card of the ContentDialog is sized {card.Width}x{card.Height} (NaN: as its content) in an island of {xamlRoot.Size.Width}x{xamlRoot.Size.Height}.");
         }
     }
 
