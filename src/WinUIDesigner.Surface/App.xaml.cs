@@ -2,6 +2,7 @@
 // Licensed under MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
@@ -28,6 +29,7 @@ public sealed partial class App : Application, IXamlMetadataProvider, IDisposabl
     private ProtocolHandler? _protocolHandler;
     private ObjectIdentityRegistry? _objectIdentity;
     private SurfaceService? _surfaceService;
+    private readonly HashSet<string> _reportedProjectCodeExceptions = [];
     private bool _disposed;
 
     // The XAML compiler generates this surface app metadata provider in a later build pass.
@@ -52,6 +54,29 @@ public sealed partial class App : Application, IXamlMetadataProvider, IDisposabl
     {
         UnhandledException += (_, args) =>
         {
+            // Code of the project can fail in the designer for want of the application around it: a Loaded handler that
+            // looks for the root navigation region of the app, for instance. The same goes for an error that the framework
+            // reports for an element of the page, from outside of managed code. The page has been built, and the failure
+            // is not the surface's, so it must not end the process or replace the page with an error. It is logged, once
+            // for each kind of failure.
+            bool fromProject = ProjectCodeExceptions.IsThrownByProjectCode(args.Exception, Program.ContentDirectory);
+            if (fromProject || ProjectCodeExceptions.IsRaisedByNativeCode(args.Exception))
+            {
+                args.Handled = true;
+
+                if (_reportedProjectCodeExceptions.Add(args.Exception.GetType().FullName + "|" + args.Exception.Message))
+                {
+                    WinUIDesignerLogger.LogWarning(
+                        "Surface",
+                        fromProject
+                            ? "Code of the project threw an exception that nothing handled. The surface goes on without it."
+                            : "The framework reported an error that nothing handled, and no managed code threw it. The surface goes on without it.",
+                        args.Exception);
+                }
+
+                return;
+            }
+
             WinUIDesignerLogger.LogError("Surface", "WinUI unhandled exception.", args.Exception);
 
             _protocolHandler?.PostMessage((int)DesignerMessageId.UnhandledException, new UnhandledExceptionResponse()
