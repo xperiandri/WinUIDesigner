@@ -65,6 +65,9 @@ internal sealed partial class DesignerSurface : IDisposable
 
     public bool IsFrozen { get; private set; }
 
+    /// <summary>Whether the island of the document exists and is shown, so that frames are drawn for it.</summary>
+    public bool IsHostVisible => _viewportRoot.XamlRoot?.IsHostVisible == true;
+
     public event Action<double>? DpiChanged;
 
     public void Freeze()
@@ -156,6 +159,7 @@ internal sealed partial class DesignerSurface : IDisposable
             _xamlSource = new DesktopWindowXamlSource();
             _xamlSource.Initialize(Win32Interop.GetWindowIdFromWindow(_hostWindow));
             _xamlSource.Content = _viewportRoot;
+            RenderFrames.EnsureStarted();
             if (_viewportRoot.XamlRoot is { } root)
             {
                 root.Changed += OnXamlRootChanged;

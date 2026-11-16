@@ -1,4 +1,4 @@
-﻿// Copyright (c) 0x5BFA. All rights reserved.
+// Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.TapOM;
@@ -38,6 +38,7 @@ internal sealed partial class SurfaceService
 
     private async Task<CreateSurfaceResponseInfo> HandleCreateSurfaceAsync(CreateSurfaceRequestInfo requestInfo)
     {
+        Breadcrumb($"CreateSurface document {requestInfo.Document?.DocumentId}");
         try
         {
             if (!await _constructionGate.WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false))
@@ -276,6 +277,7 @@ internal sealed partial class SurfaceService
 
     private async Task<ResponseWithError> HandleCloseDocumentAsync(CloseDocumentRequestInfo request)
     {
+        Breadcrumb($"CloseDocument document {request.DocumentId}");
         try
         {
             if (!await _constructionGate.WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false))
@@ -390,6 +392,7 @@ internal sealed partial class SurfaceService
 
     private async Task<ResponseWithError> HandleSetDeviceSizeAsync(SetDeviceSizeRequestInfo request)
     {
+        Breadcrumb($"SetDeviceSize document {request.DocumentId}: {request.Width}x{request.Height}");
         try
         {
             return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
@@ -417,6 +420,7 @@ internal sealed partial class SurfaceService
 
     private void HandleSetFreezeState(SetFreezeStateInfo request)
     {
+        Breadcrumb($"SetFreezeState document {request.DocumentIdToFreeze}");
         if (_dispatcherQueue.HasThreadAccess)
         {
             ApplyFreezeState(request.DocumentIdToFreeze);
@@ -450,6 +454,7 @@ internal sealed partial class SurfaceService
 
     private async Task<ResponseWithError> HandleSetSurfacePositionAsync(SetSurfacePositionRequestInfo request)
     {
+        Breadcrumb($"SetSurfacePosition document {request.DocumentId}: {request.Width}x{request.Height}");
         try
         {
             return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>

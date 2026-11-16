@@ -70,8 +70,15 @@ public sealed partial class App : Application, IXamlMetadataProvider, IDisposabl
                         "Surface",
                         fromProject
                             ? "Code of the project threw an exception that nothing handled. The surface goes on without it."
-                            : "The framework reported an error that nothing handled, and no managed code threw it. The surface goes on without it.",
+                            : "The framework reported an error that nothing handled, and no managed code threw it. The surface goes on without it. "
+                                + _surfaceService?.DescribeState(),
                         args.Exception);
+                }
+
+                if (!fromProject)
+                {
+                    // The error can leave the framework unable to draw. Find out, and tell Visual Studio if it is.
+                    _surfaceService?.OnNativeFrameworkError(args.Exception);
                 }
 
                 return;
