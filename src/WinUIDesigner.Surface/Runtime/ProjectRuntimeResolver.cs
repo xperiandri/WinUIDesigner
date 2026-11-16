@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
@@ -32,11 +33,16 @@ internal static class ProjectRuntimeResolver
 
     private static bool _providersInitialized;
 
+    // Failures of the project's metadata providers already written to the log; XAML asks the same questions again and again.
+    private static readonly HashSet<string> _ReportedFailures = new(StringComparer.Ordinal);
+
     [ThreadStatic] private static HashSet<string>? _resolving;
 
     public static void Initialize(string directory)
     {
         _PriFiles.AddRange(Directory.EnumerateFiles(directory, "*.pri", SearchOption.AllDirectories));
+
+        var references = new List<(string Assembly, List<AssemblyReferenceInfo> References)>();
 
         foreach (string file in Directory.EnumerateFiles(directory, "*.dll", SearchOption.AllDirectories)
             .OrderBy(file => Path.GetRelativePath(directory, file).Count(character => character == Path.DirectorySeparatorChar))
@@ -72,7 +78,10 @@ internal static class ProjectRuntimeResolver
                     continue;
                 }
 
-                _Assemblies.TryAdd(assemblyName, file);
+                if (_Assemblies.TryAdd(assemblyName, file))
+                {
+                    references.Add((assemblyName, ReadReferences(metadata)));
+                }
 
                 foreach (TypeDefinitionHandle handle in metadata.TypeDefinitions)
                 {
@@ -105,6 +114,8 @@ internal static class ProjectRuntimeResolver
                 WinUIDesignerLogger.LogWarning("Surface", $"Unable to index staged assembly '{file}'.", ex);
             }
         }
+
+        ReportUnsatisfiedReferences(references);
 
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
@@ -176,18 +187,29 @@ internal static class ProjectRuntimeResolver
 
         foreach (string name in _ProviderTypes.Distinct())
         {
-            var type = ResolveType(name);
-            // A generated metadata provider is safe to construct independently;
-            // constructing a second Application would replace the designer process.
-
-            if (type is null || type.IsAbstract || typeof(Application).IsAssignableFrom(type))
+            // XAML asks for these providers from inside its own code. An exception that leaves here, such as the
+            // FileLoadException of an assembly that was compiled against a newer version of an assembly than the
+            // surface carries, is not reported to anyone: the process ends. One provider that cannot be created
+            // must not take the others, or the designer, with it.
+            try
             {
-                continue;
+                var type = ResolveType(name);
+                // A generated metadata provider is safe to construct independently;
+                // constructing a second Application would replace the designer process.
+
+                if (type is null || type.IsAbstract || typeof(Application).IsAssignableFrom(type))
+                {
+                    continue;
+                }
+
+                if (Activator.CreateInstance(type) is IXamlMetadataProvider provider)
+                {
+                    _Providers.Add(provider);
+                }
             }
-
-            if (Activator.CreateInstance(type) is IXamlMetadataProvider provider)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                _Providers.Add(provider);
+                ReportFailureOnce($"create|{name}", $"The XAML metadata provider '{name}' of the project cannot be created, so the types it describes are not available to the designer.", ex);
             }
         }
     }
@@ -206,7 +228,14 @@ internal static class ProjectRuntimeResolver
 
             foreach (IXamlMetadataProvider provider in _Providers)
             {
-                if (provider.GetXamlType(name) is { } type) return type;
+                try
+                {
+                    if (provider.GetXamlType(name) is { } type) return type;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    ReportFailureOnce($"type|{provider.GetType().FullName}|{ex.GetType().FullName}|{ex.Message}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to describe the type '{name}'.", ex);
+                }
             }
 
             return null;
@@ -221,6 +250,104 @@ internal static class ProjectRuntimeResolver
     {
         EnsureProviders();
 
-        return [.. _Providers.SelectMany(value => value.GetXmlnsDefinitions() ?? [])];
+        var definitions = new List<XmlnsDefinition>();
+        foreach (IXamlMetadataProvider provider in _Providers)
+        {
+            try
+            {
+                definitions.AddRange(provider.GetXmlnsDefinitions() ?? []);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                ReportFailureOnce($"xmlns|{provider.GetType().FullName}|{ex.GetType().FullName}|{ex.Message}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to list its XML namespaces.", ex);
+            }
+        }
+
+        return [.. definitions];
+    }
+
+    private static void ReportFailureOnce(string key, string message, Exception exception)
+    {
+        lock (_ReportedFailures)
+        {
+            if (!_ReportedFailures.Add(key))
+            {
+                return;
+            }
+        }
+
+        WinUIDesignerLogger.LogWarning("Surface", message, exception);
+    }
+
+    private static List<AssemblyReferenceInfo> ReadReferences(MetadataReader metadata)
+    {
+        var references = new List<AssemblyReferenceInfo>(metadata.AssemblyReferences.Count);
+        foreach (AssemblyReferenceHandle handle in metadata.AssemblyReferences)
+        {
+            AssemblyReference reference = metadata.GetAssemblyReference(handle);
+            references.Add(new AssemblyReferenceInfo(metadata.GetString(reference.Name), reference.Version));
+        }
+
+        return references;
+    }
+
+    /// <summary>
+    /// Writes a warning for each reference of a staged assembly that the surface's own, older copy of the referenced
+    /// assembly cannot satisfy. Loading such an assembly fails, and a failure inside XAML ends the process without a
+    /// word in the log; this names the cause at startup.
+    /// </summary>
+    private static void ReportUnsatisfiedReferences(List<(string Assembly, List<AssemblyReferenceInfo> References)> staged)
+    {
+        try
+        {
+            // The assemblies the surface itself carries, by simple name.
+            var surfaceAssemblies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string trusted)
+            {
+                foreach (string path in trusted.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    surfaceAssemblies.TryAdd(Path.GetFileNameWithoutExtension(path), path);
+                }
+            }
+
+            var versions = new Dictionary<string, Version?>(StringComparer.OrdinalIgnoreCase);
+            Version? GetSurfaceVersion(string name)
+            {
+                if (!versions.TryGetValue(name, out Version? version))
+                {
+                    version = null;
+                    if (surfaceAssemblies.TryGetValue(name, out string? path))
+                    {
+                        try
+                        {
+                            version = AssemblyName.GetAssemblyName(path).Version;
+                        }
+                        catch (Exception ex) when (ex is IOException or BadImageFormatException)
+                        {
+                            // Not a managed assembly, or not readable: it cannot be compared.
+                        }
+                    }
+
+                    versions[name] = version;
+                }
+
+                return version;
+            }
+
+            var findings = new List<UnsatisfiedAssemblyReference>();
+            foreach ((string assembly, List<AssemblyReferenceInfo> references) in staged)
+            {
+                findings.AddRange(AssemblyReferenceCompatibility.FindUnsatisfied(assembly, references, GetSurfaceVersion));
+            }
+
+            foreach (string line in AssemblyReferenceCompatibility.Describe(findings))
+            {
+                WinUIDesignerLogger.LogWarning("Surface", line);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            WinUIDesignerLogger.LogTrace("Surface", "Checking the assembly references of the project failed.", ex);
+        }
     }
 }

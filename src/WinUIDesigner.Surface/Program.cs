@@ -60,6 +60,10 @@ internal static class Program
         }
 
         WinUIDesignerLogger.ConfigureVerboseLogging(verboseLoggingEnabled);
+        if (verboseLoggingEnabled)
+        {
+            LogAssemblyLoadFailures();
+        }
 
         if (!string.IsNullOrWhiteSpace(args[4]))
         {
@@ -124,5 +128,47 @@ internal static class Program
         {
             app?.Dispose();
         }
+    }
+
+    [ThreadStatic]
+    private static bool _isLoggingLoadFailure;
+
+    /// <summary>
+    /// Writes the failures to load an assembly or a type to the log at the moment they are thrown. XAML calls into the
+    /// code of the project, and an exception that leaves that code ends the process with nothing in the log; this
+    /// tells which assembly could not be loaded.
+    /// </summary>
+    private static void LogAssemblyLoadFailures()
+    {
+        AppDomain.CurrentDomain.FirstChanceException += (_, args) =>
+        {
+            Exception exception = args.Exception;
+            if (_isLoggingLoadFailure || !IsLoadFailure(exception))
+            {
+                return;
+            }
+
+            _isLoggingLoadFailure = true;
+            try
+            {
+                WinUIDesignerLogger.LogTrace("Surface", $"{exception.GetType().Name} while loading: {exception.Message}");
+            }
+            finally
+            {
+                _isLoggingLoadFailure = false;
+            }
+        };
+    }
+
+    private static bool IsLoadFailure(Exception exception)
+    {
+        // Probing for the satellite assemblies of resources fails all the time and says nothing.
+        return exception switch
+        {
+            FileNotFoundException { FileName: { } fileName } => !fileName.Contains(".resources", StringComparison.OrdinalIgnoreCase),
+            FileNotFoundException => true,
+            FileLoadException or BadImageFormatException or TypeLoadException => true,
+            _ => false,
+        };
     }
 }

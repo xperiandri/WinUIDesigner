@@ -15,6 +15,7 @@ Download and open a vsix file from Visual Studio Marketplace. WinUI 3 designer w
 - x86 is not supported.
 - `Window` and its subclasses cannot be previewed; only `FrameworkElement` subclasses are supported.
 - Windows App SDK 2.5.1 is required.
+- A project is previewed only when the Windows SDK it targets is not newer than the one the designer carries: 10.0.28000 on Visual Studio 18 and 10.0.26100 on Visual Studio 17.14. The log names a reference that cannot be satisfied.
 
 ## Structure
 

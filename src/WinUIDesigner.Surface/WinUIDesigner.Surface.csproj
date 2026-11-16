@@ -5,6 +5,21 @@
 		<TargetFramework>$(WinUIDesignerSurfaceTargetFramework)</TargetFramework>
 		<RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
 		<SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+		<!--
+			The surface loads the assemblies of the previewed project into its own process, and the runtime binds the
+			project's reference to Microsoft.Windows.SDK.NET (the projection of the Windows SDK) to the surface's own
+			copy, which must not be older than the version the project was compiled against. A project that targets a
+			newer Windows SDK than the surface, such as 10.0.28000, would otherwise fail to load with "The located
+			assembly's manifest definition does not match the assembly reference" (0x80131040), and that ends the
+			surface process. A newer projection contains the older ones, so the surface carries the newest one it can;
+			the platform version it targets and the Windows version it supports stay as they are.
+
+			The revisions of the projection packages from .87 on ship a CsWinRT runtime that is built for .NET 9 and
+			later, which a surface on .NET 8 (the one built for Visual Studio 17.14) cannot reference, and a .NET 8
+			project cannot be loaded into it anyway. That surface carries the newest projection that builds there.
+		-->
+		<WindowsSdkPackageVersion Condition="$(WinUIDesignerSurfaceTargetFramework.StartsWith('net10.0'))">10.0.28000.87</WindowsSdkPackageVersion>
+		<WindowsSdkPackageVersion Condition="$(WinUIDesignerSurfaceTargetFramework.StartsWith('net8.0'))">10.0.26100.57</WindowsSdkPackageVersion>
 		<OutputType>Exe</OutputType>
 		<AssemblyName>WinUISurface</AssemblyName>
 		<RootNamespace>WinUIDesigner.Surface</RootNamespace>
