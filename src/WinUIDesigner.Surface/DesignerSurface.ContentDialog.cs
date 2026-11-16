@@ -40,26 +40,32 @@ internal sealed partial class DesignerSurface
             dialog.XamlRoot = xamlRoot;
             _shownDialog = dialog;
             FitContentDialog();
+            WinUIDesignerLogger.LogInformation("Surface", $"Showing the ContentDialog of a document over its island ({dialog.Width}x{dialog.Height}).");
             _ = ShowDialogAsync(dialog);
         }
         catch (Exception exception)
         {
             // The document is shown without the dialog, as it was before.
             _shownDialog = null;
-            WinUIDesignerLogger.LogTrace("Surface", "The preview of a ContentDialog could not be prepared.", exception);
+            WinUIDesignerLogger.LogWarning("Surface", "The preview of a ContentDialog could not be prepared.", exception);
         }
     }
 
     /// <summary>
-    /// The dialog lays itself out over the area of its island, which is the part of the viewport that is on screen. The
-    /// size of the device that the artboard gives to the root of a document would put the dialog far outside of it.
+    /// The dialog lies over its island, which is the part of the viewport that is on screen, and no popup of it may be
+    /// larger than that: the size of the device that the artboard gives to the root of a document would put the dialog
+    /// far outside of it. The size that the document asks for with <c>d:DesignWidth</c> and <c>d:DesignHeight</c> is the
+    /// size of the area that the dialog lies in; it is kept where the island has room for it.
     /// </summary>
     private void FitContentDialog()
     {
         if (_shownDialog is { } dialog && _viewportRoot.XamlRoot is { } xamlRoot)
         {
-            dialog.Width = xamlRoot.Size.Width;
-            dialog.Height = xamlRoot.Size.Height;
+            double designWidth = DT.GetDesignWidth(dialog);
+            double designHeight = DT.GetDesignHeight(dialog);
+
+            dialog.Width = double.IsNaN(designWidth) ? xamlRoot.Size.Width : Math.Min(designWidth, xamlRoot.Size.Width);
+            dialog.Height = double.IsNaN(designHeight) ? xamlRoot.Size.Height : Math.Min(designHeight, xamlRoot.Size.Height);
         }
     }
 
@@ -67,11 +73,12 @@ internal sealed partial class DesignerSurface
     {
         try
         {
-            _ = await dialog.ShowAsync();
+            ContentDialogResult result = await dialog.ShowAsync();
+            WinUIDesignerLogger.LogInformation("Surface", $"The ContentDialog of the preview was closed ({result}).");
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogTrace("Surface", "The ContentDialog of the preview could not be shown.", exception);
+            WinUIDesignerLogger.LogWarning("Surface", "The ContentDialog of the preview could not be shown.", exception);
         }
         finally
         {
@@ -102,7 +109,7 @@ internal sealed partial class DesignerSurface
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogTrace("Surface", "The ContentDialog of the preview could not be hidden.", exception);
+            WinUIDesignerLogger.LogWarning("Surface", "The ContentDialog of the preview could not be hidden.", exception);
         }
     }
 }
