@@ -284,10 +284,30 @@ internal sealed partial class DesignerSurface
         }
     }
 
+    /// <summary>
+    /// The keys that a theme has in <c>ThemeDictionaries</c>: the dark theme of Windows is <c>Default</c> (there is
+    /// no <c>Dark</c> in the dictionaries of WinUI, nor in those of Uno Material), and the palette of an app may
+    /// say <c>Dark</c>.
+    /// </summary>
+    private static string[] ThemeKeys(string themeKey) => themeKey == "Dark" ? ["Dark", "Default"] : [themeKey];
+
+    private static ResourceDictionary? FindThemeDictionary(ResourceDictionary dictionary, string themeKey)
+    {
+        foreach (string key in ThemeKeys(themeKey))
+        {
+            if (dictionary.ThemeDictionaries.TryGetValue(key, out object? themed) && themed is ResourceDictionary themeDictionary)
+            {
+                return themeDictionary;
+            }
+        }
+
+        return null;
+    }
+
     private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
     {
         key = string.Empty;
-        if (depth > 12 || !dictionary.ThemeDictionaries.TryGetValue(themeKey, out object? target) || target is not ResourceDictionary targetDictionary)
+        if (depth > 12 || FindThemeDictionary(dictionary, themeKey) is not { } targetDictionary)
         {
             // A dictionary without the theme can still have merged dictionaries that have it.
             return FindInMerged(dictionary, current, themeKey, depth, out key);
@@ -296,7 +316,7 @@ internal sealed partial class DesignerSurface
         List<(string Key, SolidColorBrush Brush)> candidates = [];
         foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
         {
-            if (themed.Key is string name && name != themeKey && themed.Value is ResourceDictionary source)
+            if (themed.Key is string name && !ThemeKeys(themeKey).Contains(name) && themed.Value is ResourceDictionary source)
             {
                 foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
                 {
@@ -361,8 +381,7 @@ internal sealed partial class DesignerSurface
             foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
             {
                 if (ReferenceEquals(entry.Value, current)
-                    && dictionary.ThemeDictionaries.TryGetValue(themeKey, out object? target)
-                    && target is ResourceDictionary targetDictionary
+                    && FindThemeDictionary(dictionary, themeKey) is { } targetDictionary
                     && targetDictionary.TryGetValue(entry.Key, out object? brush)
                     && brush is Brush found)
                 {
