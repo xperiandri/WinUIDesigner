@@ -17,7 +17,7 @@ internal sealed partial class DesignerSurface
     // What happened to the card of the dialog is logged once.
     private bool _loggedDialogCard;
 
-    // The theme of the dialog is made to take effect once for the theme that the preview has.
+    // The brushes of the dialog are matched with the theme of the preview once for each theme that the preview has.
     private ElementTheme? _themeTakenByDialog;
 
     /// <summary>
@@ -70,10 +70,10 @@ internal sealed partial class DesignerSurface
     /// large as the document asks for with <c>d:DesignWidth</c> and <c>d:DesignHeight</c>, each of them on its own and
     /// whatever the size of the designer area, and as large as its content asks for in a direction that the document
     /// says nothing about. The dialog is the area that the card lies in: as large as the island, so that the card is in
-    /// the middle of what is on screen, or as large as the card where the card is larger, so that nothing of the card is
-    /// cut off by the area of the dialog (the island cuts off what lies outside of it, as it does for a page). The theme
-    /// of the preview is the theme of the dialog. It changes nothing that is already as it should be, because a size
-    /// that changes calls it again.
+    /// the middle of what is on screen, or as large as the card with its margin where that is larger, so that nothing of
+    /// the card is cut off by the area of the dialog (the island cuts off what lies outside of it, as it does for a
+    /// page). The theme of the preview is the theme of the dialog. It changes nothing that is already as it should be,
+    /// because a size that changes calls it again.
     /// </summary>
     private void FitContentDialog()
     {
@@ -127,7 +127,7 @@ internal sealed partial class DesignerSurface
             _loggedDialogCard = true;
             WinUIDesignerLogger.LogInformation(
                 "Surface",
-                $"The card of the ContentDialog ('{card.Name}') asks for {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for) and lies in an area of {dialog.Width}x{dialog.Height} over an island of {islandWidth}x{islandHeight}.");
+                $"The card of the ContentDialog ('{card.Name}') and its margin take {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for); the dialog is an area of {dialog.Width}x{dialog.Height} over an island of {islandWidth}x{islandHeight}.");
         }
 
         if (WinUIDesignerLogger.IsVerboseLoggingEnabled)
@@ -158,11 +158,11 @@ internal sealed partial class DesignerSurface
 
     /// <summary>
     /// The dialog is shown in the popup layer of the island, not under the root of the document, so it does not take the
-    /// theme of the preview from the root as the content of the document does, and what it took when its style was applied
-    /// stays: the theme of the application (light unless the document says otherwise), as a white card around the dark
-    /// content of a dark preview. The theme is set on the dialog, and the references to theme resources that its style
-    /// and template made are resolved again for it (a theme that changes and changes back does that; setting the theme
-    /// that it already has does not).
+    /// theme of the preview from the root as the content of the document does: it has the theme of the application
+    /// (light unless the document says otherwise), as a white card around the dark content of a dark preview. The theme
+    /// is set on the dialog, as the documentation of the control advises. That does not reach the brushes that a style
+    /// takes from the resources of the application (the style of Uno Material does), so once the template is there they
+    /// are matched with the brushes of the theme of the preview (<see cref="RetargetDialogBrushes"/>).
     /// </summary>
     private void SyncContentDialogTheme()
     {
@@ -180,15 +180,7 @@ internal sealed partial class DesignerSurface
         if (dialog.IsLoaded && theme != ElementTheme.Default && _themeTakenByDialog != theme)
         {
             _themeTakenByDialog = theme;
-            dialog.RequestedTheme = theme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
-            dialog.RequestedTheme = theme;
-
-            // The values that the implicit style gave to the dialog (background, border, foreground) are brushes of the
-            // theme of the application: the content of the dialog took the theme of the preview at once, and they did
-            // not, even when the style is applied again, so they are matched with the brushes of the theme of the preview.
-            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its theme was set to {theme}: {DescribeBrush(dialog.Background)}.");
             RetargetDialogBrushes(dialog, theme);
-            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its brushes were matched with the theme: {DescribeBrush(dialog.Background)}.");
         }
     }
 
@@ -196,7 +188,8 @@ internal sealed partial class DesignerSurface
     /// A style that takes a brush from the resources of the application takes the one of the theme of the application,
     /// whatever the theme of the element is, and the theme of the application of this process is not the theme of the
     /// preview. For each brush that the dialog has, the key that it has in the theme dictionary that it comes from is
-    /// found (it is the same object), and the brush of the theme of the preview under that key is taken instead.
+    /// found (the same object, or the same colour in the dictionary of another theme), and the brush of the theme of the
+    /// preview under that key is taken instead.
     /// </summary>
     private static void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme)
     {
@@ -241,7 +234,7 @@ internal sealed partial class DesignerSurface
             {
                 // Not the object of any dictionary (the style took a copy, or a brush that code made): the key is the one
                 // that has this colour in the dictionaries of the other themes and another colour in the one of this theme.
-                target = FindThemedBrushByColor(resources, solid, themeKey, 0, out string key);
+                target = FindThemedBrushByColor(resources, solid, themeKey, out string key);
                 how = $"its colour, key '{key}'";
             }
 
@@ -251,9 +244,7 @@ internal sealed partial class DesignerSurface
                 return target;
             }
 
-            WinUIDesignerLogger.LogTrace(
-                "Surface",
-                $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)} (opacity {current.Opacity}; {Examined.Describe()}).");
+            WinUIDesignerLogger.LogTrace("Surface", $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}.");
         }
         catch (Exception exception)
         {
@@ -261,60 +252,6 @@ internal sealed partial class DesignerSurface
         }
 
         return null;
-    }
-
-    /// <summary>What the theme dictionaries have that looks like the brush: the keys of the brushes of the same colour, and the types that the entries have.</summary>
-    private static string DescribeBrushCandidates(ResourceDictionary dictionary, SolidColorBrush current, int depth)
-    {
-        if (depth > 6)
-        {
-            return string.Empty;
-        }
-
-        System.Text.StringBuilder text = new();
-        foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
-        {
-            if (themed.Value is not ResourceDictionary source)
-            {
-                continue;
-            }
-
-            ResourceDictionary? darkDictionary = FindThemeDictionary(dictionary, "Dark");
-            List<string> same = [];
-            foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
-            {
-                if (entry.Value is SolidColorBrush brush && brush.Color == current.Color && same.Count < 6 && (entry.Key as string)?.StartsWith("Surface", StringComparison.Ordinal) != false)
-                {
-                    string counterpart = darkDictionary is null ? "no dark dictionary here" : darkDictionary.TryGetValue(entry.Key, out object? other) ? DescribeBrush(other as Brush) : "missing";
-                    same.Add($"{entry.Key}{(brush.Opacity < 1 ? $"@{brush.Opacity}" : string.Empty)} -> {counterpart}");
-                }
-            }
-
-            if (same.Count > 0)
-            {
-                text.Append($" [{themed.Key}, {source.Count} entries: {string.Join("; ", same)}]");
-            }
-        }
-
-        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
-        {
-            text.Append(DescribeBrushCandidates(merged, current, depth + 1));
-        }
-
-        return text.ToString();
-    }
-
-    /// <summary>The shape of the resources, for the log when a brush is not found: how many entries and merged dictionaries each has, and which themes.</summary>
-    private static string DescribeResources(ResourceDictionary dictionary, int depth)
-    {
-        if (depth > 3)
-        {
-            return "...";
-        }
-
-        string themes = string.Join(", ", dictionary.ThemeDictionaries.Select(pair => pair.Value is ResourceDictionary themed ? $"{pair.Key}({themed.Count} entries, {themed.MergedDictionaries.Count} merged{(themed.MergedDictionaries.Count > 0 ? ": " + string.Join(" ", themed.MergedDictionaries.Select(inner => $"[{inner.Count}/{inner.MergedDictionaries.Count}]")) : string.Empty)})" : $"{pair.Key}({pair.Value?.GetType().Name})"));
-        string merged = string.Join(" ", dictionary.MergedDictionaries.Select(inner => DescribeResources(inner, depth + 1)));
-        return $"{{{dictionary.GetType().Name} {dictionary.Count} entries{(themes.Length > 0 ? "; themes " + themes : string.Empty)}{(merged.Length > 0 ? "; merged " + merged : string.Empty)}}}";
     }
 
     /// <summary>The entries of a dictionary and of the dictionaries that it merges: a theme dictionary often only merges the files that have the brushes.</summary>
@@ -359,24 +296,10 @@ internal sealed partial class DesignerSurface
         return null;
     }
 
-    // How many entries each condition of the search let through, for the log when nothing is found.
-    private static class Examined
-    {
-        public static int Same;
-        public static int SameOpacity;
-        public static int InTheTheme;
-        public static int IsBrush;
-
-        public static void Reset() => Same = SameOpacity = InTheTheme = IsBrush = 0;
-
-        public static string Describe() => $"entries of the colour {Same}, of the opacity {SameOpacity}, that the theme has {InTheTheme}, that are brushes there {IsBrush}";
-    }
-
-    private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
+    private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, out string key)
     {
         List<(string Key, SolidColorBrush Brush)> candidates = [];
-        Examined.Reset();
-        CollectBrushesByColor(dictionary, current, themeKey, depth, candidates);
+        CollectBrushesByColor(dictionary, current, themeKey, 0, candidates);
 
         // The name that a surface has in the Material palette first, then any other name of a surface, then the shortest
         // name, which is the least specific: the brushes of WinUI, which many are white, come first in the resources.
@@ -414,26 +337,19 @@ internal sealed partial class DesignerSurface
 
                 foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
                 {
-                    string? entryKey = entry.Key?.ToString();
-                    if (entryKey is not null && entry.Value is SolidColorBrush brush && brush.Color == current.Color)
+                    if (entry.Key?.ToString() is not { } entryKey
+                        || entry.Value is not SolidColorBrush brush
+                        || brush.Color != current.Color
+                        || Math.Abs(brush.Opacity - current.Opacity) >= 0.001
+                        || !targetDictionary.TryGetValue(entry.Key, out object? other)
+                        || other is not SolidColorBrush otherBrush)
                     {
-                        Examined.Same++;
-                        if (Math.Abs(brush.Opacity - current.Opacity) < 0.001)
-                        {
-                            Examined.SameOpacity++;
-                            if (targetDictionary.TryGetValue(entry.Key, out object? other))
-                            {
-                                Examined.InTheTheme++;
-                                if (other is SolidColorBrush otherBrush)
-                                {
-                                    Examined.IsBrush++;
-                                    if (otherBrush.Color != brush.Color || otherBrush.Opacity != brush.Opacity)
-                                    {
-                                        candidates.Add((entryKey, otherBrush));
-                                    }
-                                }
-                            }
-                        }
+                        continue;
+                    }
+
+                    if (otherBrush.Color != brush.Color || otherBrush.Opacity != brush.Opacity)
+                    {
+                        candidates.Add((entryKey, otherBrush));
                     }
                 }
             }
@@ -492,97 +408,12 @@ internal sealed partial class DesignerSurface
         return FindNamedElement(dialog, "RealBackgroundElement") ?? FindNamedElement(dialog, "BackgroundElement");
     }
 
-    // A timer that nothing refers to is collected, and does not fire.
-    private DispatcherQueueTimer? _dialogTreeTimer;
-
-    /// <summary>Writes the layers of the dialog (names, backgrounds, borders, shadows) to the trace log a moment after it was shown.</summary>
-    private void TraceContentDialogTreeLater()
-    {
-        if (!WinUIDesignerLogger.IsVerboseLoggingEnabled)
-        {
-            return;
-        }
-
-        DispatcherQueueTimer timer = _dialogTreeTimer ??= DispatcherQueue.GetForCurrentThread().CreateTimer();
-        timer.Stop();
-        timer.Interval = TimeSpan.FromMilliseconds(1500);
-        timer.IsRepeating = false;
-        timer.Tick -= OnDialogTreeTimerTick;
-        timer.Tick += OnDialogTreeTimerTick;
-        timer.Start();
-    }
-
-    private void OnDialogTreeTimerTick(DispatcherQueueTimer sender, object args)
-    {
-        sender.Stop();
-
-        if (_shownDialog is not { } dialog)
-        {
-            return;
-        }
-
-        try
-        {
-            System.Text.StringBuilder text = new();
-            text.Append("ContentDialog layers: ").AppendLine(DescribeContentDialog());
-            text.Append("dialog Background=").Append(DescribeBrush(dialog.Background)).Append(" BorderBrush=").Append(DescribeBrush(dialog.BorderBrush)).Append(" BorderThickness=").Append(dialog.BorderThickness).Append(" CornerRadius=").Append(dialog.CornerRadius).Append(" Style=").AppendLine(dialog.Style is null ? "none" : dialog.Style.TargetType?.Name ?? "?");
-            AppendVisualTree(dialog, 1, text);
-            WinUIDesignerLogger.LogTrace("Surface", text.ToString());
-        }
-        catch (Exception exception)
-        {
-            WinUIDesignerLogger.LogTrace("Surface", "The layers of the ContentDialog could not be listed: " + exception.Message);
-        }
-    }
-
     private static string DescribeBrush(Brush? brush) => brush switch
     {
         null => "-",
         SolidColorBrush solid => solid.Color.ToString() + (solid.Opacity < 1 ? $"@{solid.Opacity}" : string.Empty),
         _ => brush.GetType().Name,
     };
-
-    private static void AppendVisualTree(DependencyObject parent, int depth, System.Text.StringBuilder text)
-    {
-        if (depth > 9)
-        {
-            return;
-        }
-
-        int count = VisualTreeHelper.GetChildrenCount(parent);
-        for (int index = 0; index < count; index++)
-        {
-            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
-            if (child is FrameworkElement element)
-            {
-                Brush? background = element switch { Border border => border.Background, Panel panel => panel.Background, Control control => control.Background, _ => null };
-                Brush? borderBrush = element switch { Border border => border.BorderBrush, Control control => control.BorderBrush, _ => null };
-                Thickness thickness = element switch { Border border => border.BorderThickness, Control control => control.BorderThickness, _ => default };
-                CornerRadius radius = element switch { Border border => border.CornerRadius, Control control => control.CornerRadius, _ => default };
-
-                bool interesting = background is not null || borderBrush is not null || element.Shadow is not null || !string.IsNullOrEmpty(element.Name);
-                if (interesting)
-                {
-                    text.Append(' ', depth * 2).Append(element.GetType().Name);
-                    if (!string.IsNullOrEmpty(element.Name))
-                    {
-                        text.Append(" '").Append(element.Name).Append('\'');
-                    }
-
-                    text.Append(" ").Append(element.ActualWidth).Append('x').Append(element.ActualHeight);
-                    if (background is not null) { text.Append(" bg=").Append(DescribeBrush(background)); }
-                    if (borderBrush is not null) { text.Append(" border=").Append(DescribeBrush(borderBrush)).Append(' ').Append(thickness); }
-                    if (radius != default) { text.Append(" radius=").Append(radius); }
-                    if (element.Shadow is { } shadow) { text.Append(" shadow=").Append(shadow.GetType().Name); }
-                    if (element.Opacity < 1) { text.Append(" opacity=").Append(element.Opacity); }
-                    if (element.Visibility != Visibility.Visible) { text.Append(" ").Append(element.Visibility); }
-                    text.AppendLine();
-                }
-            }
-
-            AppendVisualTree(child, depth + 1, text);
-        }
-    }
 
     /// <summary>What the framework says about the dialog, for the log when something is not drawn that should be.</summary>
     private string DescribeContentDialog()
@@ -595,8 +426,8 @@ internal sealed partial class DesignerSurface
         FrameworkElement? card = FindDialogCard(dialog);
         string popups = string.Join(", ", VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Select(popup => $"{popup.Child?.GetType().Name ?? "-"} {(popup.IsOpen ? "open" : "closed")}"));
 
-        return $"dialog loaded={dialog.IsLoaded} opacity={dialog.Opacity} visibility={dialog.Visibility} actual={dialog.ActualWidth}x{dialog.ActualHeight} theme={dialog.ActualTheme}/{dialog.RequestedTheme}; "
-            + (card is null ? "card not found; " : $"card actual={card.ActualWidth}x{card.ActualHeight} opacity={card.Opacity} visibility={card.Visibility} background={(card is Border border ? border.Background?.GetType().Name : "-")}; ")
+        return $"dialog loaded={dialog.IsLoaded} opacity={dialog.Opacity} visibility={dialog.Visibility} actual={dialog.ActualWidth}x{dialog.ActualHeight} theme={dialog.ActualTheme}/{dialog.RequestedTheme} background={DescribeBrush(dialog.Background)}; "
+            + (card is null ? "card not found; " : $"card actual={card.ActualWidth}x{card.ActualHeight} opacity={card.Opacity} visibility={card.Visibility}; ")
             + $"open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}; application theme={Application.Current.RequestedTheme}; frozen={IsFrozen} rendering suspended={_renderingSuspended}";
     }
 
@@ -620,11 +451,7 @@ internal sealed partial class DesignerSurface
         return null;
     }
 
-    private void OnShownDialogLoaded(object sender, RoutedEventArgs e)
-    {
-        FitContentDialog();
-        TraceContentDialogTreeLater();
-    }
+    private void OnShownDialogLoaded(object sender, RoutedEventArgs e) => FitContentDialog();
 
     private async Task ShowDialogAsync(ContentDialog dialog)
     {
