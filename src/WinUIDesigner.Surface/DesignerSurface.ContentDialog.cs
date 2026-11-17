@@ -144,6 +144,98 @@ internal sealed partial class DesignerSurface
         }
     }
 
+    // A timer that nothing refers to is collected, and does not fire.
+    private DispatcherQueueTimer? _dialogTreeTimer;
+
+    /// <summary>Writes the layers of the dialog (names, backgrounds, borders, shadows) to the trace log a moment after it was shown.</summary>
+    private void TraceContentDialogTreeLater()
+    {
+        if (!WinUIDesignerLogger.IsVerboseLoggingEnabled)
+        {
+            return;
+        }
+
+        DispatcherQueueTimer timer = _dialogTreeTimer ??= DispatcherQueue.GetForCurrentThread().CreateTimer();
+        timer.Stop();
+        timer.Interval = TimeSpan.FromMilliseconds(1500);
+        timer.IsRepeating = false;
+        timer.Tick -= OnDialogTreeTimerTick;
+        timer.Tick += OnDialogTreeTimerTick;
+        timer.Start();
+    }
+
+    private void OnDialogTreeTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+
+        if (_shownDialog is not { } dialog)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Text.StringBuilder text = new();
+            text.Append("ContentDialog layers: ").AppendLine(DescribeContentDialog());
+            text.Append("dialog Background=").Append(DescribeBrush(dialog.Background)).Append(" BorderBrush=").Append(DescribeBrush(dialog.BorderBrush)).Append(" BorderThickness=").Append(dialog.BorderThickness).Append(" CornerRadius=").Append(dialog.CornerRadius).Append(" Style=").AppendLine(dialog.Style is null ? "none" : dialog.Style.TargetType?.Name ?? "?");
+            AppendVisualTree(dialog, 1, text);
+            WinUIDesignerLogger.LogTrace("Surface", text.ToString());
+        }
+        catch (Exception exception)
+        {
+            WinUIDesignerLogger.LogTrace("Surface", "The layers of the ContentDialog could not be listed: " + exception.Message);
+        }
+    }
+
+    private static string DescribeBrush(Brush? brush) => brush switch
+    {
+        null => "-",
+        SolidColorBrush solid => solid.Color.ToString() + (solid.Opacity < 1 ? $"@{solid.Opacity}" : string.Empty),
+        _ => brush.GetType().Name,
+    };
+
+    private static void AppendVisualTree(DependencyObject parent, int depth, System.Text.StringBuilder text)
+    {
+        if (depth > 9)
+        {
+            return;
+        }
+
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int index = 0; index < count; index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
+            if (child is FrameworkElement element)
+            {
+                Brush? background = element switch { Border border => border.Background, Panel panel => panel.Background, Control control => control.Background, _ => null };
+                Brush? borderBrush = element switch { Border border => border.BorderBrush, Control control => control.BorderBrush, _ => null };
+                Thickness thickness = element switch { Border border => border.BorderThickness, Control control => control.BorderThickness, _ => default };
+                CornerRadius radius = element switch { Border border => border.CornerRadius, Control control => control.CornerRadius, _ => default };
+
+                bool interesting = background is not null || borderBrush is not null || element.Shadow is not null || !string.IsNullOrEmpty(element.Name);
+                if (interesting)
+                {
+                    text.Append(' ', depth * 2).Append(element.GetType().Name);
+                    if (!string.IsNullOrEmpty(element.Name))
+                    {
+                        text.Append(" '").Append(element.Name).Append('\'');
+                    }
+
+                    text.Append(" ").Append(element.ActualWidth).Append('x').Append(element.ActualHeight);
+                    if (background is not null) { text.Append(" bg=").Append(DescribeBrush(background)); }
+                    if (borderBrush is not null) { text.Append(" border=").Append(DescribeBrush(borderBrush)).Append(' ').Append(thickness); }
+                    if (radius != default) { text.Append(" radius=").Append(radius); }
+                    if (element.Shadow is { } shadow) { text.Append(" shadow=").Append(shadow.GetType().Name); }
+                    if (element.Opacity < 1) { text.Append(" opacity=").Append(element.Opacity); }
+                    if (element.Visibility != Visibility.Visible) { text.Append(" ").Append(element.Visibility); }
+                    text.AppendLine();
+                }
+            }
+
+            AppendVisualTree(child, depth + 1, text);
+        }
+    }
+
     /// <summary>What the framework says about the dialog, for the log when something is not drawn that should be.</summary>
     private string DescribeContentDialog()
     {
@@ -180,7 +272,11 @@ internal sealed partial class DesignerSurface
         return null;
     }
 
-    private void OnShownDialogLoaded(object sender, RoutedEventArgs e) => FitContentDialog();
+    private void OnShownDialogLoaded(object sender, RoutedEventArgs e)
+    {
+        FitContentDialog();
+        TraceContentDialogTreeLater();
+    }
 
     private async Task ShowDialogAsync(ContentDialog dialog)
     {
