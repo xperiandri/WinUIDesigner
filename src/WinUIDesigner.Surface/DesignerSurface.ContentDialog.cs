@@ -183,44 +183,12 @@ internal sealed partial class DesignerSurface
             dialog.RequestedTheme = theme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
             dialog.RequestedTheme = theme;
 
-            // The values that the style gave to the dialog are resolved again by applying the style again: the content of
-            // the dialog, which has no style of this kind, took the theme at once, and the card and the border did not.
-            Brush? before = dialog.Background;
-            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its theme was set to {theme}: {DescribeBrush(before)}.");
-            ReapplyStyle(dialog);
-            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its style was applied again: {DescribeBrush(dialog.Background)}.");
-            if (ReferenceEquals(before, dialog.Background) || BrushColorEquals(before, dialog.Background))
-            {
-                RetargetDialogBrushes(dialog, theme);
-                WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its brushes were matched with the theme: {DescribeBrush(dialog.Background)}.");
-            }
-
-            // The template was made again with the style: its parts are looked for again.
-            _ = dialog.DispatcherQueue.TryEnqueue(() => FitContentDialog());
-        }
-    }
-
-    private static bool BrushColorEquals(Brush? left, Brush? right) => left is SolidColorBrush a && right is SolidColorBrush b && a.Color == b.Color && a.Opacity == b.Opacity;
-
-    private static void ReapplyStyle(ContentDialog dialog)
-    {
-        try
-        {
-            Style? style = dialog.Style;
-            if (style is null && Application.Current.Resources.TryGetValue(typeof(ContentDialog), out object? implicitStyle))
-            {
-                style = implicitStyle as Style;
-            }
-
-            if (style is not null)
-            {
-                dialog.Style = null;
-                dialog.Style = style;
-            }
-        }
-        catch (Exception exception)
-        {
-            WinUIDesignerLogger.LogTrace("Surface", "The style of the ContentDialog could not be applied again: " + exception.Message);
+            // The values that the implicit style gave to the dialog (background, border, foreground) are brushes of the
+            // theme of the application: the content of the dialog took the theme of the preview at once, and they did
+            // not, even when the style is applied again, so they are matched with the brushes of the theme of the preview.
+            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its theme was set to {theme}: {DescribeBrush(dialog.Background)}.");
+            RetargetDialogBrushes(dialog, theme);
+            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its brushes were matched with the theme: {DescribeBrush(dialog.Background)}.");
         }
     }
 
