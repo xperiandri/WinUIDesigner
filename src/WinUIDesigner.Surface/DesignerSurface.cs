@@ -201,6 +201,8 @@ internal sealed partial class DesignerSurface : IDisposable
             TranslateY = offsetY,
         };
 
+        // A ContentDialog is not under the canvas that was just transformed.
+        MoveDialogWithArtboard(offsetX, offsetY, scale);
     }
 
     public void SetDeviceSize(double width, double height)

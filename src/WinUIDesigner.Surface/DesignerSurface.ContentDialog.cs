@@ -20,11 +20,18 @@ internal sealed partial class DesignerSurface
     // The brushes of the dialog are matched with the theme of the preview once for each theme that the preview has.
     private ElementTheme? _themeTakenByDialog;
 
+    // The pan and zoom of the artboard as Visual Studio sent them last. The dialog is not in the artboard (it is in the
+    // popup layer of the island), so it is given them itself, see MoveDialogWithArtboard.
+    private double _artboardOffsetX;
+    private double _artboardOffsetY;
+    private double _artboardScale = 1.0;
+
     /// <summary>
     /// A <see cref="ContentDialog"/> draws nothing where it stands: it reports no size until it is shown, and showing
     /// it puts it into a popup. Show the dialog of a document that has one as its root in the island of the document,
     /// so that the preview shows the dialog. The popup lives in the island, so it goes with the island when the document
-    /// is hidden or closed, and, unlike the document, it does not follow the pan and zoom of the artboard.
+    /// is hidden or closed. It is not under the canvas that Visual Studio pans and zooms, so it takes the pan and zoom
+    /// itself (<see cref="MoveDialogWithArtboard"/>).
     /// </summary>
     private void PreviewContentDialog()
     {
@@ -69,28 +76,31 @@ internal sealed partial class DesignerSurface
     /// The card of the dialog (see <see cref="FindDialogCard"/>; the dialog does not stretch it to its own size) is as
     /// large as the document asks for with <c>d:DesignWidth</c> and <c>d:DesignHeight</c>, each of them on its own and
     /// whatever the size of the designer area, and as large as its content asks for in a direction that the document
-    /// says nothing about. The dialog is the area that the card lies in: as large as the island, so that the card is in
-    /// the middle of what is on screen, or as large as the card with its margin where that is larger, so that nothing of
-    /// the card is cut off by the area of the dialog (the island cuts off what lies outside of it, as it does for a
-    /// page). The theme of the preview is the theme of the dialog. It changes nothing that is already as it should be,
-    /// because a size that changes calls it again.
+    /// says nothing about. The dialog is the area that the card lies in: the artboard (the size of the device), so that
+    /// the card is in the middle of it, as a dialog is in the middle of the window of an app, or as large as the card
+    /// with its margin where that is larger, so that nothing of the card is cut off by the area of the dialog. It takes
+    /// the pan and zoom of the artboard (<see cref="MoveDialogWithArtboard"/>), so the card lies where Visual Studio
+    /// thinks that it lies, and what lies outside of the designer area is reached by scrolling, as it is for a page.
+    /// The theme of the preview is the theme of the dialog. It changes nothing that is already as it should be, because
+    /// a size that changes calls it again.
     /// </summary>
     private void FitContentDialog()
     {
-        if (_disposed || _shownDialog is not { } dialog || _viewportRoot.XamlRoot is not { } xamlRoot)
+        if (_disposed || _shownDialog is not { } dialog || _viewportRoot.XamlRoot is null)
         {
             return;
         }
 
         SyncContentDialogTheme();
+        ApplyArtboardTransformToDialog();
 
-        double islandWidth = xamlRoot.Size.Width;
-        double islandHeight = xamlRoot.Size.Height;
+        double artboardWidth = _deviceWidth;
+        double artboardHeight = _deviceHeight;
 
         // The template exists once the dialog is shown; Loaded calls this again for the card.
         if (FindDialogCard(dialog) is not { } card)
         {
-            SetSize(dialog, islandWidth, islandHeight);
+            SetSize(dialog, artboardWidth, artboardHeight);
 
             if (dialog.IsLoaded && !_loggedDialogCard)
             {
@@ -120,14 +130,14 @@ internal sealed partial class DesignerSurface
         card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         Size needed = card.DesiredSize;
 
-        SetSize(dialog, Math.Max(islandWidth, needed.Width), Math.Max(islandHeight, needed.Height));
+        SetSize(dialog, Math.Max(artboardWidth, needed.Width), Math.Max(artboardHeight, needed.Height));
 
         if (!_loggedDialogCard)
         {
             _loggedDialogCard = true;
             WinUIDesignerLogger.LogInformation(
                 "Surface",
-                $"The card of the ContentDialog ('{card.Name}') and its margin take {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for); the dialog is an area of {dialog.Width}x{dialog.Height} over an island of {islandWidth}x{islandHeight}.");
+                $"The card of the ContentDialog ('{card.Name}') and its margin take {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for); the dialog is an area of {dialog.Width}x{dialog.Height} over the artboard of {artboardWidth}x{artboardHeight}, which it follows when it is panned and zoomed.");
         }
 
         if (WinUIDesignerLogger.IsVerboseLoggingEnabled)
@@ -148,6 +158,43 @@ internal sealed partial class DesignerSurface
         {
             element.Height = height;
         }
+    }
+
+    /// <summary>
+    /// Visual Studio pans and zooms the artboard by a transform on the canvas that the document is in
+    /// (<see cref="SetPanZoomTransform"/>), and the selection frames, the guides and the hit tests that it computes are in
+    /// the coordinates of that artboard. A dialog is in the popup layer of the island, which is not under that canvas, so
+    /// without a transform of its own it stays where it is while the artboard moves: the picture looks frozen, and the
+    /// frames of Visual Studio are somewhere else. The area of the dialog is the artboard, with its origin at the origin
+    /// of the island, so the transform that the canvas has is the one that maps the dialog onto the screen too.
+    /// </summary>
+    private void MoveDialogWithArtboard(double offsetX, double offsetY, double scale)
+    {
+        _artboardOffsetX = offsetX;
+        _artboardOffsetY = offsetY;
+        _artboardScale = scale;
+        ApplyArtboardTransformToDialog();
+    }
+
+    private void ApplyArtboardTransformToDialog()
+    {
+        if (_shownDialog is not { } dialog)
+        {
+            return;
+        }
+
+        // The transform belongs to the dialog (one transform cannot be the transform of two elements), and a pan changes
+        // it in place.
+        if (dialog.RenderTransform is not CompositeTransform transform)
+        {
+            transform = new CompositeTransform();
+            dialog.RenderTransform = transform;
+        }
+
+        transform.ScaleX = _artboardScale;
+        transform.ScaleY = _artboardScale;
+        transform.TranslateX = _artboardOffsetX;
+        transform.TranslateY = _artboardOffsetY;
     }
 
     /// <summary>
@@ -176,6 +223,7 @@ internal sealed partial class DesignerSurface
         {
             dialog.RequestedTheme = theme;
         }
+
 
         if (dialog.IsLoaded && theme != ElementTheme.Default && _themeTakenByDialog != theme)
         {
@@ -428,7 +476,7 @@ internal sealed partial class DesignerSurface
 
         return $"dialog loaded={dialog.IsLoaded} opacity={dialog.Opacity} visibility={dialog.Visibility} actual={dialog.ActualWidth}x{dialog.ActualHeight} theme={dialog.ActualTheme}/{dialog.RequestedTheme} background={DescribeBrush(dialog.Background)}; "
             + (card is null ? "card not found; " : $"card actual={card.ActualWidth}x{card.ActualHeight} opacity={card.Opacity} visibility={card.Visibility}; ")
-            + $"open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}; application theme={Application.Current.RequestedTheme}; frozen={IsFrozen} rendering suspended={_renderingSuspended}";
+            + $"open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; artboard={_deviceWidth}x{_deviceHeight} pan=({_artboardOffsetX},{_artboardOffsetY}) zoom={_artboardScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}; application theme={Application.Current.RequestedTheme}; frozen={IsFrozen} rendering suspended={_renderingSuspended}";
     }
 
     private static FrameworkElement? FindNamedElement(DependencyObject parent, string name)
