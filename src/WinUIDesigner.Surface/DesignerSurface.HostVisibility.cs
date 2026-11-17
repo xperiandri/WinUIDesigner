@@ -9,7 +9,7 @@ namespace WinUIDesigner.Surface;
 internal sealed partial class DesignerSurface
 {
     // How often the state of a host that the framework says is hidden is compared with that of its window.
-    private static readonly TimeSpan _HostVisibilityInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan _HostVisibilityInterval = TimeSpan.FromMilliseconds(250);
 
     // Hiding the window and showing it again is tried this many times before the surface leaves the host as it is.
     private const int _MaximumHostVisibilityRepairs = 3;
@@ -25,9 +25,9 @@ internal sealed partial class DesignerSurface
     /// does not draw while it thinks that the host is hidden. It has been seen to keep that belief after the window was
     /// shown again: the window and every parent of it visible, <c>XamlRoot.IsHostVisible</c> false, the controls laid out and
     /// reachable through UI Automation, and nothing drawn, until the window is hidden and shown once more. So while the
-    /// framework says that the host is hidden, the window is looked at every half second, and when it is visible it is hidden
-    /// and shown again, which tells the framework. A window that really is hidden, or whose top-level window is minimized,
-    /// is left alone: the message that shows it comes with the show.
+    /// framework says that the host is hidden, the window is looked at four times a second, and when it is visible it is
+    /// hidden and shown again, which tells the framework. A window that really is hidden, or whose top-level window is
+    /// minimized, is left alone: the message that shows it comes with the show.
     /// </summary>
     /// <param name="startAgain">Visual Studio has just shown or moved the surface: earlier attempts do not count.</param>
     private void WatchHostVisibility(bool startAgain = false)
