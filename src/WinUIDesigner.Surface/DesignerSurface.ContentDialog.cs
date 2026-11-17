@@ -2,6 +2,7 @@
 // Licensed under MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.Foundation;
@@ -181,7 +182,97 @@ internal sealed partial class DesignerSurface
             _themeTakenByDialog = theme;
             dialog.RequestedTheme = theme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
             dialog.RequestedTheme = theme;
+            RetargetDialogBrushes(dialog, theme);
         }
+    }
+
+    /// <summary>
+    /// A style that takes a brush from the resources of the application takes the one of the theme of the application,
+    /// whatever the theme of the element is, and the theme of the application of this process is not the theme of the
+    /// preview. For each brush that the dialog has, the key that it has in the theme dictionary that it comes from is
+    /// found (it is the same object), and the brush of the theme of the preview under that key is taken instead.
+    /// </summary>
+    private static void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme)
+    {
+        string themeKey = theme == ElementTheme.Dark ? "Dark" : "Light";
+        ResourceDictionary resources = Application.Current.Resources;
+
+        if (RetargetedBrush(resources, dialog.Background, themeKey) is { } background)
+        {
+            dialog.Background = background;
+        }
+
+        if (RetargetedBrush(resources, dialog.BorderBrush, themeKey) is { } border)
+        {
+            dialog.BorderBrush = border;
+        }
+
+        if (RetargetedBrush(resources, dialog.Foreground, themeKey) is { } foreground)
+        {
+            dialog.Foreground = foreground;
+        }
+    }
+
+    private static Brush? RetargetedBrush(ResourceDictionary resources, Brush? current, string themeKey)
+    {
+        if (current is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            Brush? target = FindThemedBrush(resources, current, themeKey, 0);
+            if (target is not null && !ReferenceEquals(target, current))
+            {
+                WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is replaced by the one of the {themeKey} theme, {DescribeBrush(target)}.");
+                return target;
+            }
+        }
+        catch (Exception exception)
+        {
+            WinUIDesignerLogger.LogTrace("Surface", "The brushes of the ContentDialog could not be matched with a theme: " + exception.Message);
+        }
+
+        return null;
+    }
+
+    private static Brush? FindThemedBrush(ResourceDictionary dictionary, Brush current, string themeKey, int depth)
+    {
+        if (depth > 12)
+        {
+            return null;
+        }
+
+        foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
+        {
+            if (themed.Value is not ResourceDictionary source)
+            {
+                continue;
+            }
+
+            foreach (KeyValuePair<object, object> entry in source)
+            {
+                if (ReferenceEquals(entry.Value, current)
+                    && dictionary.ThemeDictionaries.TryGetValue(themeKey, out object? target)
+                    && target is ResourceDictionary targetDictionary
+                    && targetDictionary.TryGetValue(entry.Key, out object? brush)
+                    && brush is Brush found)
+                {
+                    return found;
+                }
+            }
+        }
+
+        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
+        {
+            if (FindThemedBrush(merged, current, themeKey, depth + 1) is { } result)
+            {
+                return result;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -299,7 +390,7 @@ internal sealed partial class DesignerSurface
 
         return $"dialog loaded={dialog.IsLoaded} opacity={dialog.Opacity} visibility={dialog.Visibility} actual={dialog.ActualWidth}x{dialog.ActualHeight} theme={dialog.ActualTheme}/{dialog.RequestedTheme}; "
             + (card is null ? "card not found; " : $"card actual={card.ActualWidth}x{card.ActualHeight} opacity={card.Opacity} visibility={card.Visibility} background={(card is Border border ? border.Background?.GetType().Name : "-")}; ")
-            + $"open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}";
+            + $"open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}; application theme={Application.Current.RequestedTheme}; frozen={IsFrozen} rendering suspended={_renderingSuspended}";
     }
 
     private static FrameworkElement? FindNamedElement(DependencyObject parent, string name)
