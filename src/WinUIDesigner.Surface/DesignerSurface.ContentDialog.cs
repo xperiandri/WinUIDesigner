@@ -239,7 +239,7 @@ internal sealed partial class DesignerSurface
                 return target;
             }
 
-            WinUIDesignerLogger.LogTrace("Surface", $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}.");
+            WinUIDesignerLogger.LogTrace("Surface", $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}. Resources: {DescribeResources(resources, 0)}");
         }
         catch (Exception exception)
         {
@@ -247,6 +247,41 @@ internal sealed partial class DesignerSurface
         }
 
         return null;
+    }
+
+    /// <summary>The shape of the resources, for the log when a brush is not found: how many entries and merged dictionaries each has, and which themes.</summary>
+    private static string DescribeResources(ResourceDictionary dictionary, int depth)
+    {
+        if (depth > 3)
+        {
+            return "...";
+        }
+
+        string themes = string.Join(", ", dictionary.ThemeDictionaries.Select(pair => pair.Value is ResourceDictionary themed ? $"{pair.Key}({themed.Count} entries, {themed.MergedDictionaries.Count} merged{(themed.MergedDictionaries.Count > 0 ? ": " + string.Join(" ", themed.MergedDictionaries.Select(inner => $"[{inner.Count}/{inner.MergedDictionaries.Count}]")) : string.Empty)})" : $"{pair.Key}({pair.Value?.GetType().Name})"));
+        string merged = string.Join(" ", dictionary.MergedDictionaries.Select(inner => DescribeResources(inner, depth + 1)));
+        return $"{{{dictionary.GetType().Name} {dictionary.Count} entries{(themes.Length > 0 ? "; themes " + themes : string.Empty)}{(merged.Length > 0 ? "; merged " + merged : string.Empty)}}}";
+    }
+
+    /// <summary>The entries of a dictionary and of the dictionaries that it merges: a theme dictionary often only merges the files that have the brushes.</summary>
+    private static IEnumerable<KeyValuePair<object, object>> EnumerateEntries(ResourceDictionary dictionary, int depth)
+    {
+        foreach (KeyValuePair<object, object> entry in dictionary)
+        {
+            yield return entry;
+        }
+
+        if (depth > 12)
+        {
+            yield break;
+        }
+
+        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
+        {
+            foreach (KeyValuePair<object, object> entry in EnumerateEntries(merged, depth + 1))
+            {
+                yield return entry;
+            }
+        }
     }
 
     private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
@@ -263,7 +298,7 @@ internal sealed partial class DesignerSurface
         {
             if (themed.Key is string name && name != themeKey && themed.Value is ResourceDictionary source)
             {
-                foreach (KeyValuePair<object, object> entry in source)
+                foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
                 {
                     if (entry.Key is string entryKey
                         && entry.Value is SolidColorBrush brush
@@ -323,7 +358,7 @@ internal sealed partial class DesignerSurface
                 continue;
             }
 
-            foreach (KeyValuePair<object, object> entry in source)
+            foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
             {
                 if (ReferenceEquals(entry.Value, current)
                     && dictionary.ThemeDictionaries.TryGetValue(themeKey, out object? target)
