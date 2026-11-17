@@ -223,11 +223,23 @@ internal sealed partial class DesignerSurface
         try
         {
             Brush? target = FindThemedBrush(resources, current, themeKey, 0);
+            string how = "the same object";
+
+            if (target is null && current is SolidColorBrush solid)
+            {
+                // Not the object of any dictionary (the style took a copy, or a brush that code made): the key is the one
+                // that has this colour in the dictionaries of the other themes and another colour in the one of this theme.
+                target = FindThemedBrushByColor(resources, solid, themeKey, 0, out string key);
+                how = $"its colour, key '{key}'";
+            }
+
             if (target is not null && !ReferenceEquals(target, current))
             {
-                WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is replaced by the one of the {themeKey} theme, {DescribeBrush(target)}.");
+                WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is replaced by the one of the {themeKey} theme, {DescribeBrush(target)}, found by {how}.");
                 return target;
             }
+
+            WinUIDesignerLogger.LogTrace("Surface", $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}.");
         }
         catch (Exception exception)
         {
@@ -235,6 +247,66 @@ internal sealed partial class DesignerSurface
         }
 
         return null;
+    }
+
+    private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
+    {
+        key = string.Empty;
+        if (depth > 12 || !dictionary.ThemeDictionaries.TryGetValue(themeKey, out object? target) || target is not ResourceDictionary targetDictionary)
+        {
+            // A dictionary without the theme can still have merged dictionaries that have it.
+            return FindInMerged(dictionary, current, themeKey, depth, out key);
+        }
+
+        List<(string Key, SolidColorBrush Brush)> candidates = [];
+        foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
+        {
+            if (themed.Key is string name && name != themeKey && themed.Value is ResourceDictionary source)
+            {
+                foreach (KeyValuePair<object, object> entry in source)
+                {
+                    if (entry.Key is string entryKey
+                        && entry.Value is SolidColorBrush brush
+                        && brush.Color == current.Color
+                        && brush.Opacity == current.Opacity
+                        && targetDictionary.TryGetValue(entryKey, out object? other)
+                        && other is SolidColorBrush otherBrush
+                        && (otherBrush.Color != brush.Color || otherBrush.Opacity != brush.Opacity))
+                    {
+                        candidates.Add((entryKey, otherBrush));
+                    }
+                }
+            }
+        }
+
+        // The name that a surface has in the Material palette first, then the shortest name, which is the least specific.
+        (string Key, SolidColorBrush Brush)? best = candidates
+            .OrderBy(candidate => candidate.Key.Equals("SurfaceBrush", StringComparison.Ordinal) ? 0 : candidate.Key.StartsWith("Surface", StringComparison.Ordinal) ? 1 : 2)
+            .ThenBy(candidate => candidate.Key.Length)
+            .Select(candidate => ((string Key, SolidColorBrush Brush)?)candidate)
+            .FirstOrDefault();
+
+        if (best is { } found)
+        {
+            key = found.Key;
+            return found.Brush;
+        }
+
+        return FindInMerged(dictionary, current, themeKey, depth, out key);
+
+        static Brush? FindInMerged(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
+        {
+            key = string.Empty;
+            foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
+            {
+                if (FindThemedBrushByColor(merged, current, themeKey, depth + 1, out key) is { } result)
+                {
+                    return result;
+                }
+            }
+
+            return null;
+        }
     }
 
     private static Brush? FindThemedBrush(ResourceDictionary dictionary, Brush current, string themeKey, int depth)
