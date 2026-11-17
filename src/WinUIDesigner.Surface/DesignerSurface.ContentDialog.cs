@@ -182,7 +182,45 @@ internal sealed partial class DesignerSurface
             _themeTakenByDialog = theme;
             dialog.RequestedTheme = theme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
             dialog.RequestedTheme = theme;
-            RetargetDialogBrushes(dialog, theme);
+
+            // The values that the style gave to the dialog are resolved again by applying the style again: the content of
+            // the dialog, which has no style of this kind, took the theme at once, and the card and the border did not.
+            Brush? before = dialog.Background;
+            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its theme was set to {theme}: {DescribeBrush(before)}.");
+            ReapplyStyle(dialog);
+            WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its style was applied again: {DescribeBrush(dialog.Background)}.");
+            if (ReferenceEquals(before, dialog.Background) || BrushColorEquals(before, dialog.Background))
+            {
+                RetargetDialogBrushes(dialog, theme);
+                WinUIDesignerLogger.LogTrace("Surface", $"The background of the ContentDialog after its brushes were matched with the theme: {DescribeBrush(dialog.Background)}.");
+            }
+
+            // The template was made again with the style: its parts are looked for again.
+            _ = dialog.DispatcherQueue.TryEnqueue(() => FitContentDialog());
+        }
+    }
+
+    private static bool BrushColorEquals(Brush? left, Brush? right) => left is SolidColorBrush a && right is SolidColorBrush b && a.Color == b.Color && a.Opacity == b.Opacity;
+
+    private static void ReapplyStyle(ContentDialog dialog)
+    {
+        try
+        {
+            Style? style = dialog.Style;
+            if (style is null && Application.Current.Resources.TryGetValue(typeof(ContentDialog), out object? implicitStyle))
+            {
+                style = implicitStyle as Style;
+            }
+
+            if (style is not null)
+            {
+                dialog.Style = null;
+                dialog.Style = style;
+            }
+        }
+        catch (Exception exception)
+        {
+            WinUIDesignerLogger.LogTrace("Surface", "The style of the ContentDialog could not be applied again: " + exception.Message);
         }
     }
 
@@ -267,21 +305,20 @@ internal sealed partial class DesignerSurface
                 continue;
             }
 
-            Dictionary<string, int> types = [];
+            ResourceDictionary? darkDictionary = FindThemeDictionary(dictionary, "Dark");
             List<string> same = [];
-            foreach (KeyValuePair<object, object> entry in source)
+            foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
             {
-                string type = entry.Value?.GetType().Name ?? "null";
-                types[type] = types.GetValueOrDefault(type) + 1;
-                if (entry.Value is SolidColorBrush brush && brush.Color == current.Color && same.Count < 8)
+                if (entry.Value is SolidColorBrush brush && brush.Color == current.Color && same.Count < 6 && (entry.Key as string)?.StartsWith("Surface", StringComparison.Ordinal) != false)
                 {
-                    same.Add(entry.Key + (brush.Opacity < 1 ? $"@{brush.Opacity}" : string.Empty));
+                    string counterpart = darkDictionary is null ? "no dark dictionary here" : darkDictionary.TryGetValue(entry.Key, out object? other) ? DescribeBrush(other as Brush) : "missing";
+                    same.Add($"{entry.Key}{(brush.Opacity < 1 ? $"@{brush.Opacity}" : string.Empty)} -> {counterpart}");
                 }
             }
 
-            if (same.Count > 0 || depth == 0)
+            if (same.Count > 0)
             {
-                text.Append($" [{themed.Key}: {string.Join(", ", types.Select(pair => $"{pair.Key} {pair.Value}"))}; same colour: {string.Join(", ", same)}]");
+                text.Append($" [{themed.Key}, {source.Count} entries: {string.Join("; ", same)}]");
             }
         }
 
