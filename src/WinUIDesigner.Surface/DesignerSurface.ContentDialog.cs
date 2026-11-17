@@ -239,7 +239,9 @@ internal sealed partial class DesignerSurface
                 return target;
             }
 
-            WinUIDesignerLogger.LogTrace("Surface", $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}. Resources: {DescribeResources(resources, 0)}");
+            WinUIDesignerLogger.LogTrace(
+                "Surface",
+                $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}.{(current is SolidColorBrush solidCurrent ? " Candidates:" + DescribeBrushCandidates(resources, solidCurrent, 0) : string.Empty)}");
         }
         catch (Exception exception)
         {
@@ -247,6 +249,48 @@ internal sealed partial class DesignerSurface
         }
 
         return null;
+    }
+
+    /// <summary>What the theme dictionaries have that looks like the brush: the keys of the brushes of the same colour, and the types that the entries have.</summary>
+    private static string DescribeBrushCandidates(ResourceDictionary dictionary, SolidColorBrush current, int depth)
+    {
+        if (depth > 6)
+        {
+            return string.Empty;
+        }
+
+        System.Text.StringBuilder text = new();
+        foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
+        {
+            if (themed.Value is not ResourceDictionary source)
+            {
+                continue;
+            }
+
+            Dictionary<string, int> types = [];
+            List<string> same = [];
+            foreach (KeyValuePair<object, object> entry in source)
+            {
+                string type = entry.Value?.GetType().Name ?? "null";
+                types[type] = types.GetValueOrDefault(type) + 1;
+                if (entry.Value is SolidColorBrush brush && brush.Color == current.Color && same.Count < 8)
+                {
+                    same.Add(entry.Key + (brush.Opacity < 1 ? $"@{brush.Opacity}" : string.Empty));
+                }
+            }
+
+            if (same.Count > 0 || depth == 0)
+            {
+                text.Append($" [{themed.Key}: {string.Join(", ", types.Select(pair => $"{pair.Key} {pair.Value}"))}; same colour: {string.Join(", ", same)}]");
+            }
+        }
+
+        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
+        {
+            text.Append(DescribeBrushCandidates(merged, current, depth + 1));
+        }
+
+        return text.ToString();
     }
 
     /// <summary>The shape of the resources, for the log when a brush is not found: how many entries and merged dictionaries each has, and which themes.</summary>
