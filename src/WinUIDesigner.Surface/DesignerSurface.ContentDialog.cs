@@ -231,6 +231,12 @@ internal sealed partial class DesignerSurface
             Brush? target = FindThemedBrush(resources, current, themeKey, 0);
             string how = "the same object";
 
+            // The object of the dictionary of the theme itself says nothing: the brush that it is is the brush of the dialog.
+            if (ReferenceEquals(target, current))
+            {
+                target = null;
+            }
+
             if (target is null && current is SolidColorBrush solid)
             {
                 // Not the object of any dictionary (the style took a copy, or a brush that code made): the key is the one
@@ -247,7 +253,7 @@ internal sealed partial class DesignerSurface
 
             WinUIDesignerLogger.LogTrace(
                 "Surface",
-                $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}.{(current is SolidColorBrush solidCurrent ? " Candidates:" + DescribeBrushCandidates(resources, solidCurrent, 0) : string.Empty)}");
+                $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)} (opacity {current.Opacity}; {Examined.Describe()}).");
         }
         catch (Exception exception)
         {
@@ -353,9 +359,23 @@ internal sealed partial class DesignerSurface
         return null;
     }
 
+    // How many entries each condition of the search let through, for the log when nothing is found.
+    private static class Examined
+    {
+        public static int Same;
+        public static int SameOpacity;
+        public static int InTheTheme;
+        public static int IsBrush;
+
+        public static void Reset() => Same = SameOpacity = InTheTheme = IsBrush = 0;
+
+        public static string Describe() => $"entries of the colour {Same}, of the opacity {SameOpacity}, that the theme has {InTheTheme}, that are brushes there {IsBrush}";
+    }
+
     private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
     {
         List<(string Key, SolidColorBrush Brush)> candidates = [];
+        Examined.Reset();
         CollectBrushesByColor(dictionary, current, themeKey, depth, candidates);
 
         // The name that a surface has in the Material palette first, then any other name of a surface, then the shortest
@@ -395,15 +415,25 @@ internal sealed partial class DesignerSurface
                 foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
                 {
                     string? entryKey = entry.Key?.ToString();
-                    if (entryKey is not null
-                        && entry.Value is SolidColorBrush brush
-                        && brush.Color == current.Color
-                        && brush.Opacity == current.Opacity
-                        && targetDictionary.TryGetValue(entry.Key, out object? other)
-                        && other is SolidColorBrush otherBrush
-                        && (otherBrush.Color != brush.Color || otherBrush.Opacity != brush.Opacity))
+                    if (entryKey is not null && entry.Value is SolidColorBrush brush && brush.Color == current.Color)
                     {
-                        candidates.Add((entryKey, otherBrush));
+                        Examined.Same++;
+                        if (Math.Abs(brush.Opacity - current.Opacity) < 0.001)
+                        {
+                            Examined.SameOpacity++;
+                            if (targetDictionary.TryGetValue(entry.Key, out object? other))
+                            {
+                                Examined.InTheTheme++;
+                                if (other is SolidColorBrush otherBrush)
+                                {
+                                    Examined.IsBrush++;
+                                    if (otherBrush.Color != brush.Color || otherBrush.Opacity != brush.Opacity)
+                                    {
+                                        candidates.Add((entryKey, otherBrush));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
