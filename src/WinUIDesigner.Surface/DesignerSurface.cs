@@ -309,6 +309,7 @@ internal sealed partial class DesignerSurface : IDisposable
             : ElementTheme.Dark;
 
         _viewportRoot.RequestedTheme = _previewRequestedTheme ?? _appRequestedTheme;
+        SyncContentDialogTheme();
 
         RefreshLayout();
     }
@@ -317,6 +318,7 @@ internal sealed partial class DesignerSurface : IDisposable
     {
         _appRequestedTheme = theme;
         _viewportRoot.RequestedTheme = _previewRequestedTheme ?? _appRequestedTheme;
+        SyncContentDialogTheme();
         RefreshLayout();
     }
 
@@ -368,6 +370,10 @@ internal sealed partial class DesignerSurface : IDisposable
     private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
     {
         PublishDpi(sender);
+
+        // The size of the root is the size of the island once the island has been resized, which is after the call that
+        // resizes it returns; a dialog that is shown is fitted to it again.
+        FitContentDialog();
     }
 
     private void PublishDpi(XamlRoot root)
