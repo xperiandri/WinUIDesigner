@@ -224,11 +224,41 @@ internal sealed partial class DesignerSurface
             dialog.RequestedTheme = theme;
         }
 
+        SyncSmokeLayerTheme(theme);
+
 
         if (dialog.IsLoaded && theme != ElementTheme.Default && _themeTakenByDialog != theme)
         {
             _themeTakenByDialog = theme;
             RetargetDialogBrushes(dialog, theme);
+        }
+    }
+
+    /// <summary>
+    /// The layer of smoke that dims what lies behind a dialog is a popup of its own (a rectangle), filled by the framework
+    /// with the colour that the theme of the application has for it: white at 60 per cent in the light theme (the system
+    /// colour <c>SystemAltMediumColor</c>), black at 60 per cent in the dark one. The theme of the application of this
+    /// process is the theme of the system, not the theme of the preview, so a dark preview got a light wash.
+    /// </summary>
+    private void SyncSmokeLayerTheme(ElementTheme theme)
+    {
+        if (_viewportRoot.XamlRoot is not { } root || theme == ElementTheme.Default)
+        {
+            return;
+        }
+
+        var smokeColor = theme == ElementTheme.Dark
+            ? Windows.UI.Color.FromArgb(0x99, 0x00, 0x00, 0x00)
+            : Windows.UI.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF);
+
+        foreach (Popup popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
+        {
+            if (popup.Child is Microsoft.UI.Xaml.Shapes.Rectangle { Fill: SolidColorBrush current } smoke
+                && current.Color != smokeColor)
+            {
+                WinUIDesignerLogger.LogTrace("Surface", $"The smoke layer of the ContentDialog, {DescribeBrush(current)}, is replaced by {smokeColor} for the {theme} theme of the preview.");
+                smoke.Fill = new SolidColorBrush(smokeColor);
+            }
         }
     }
 
