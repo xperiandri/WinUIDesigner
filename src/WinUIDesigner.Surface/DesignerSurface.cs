@@ -93,6 +93,7 @@ internal sealed partial class DesignerSurface : IDisposable
 
         IsFrozen = true;
         ArmFreezeTimer(_FreezeTimeout);
+        WinUIDesignerLogger.LogTrace("Surface", $"The surface was frozen (rendering suspended: {_renderingSuspended}).");
     }
 
     public void Unfreeze()
@@ -109,6 +110,7 @@ internal sealed partial class DesignerSurface : IDisposable
             ArmFreezeTimer(_ResumeRetryInterval);
         }
 
+        WinUIDesignerLogger.LogTrace("Surface", $"The surface was unfrozen (rendering suspended: {_renderingSuspended}).");
         IsFrozen = false;
         if (_compositionRenderingHandler is not null)
         {
