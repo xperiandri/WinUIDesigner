@@ -186,6 +186,7 @@ internal sealed partial class DesignerSurface : IDisposable
         _viewportRoot.Arrange(new Rect(0, 0, _viewportRoot.Width, _viewportRoot.Height));
         _viewportRoot.UpdateLayout();
         _ = NativeMethods.InvalidateRect(parentHwnd, IntPtr.Zero, true);
+        WatchHostVisibility(startAgain: true);
     }
 
     public void SetPanZoomTransform(double offsetX, double offsetY, double scale)
@@ -357,6 +358,7 @@ internal sealed partial class DesignerSurface : IDisposable
     private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
     {
         PublishDpi(sender);
+        WatchHostVisibility();
     }
 
     private void PublishDpi(XamlRoot root)
@@ -393,6 +395,8 @@ internal sealed partial class DesignerSurface : IDisposable
         {
             root.Changed -= OnXamlRootChanged;
         }
+
+        StopWatchingHostVisibility();
 
         if (_compositionRenderingHandler is not null)
         {

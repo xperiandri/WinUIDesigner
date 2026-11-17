@@ -36,6 +36,11 @@ internal static class NativeMethods
     internal const uint SWP_NOACTIVATE = 0x0010;
     internal const uint GMEM_MOVEABLE = 0x0002;
 
+    // ShowWindow commands and the root-window flag of GetAncestor.
+    internal const int SW_HIDE = 0;
+    internal const int SW_SHOW = 5;
+    internal const uint GA_ROOT = 2;
+
     // Native values surfaced by Win32 and XAML Diagnostics.
     internal const int WM_LBUTTONDOWN = 0x0201;
     internal const int WM_LBUTTONUP = 0x0202;
@@ -50,6 +55,21 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetParent(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsIconic(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindow(IntPtr hwnd, int command);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
