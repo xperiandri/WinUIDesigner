@@ -16,6 +16,9 @@ internal sealed partial class DesignerSurface
     // What happened to the card of the dialog is logged once.
     private bool _loggedDialogCard;
 
+    // The theme of the dialog is made to take effect once for the theme that the preview has.
+    private ElementTheme? _themeTakenByDialog;
+
     /// <summary>
     /// A <see cref="ContentDialog"/> draws nothing where it stands: it reports no size until it is shown, and showing
     /// it puts it into a popup. Show the dialog of a document that has one as its root in the island of the document,
@@ -44,7 +47,9 @@ internal sealed partial class DesignerSurface
 
             dialog.XamlRoot = xamlRoot;
             _shownDialog = dialog;
+            _themeTakenByDialog = null;
             dialog.Loaded += OnShownDialogLoaded;
+            dialog.SizeChanged += OnShownDialogSizeChanged;
             FitContentDialog();
             WinUIDesignerLogger.LogInformation("Surface", $"Showing the ContentDialog of a document over its island ({dialog.Width}x{dialog.Height}); design size {DT.GetDesignWidth(dialog)}x{DT.GetDesignHeight(dialog)} (NaN: not asked for).");
             _ = ShowDialogAsync(dialog);
@@ -53,23 +58,25 @@ internal sealed partial class DesignerSurface
         {
             // The document is shown without the dialog, as it was before.
             dialog.Loaded -= OnShownDialogLoaded;
+            dialog.SizeChanged -= OnShownDialogSizeChanged;
             _shownDialog = null;
             WinUIDesignerLogger.LogWarning("Surface", "The preview of a ContentDialog could not be prepared.", exception);
         }
     }
 
     /// <summary>
-    /// The card of the dialog (the part named <c>BackgroundElement</c> of the template; the dialog does not stretch it to
-    /// its own size) is as large as the document asks for with <c>d:DesignWidth</c> and <c>d:DesignHeight</c>, each of
-    /// them on its own and whatever the size of the designer area, and as large as its content asks for in a direction
-    /// that the document says nothing about. The dialog is the area that the card lies in: as large as the island, so that
-    /// the card is in the middle of what is on screen, or as large as the card where the card is larger, so that nothing of
-    /// the card is cut off by the area of the dialog (the island cuts off what lies outside of it, as it does for a page).
-    /// The theme of the preview is the theme of the dialog.
+    /// The card of the dialog (see <see cref="FindDialogCard"/>; the dialog does not stretch it to its own size) is as
+    /// large as the document asks for with <c>d:DesignWidth</c> and <c>d:DesignHeight</c>, each of them on its own and
+    /// whatever the size of the designer area, and as large as its content asks for in a direction that the document
+    /// says nothing about. The dialog is the area that the card lies in: as large as the island, so that the card is in
+    /// the middle of what is on screen, or as large as the card where the card is larger, so that nothing of the card is
+    /// cut off by the area of the dialog (the island cuts off what lies outside of it, as it does for a page). The theme
+    /// of the preview is the theme of the dialog. It changes nothing that is already as it should be, because a size
+    /// that changes calls it again.
     /// </summary>
     private void FitContentDialog()
     {
-        if (_shownDialog is not { } dialog || _viewportRoot.XamlRoot is not { } xamlRoot)
+        if (_disposed || _shownDialog is not { } dialog || _viewportRoot.XamlRoot is not { } xamlRoot)
         {
             return;
         }
@@ -82,13 +89,12 @@ internal sealed partial class DesignerSurface
         // The template exists once the dialog is shown; Loaded calls this again for the card.
         if (FindDialogCard(dialog) is not { } card)
         {
-            dialog.Width = islandWidth;
-            dialog.Height = islandHeight;
+            SetSize(dialog, islandWidth, islandHeight);
 
             if (dialog.IsLoaded && !_loggedDialogCard)
             {
                 _loggedDialogCard = true;
-                WinUIDesignerLogger.LogInformation("Surface", "The template of the ContentDialog has no part named BackgroundElement; its card keeps the size of its content.");
+                WinUIDesignerLogger.LogInformation("Surface", "The template of the ContentDialog has no part for its card; the card keeps the size of its content.");
             }
 
             return;
@@ -97,8 +103,7 @@ internal sealed partial class DesignerSurface
         double designWidth = DT.GetDesignWidth(dialog);
         double designHeight = DT.GetDesignHeight(dialog);
 
-        card.Width = designWidth;
-        card.Height = designHeight;
+        SetSize(card, designWidth, designHeight);
 
         // The template limits the card (548 by 756 by default); a size that the document asks for is not limited by it.
         if (!double.IsNaN(designWidth) && card.MaxWidth < designWidth)
@@ -114,15 +119,14 @@ internal sealed partial class DesignerSurface
         card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         Size needed = card.DesiredSize;
 
-        dialog.Width = Math.Max(islandWidth, needed.Width);
-        dialog.Height = Math.Max(islandHeight, needed.Height);
+        SetSize(dialog, Math.Max(islandWidth, needed.Width), Math.Max(islandHeight, needed.Height));
 
         if (!_loggedDialogCard)
         {
             _loggedDialogCard = true;
             WinUIDesignerLogger.LogInformation(
                 "Surface",
-                $"The card of the ContentDialog asks for {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for) and lies in an area of {dialog.Width}x{dialog.Height} over an island of {islandWidth}x{islandHeight}.");
+                $"The card of the ContentDialog ('{card.Name}') asks for {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for) and lies in an area of {dialog.Width}x{dialog.Height} over an island of {islandWidth}x{islandHeight}.");
         }
 
         if (WinUIDesignerLogger.IsVerboseLoggingEnabled)
@@ -131,17 +135,63 @@ internal sealed partial class DesignerSurface
         }
     }
 
+    private static void SetSize(FrameworkElement element, double width, double height)
+    {
+        // Equal values (NaN equals NaN here) are not assigned again, so that nothing is laid out again for them.
+        if (!element.Width.Equals(width))
+        {
+            element.Width = width;
+        }
+
+        if (!element.Height.Equals(height))
+        {
+            element.Height = height;
+        }
+    }
+
+    /// <summary>
+    /// The size of the dialog is the size of the area that the card lies in. Something else that sets it (the design size
+    /// of the document, which Visual Studio applies to the root of the document, does) puts the card out of the middle.
+    /// </summary>
+    private void OnShownDialogSizeChanged(object sender, SizeChangedEventArgs e) => FitContentDialog();
+
     /// <summary>
     /// The dialog is shown in the popup layer of the island, not under the root of the document, so it does not take the
-    /// theme of the preview from the root as the content of the document does: it would be drawn in the theme of the
-    /// application (light unless the document says otherwise), as a white card around the dark content of a dark preview.
+    /// theme of the preview from the root as the content of the document does, and what it took when its style was applied
+    /// stays: the theme of the application (light unless the document says otherwise), as a white card around the dark
+    /// content of a dark preview. The theme is set on the dialog, and the references to theme resources that its style
+    /// and template made are resolved again for it (a theme that changes and changes back does that; setting the theme
+    /// that it already has does not).
     /// </summary>
     private void SyncContentDialogTheme()
     {
-        if (_shownDialog is { } dialog && dialog.RequestedTheme != _viewportRoot.RequestedTheme)
+        if (_shownDialog is not { } dialog)
         {
-            dialog.RequestedTheme = _viewportRoot.RequestedTheme;
+            return;
         }
+
+        ElementTheme theme = _viewportRoot.RequestedTheme;
+        if (dialog.RequestedTheme != theme)
+        {
+            dialog.RequestedTheme = theme;
+        }
+
+        if (dialog.IsLoaded && theme != ElementTheme.Default && _themeTakenByDialog != theme)
+        {
+            _themeTakenByDialog = theme;
+            dialog.RequestedTheme = theme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+            dialog.RequestedTheme = theme;
+        }
+    }
+
+    /// <summary>
+    /// The part of the template that is the card of the dialog: the one named <c>RealBackgroundElement</c> where the
+    /// template has one (the Uno Material template draws its card, an elevated view, in that part, and hides the standard
+    /// part), otherwise the standard <c>BackgroundElement</c>.
+    /// </summary>
+    private static FrameworkElement? FindDialogCard(DependencyObject dialog)
+    {
+        return FindNamedElement(dialog, "RealBackgroundElement") ?? FindNamedElement(dialog, "BackgroundElement");
     }
 
     // A timer that nothing refers to is collected, and does not fire.
@@ -252,18 +302,18 @@ internal sealed partial class DesignerSurface
             + $"open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}";
     }
 
-    private static FrameworkElement? FindDialogCard(DependencyObject parent)
+    private static FrameworkElement? FindNamedElement(DependencyObject parent, string name)
     {
         int count = VisualTreeHelper.GetChildrenCount(parent);
         for (int index = 0; index < count; index++)
         {
             DependencyObject child = VisualTreeHelper.GetChild(parent, index);
-            if (child is FrameworkElement { Name: "BackgroundElement" } card)
+            if (child is FrameworkElement element && element.Name == name)
             {
-                return card;
+                return element;
             }
 
-            if (FindDialogCard(child) is { } found)
+            if (FindNamedElement(child, name) is { } found)
             {
                 return found;
             }
@@ -292,6 +342,7 @@ internal sealed partial class DesignerSurface
         finally
         {
             dialog.Loaded -= OnShownDialogLoaded;
+            dialog.SizeChanged -= OnShownDialogSizeChanged;
 
             if (ReferenceEquals(_shownDialog, dialog))
             {
@@ -312,6 +363,7 @@ internal sealed partial class DesignerSurface
         if (dialog is not null)
         {
             dialog.Loaded -= OnShownDialogLoaded;
+            dialog.SizeChanged -= OnShownDialogSizeChanged;
         }
 
         if (dialog is null || _viewportRoot.XamlRoot is not { IsHostVisible: true })
