@@ -465,6 +465,14 @@ internal sealed partial class SurfaceService
                 }
 
                 using var documentScope = _objectIdentity.EnterDocument(request.DocumentId);
+
+                // Visual Studio shows or moves a surface when it comes back to it. Nothing that is frozen is shown, so
+                // when nothing is frozen, rendering that a freeze left suspended is resumed here.
+                if (!_surfaces.Values.Any(other => other.IsFrozen))
+                {
+                    DesignerSurface.EnsureRenderingResumed();
+                }
+
                 surface.SetSurfacePosition(new IntPtr(request.ParentWindow), request.Width, request.Height);
                 LoadAppResourcesIfNeeded();
                 _visualTreeService.PublishMutation(surface.Content, VisualMutationType.Add);

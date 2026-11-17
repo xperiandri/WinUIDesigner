@@ -142,18 +142,21 @@ internal sealed class DiagnosticsPropertySourceService
         }
     }
 
-    public static bool TrySetRenderingEnabled(bool enabled)
+    public static bool TrySetRenderingEnabled(bool enabled) => TrySetRenderingEnabled(enabled, out _);
+
+    public static bool TrySetRenderingEnabled(bool enabled, out int hresult)
     {
         try
         {
-            int hr = NativeMethods.WinUIDesignerDiagnostics_SetRenderingEnabled(enabled);
+            hresult = NativeMethods.WinUIDesignerDiagnostics_SetRenderingEnabled(enabled);
 
-            return hr == NativeMethods.S_OK;
+            return hresult == NativeMethods.S_OK;
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
             WinUIDesignerLogger.LogTrace("Surface", $"WinUI diagnostics rendering switch unavailable: {ex}");
 
+            hresult = ex.HResult;
             return false;
         }
     }
