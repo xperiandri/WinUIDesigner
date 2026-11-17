@@ -387,25 +387,51 @@ internal sealed partial class DesignerSurface
 
     private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
     {
-        key = string.Empty;
-        if (depth > 12 || FindThemeDictionary(dictionary, themeKey) is not { } targetDictionary)
+        List<(string Key, SolidColorBrush Brush)> candidates = [];
+        CollectBrushesByColor(dictionary, current, themeKey, depth, candidates);
+
+        // The name that a surface has in the Material palette first, then any other name of a surface, then the shortest
+        // name, which is the least specific: the brushes of WinUI, which many are white, come first in the resources.
+        (string Key, SolidColorBrush Brush)? best = candidates
+            .OrderBy(candidate => candidate.Key.Equals("SurfaceBrush", StringComparison.Ordinal) ? 0 : candidate.Key.StartsWith("Surface", StringComparison.Ordinal) ? 1 : 2)
+            .ThenBy(candidate => candidate.Key.Length)
+            .Select(candidate => ((string Key, SolidColorBrush Brush)?)candidate)
+            .FirstOrDefault();
+
+        key = best?.Key ?? string.Empty;
+        return best?.Brush;
+    }
+
+    /// <summary>
+    /// The brushes of the theme that has the key of a brush of the colour of <paramref name="current"/> in another theme
+    /// and another colour in this one, in this dictionary and in the dictionaries that it merges.
+    /// </summary>
+    private static void CollectBrushesByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, List<(string Key, SolidColorBrush Brush)> candidates)
+    {
+        if (depth > 12)
         {
-            // A dictionary without the theme can still have merged dictionaries that have it.
-            return FindInMerged(dictionary, current, themeKey, depth, out key);
+            return;
         }
 
-        List<(string Key, SolidColorBrush Brush)> candidates = [];
-        foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
+        if (FindThemeDictionary(dictionary, themeKey) is { } targetDictionary)
         {
-            if (themed.Key is string name && !ThemeKeys(themeKey).Contains(name) && themed.Value is ResourceDictionary source)
+            foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
             {
+                // The keys are objects: they are not tested for being strings, but written as the strings that they are.
+                string? name = themed.Key?.ToString();
+                if (name is null || ThemeKeys(themeKey).Contains(name) || themed.Value is not ResourceDictionary source)
+                {
+                    continue;
+                }
+
                 foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
                 {
-                    if (entry.Key is string entryKey
+                    string? entryKey = entry.Key?.ToString();
+                    if (entryKey is not null
                         && entry.Value is SolidColorBrush brush
                         && brush.Color == current.Color
                         && brush.Opacity == current.Opacity
-                        && targetDictionary.TryGetValue(entryKey, out object? other)
+                        && targetDictionary.TryGetValue(entry.Key, out object? other)
                         && other is SolidColorBrush otherBrush
                         && (otherBrush.Color != brush.Color || otherBrush.Opacity != brush.Opacity))
                     {
@@ -415,33 +441,9 @@ internal sealed partial class DesignerSurface
             }
         }
 
-        // The name that a surface has in the Material palette first, then the shortest name, which is the least specific.
-        (string Key, SolidColorBrush Brush)? best = candidates
-            .OrderBy(candidate => candidate.Key.Equals("SurfaceBrush", StringComparison.Ordinal) ? 0 : candidate.Key.StartsWith("Surface", StringComparison.Ordinal) ? 1 : 2)
-            .ThenBy(candidate => candidate.Key.Length)
-            .Select(candidate => ((string Key, SolidColorBrush Brush)?)candidate)
-            .FirstOrDefault();
-
-        if (best is { } found)
+        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
-            key = found.Key;
-            return found.Brush;
-        }
-
-        return FindInMerged(dictionary, current, themeKey, depth, out key);
-
-        static Brush? FindInMerged(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, out string key)
-        {
-            key = string.Empty;
-            foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
-            {
-                if (FindThemedBrushByColor(merged, current, themeKey, depth + 1, out key) is { } result)
-                {
-                    return result;
-                }
-            }
-
-            return null;
+            CollectBrushesByColor(merged, current, themeKey, depth + 1, candidates);
         }
     }
 
