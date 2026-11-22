@@ -51,6 +51,26 @@ public sealed class SurfaceAssembliesTests
     }
 
     [TestMethod]
+    public void AReaderThatThrowsGivesNoVersionAndIsNotAskedAgain()
+    {
+        // As when the host denies access to the surface's own file.
+        int reads = 0;
+        var surface = new SurfaceAssemblies(
+            @"C:\Surface\Microsoft.Windows.SDK.NET.dll",
+            _ =>
+            {
+                reads++;
+                throw new UnauthorizedAccessException();
+            }
+        );
+
+        Assert.IsTrue(surface.Contains("Microsoft.Windows.SDK.NET"));
+        Assert.IsNull(surface.GetVersion("Microsoft.Windows.SDK.NET"));
+        Assert.IsNull(surface.GetVersion("Microsoft.Windows.SDK.NET"));
+        Assert.AreEqual(1, reads);
+    }
+
+    [TestMethod]
     public void WithoutTrustedPlatformAssembliesTheSurfaceCarriesNothing()
     {
         var surface = new SurfaceAssemblies(null, _ => new Version(1, 0));

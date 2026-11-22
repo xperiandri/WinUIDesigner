@@ -27,7 +27,8 @@ internal sealed class SurfaceAssemblies
     /// <c>TRUSTED_PLATFORM_ASSEMBLIES</c>, or <see langword="null"/> when it gives none.
     /// </param>
     /// <param name="readVersion">
-    /// Reads the version of the assembly at a path, or returns <see langword="null"/> when it cannot be read.
+    /// Reads the version of the assembly at a path, or returns <see langword="null"/> when it cannot be read. A reader
+    /// that throws is taken to have read nothing (<see cref="GetVersion"/>).
     /// </param>
     public SurfaceAssemblies(string? trustedPlatformAssemblies, Func<string, Version?> readVersion)
     {
@@ -45,7 +46,8 @@ internal sealed class SurfaceAssemblies
 
     /// <summary>
     /// Gets the version of the assembly the surface carries under a simple name, or <see langword="null"/> when it
-    /// carries none or its version cannot be read.
+    /// carries none or its version cannot be read. It does not throw: the handlers of the runtime that ask for it must
+    /// not fail because a file of the surface is unreadable.
     /// </summary>
     public Version? GetVersion(string simpleName)
     {
@@ -54,11 +56,25 @@ internal sealed class SurfaceAssemblies
             // The first request for a name reads the version of the surface's copy; a name it does not carry has none.
             if (!_versions.TryGetValue(simpleName, out Version? version))
             {
-                version = _paths.TryGetValue(simpleName, out string? path) ? _readVersion(path) : null;
+                version = _paths.TryGetValue(simpleName, out string? path) ? ReadVersion(path) : null;
                 _versions[simpleName] = version;
             }
 
             return version;
+        }
+    }
+
+    private Version? ReadVersion(string path)
+    {
+        try
+        {
+            return _readVersion(path);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A file that is not readable, such as one the host denies access to, has no version to compare, as one that
+            // is not an assembly has none. It is not read again: the answer is remembered like any other.
+            return null;
         }
     }
 }

@@ -248,6 +248,16 @@ public sealed class AssemblyReferenceCompatibilityTests
     }
 
     [TestMethod]
+    public void AnUnreadableSurfaceCopyIsLeftToTheOtherHandlers()
+    {
+        // The handler of the project asks Resolve for the same reference, and must not throw either.
+        var surface = new SurfaceAssemblies(@"C:\Surface\Microsoft.Windows.SDK.NET.dll", _ => throw new UnauthorizedAccessException());
+        var reference = new AssemblyName("Microsoft.Windows.SDK.NET, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null");
+
+        Assert.AreEqual(ReferenceResolution.None, AssemblyReferenceCompatibility.Resolve(reference, surface, _Staged.Contains));
+    }
+
+    [TestMethod]
     public void AProjectionTheSurfaceCannotLoadIsLeftToTheOtherHandlers()
     {
         // The surface carries it, as far as its list goes, but this test host has no Microsoft.Windows.SDK.NET to bind.
