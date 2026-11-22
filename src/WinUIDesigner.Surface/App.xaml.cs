@@ -64,21 +64,30 @@ public sealed partial class App : Application, IXamlMetadataProvider, IDisposabl
             {
                 args.Handled = true;
 
-                if (_reportedProjectCodeExceptions.Add($"{args.Exception.GetType().FullName}|{args.Exception.Message}"))
+                // This runs while the framework handles the error: a failure below must not leave the handler, or the
+                // process ends all the same.
+                try
                 {
-                    WinUIDesignerLogger.LogWarning(
-                        "Surface",
-                        fromProject
-                            ? "Code of the project threw an exception that nothing handled. The surface goes on without it."
-                            : $"The framework reported an error that nothing handled, and no managed code threw it. The surface goes on without it. {_surfaceService?.DescribeState()}",
-                        args.Exception
-                    );
-                }
+                    if (_reportedProjectCodeExceptions.Add($"{args.Exception.GetType().FullName}|{args.Exception.Message}"))
+                    {
+                        WinUIDesignerLogger.LogWarning(
+                            "Surface",
+                            fromProject
+                                ? "Code of the project threw an exception that nothing handled. The surface goes on without it."
+                                : $"The framework reported an error that nothing handled, and no managed code threw it. The surface goes on without it. {_surfaceService?.DescribeState()}",
+                            args.Exception
+                        );
+                    }
 
-                if (!fromProject)
+                    if (!fromProject)
+                    {
+                        // The error can leave the framework unable to draw. Find out, and tell Visual Studio if it is.
+                        _surfaceService?.OnNativeFrameworkError(args.Exception);
+                    }
+                }
+                catch (Exception failure)
                 {
-                    // The error can leave the framework unable to draw. Find out, and tell Visual Studio if it is.
-                    _surfaceService?.OnNativeFrameworkError(args.Exception);
+                    WinUIDesignerLogger.LogWarning("Surface", "Handling an error that nothing handled failed. The surface goes on without it.", failure);
                 }
 
                 return;

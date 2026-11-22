@@ -41,7 +41,16 @@ internal sealed partial class SurfaceService
         }
 
         _renderWatchArmed = true;
-        ArmRenderWatch(exception);
+        try
+        {
+            ArmRenderWatch(exception);
+        }
+        catch (Exception failure)
+        {
+            // Without a timer nothing watches; the next error tries again.
+            _renderWatchArmed = false;
+            WinUIDesignerLogger.LogWarning("Surface", "Watching whether the surface still draws could not be started.", failure);
+        }
     }
 
     /// <summary>What the surface was doing, for the log, when the framework reported an error that nothing handled.</summary>
@@ -49,7 +58,21 @@ internal sealed partial class SurfaceService
     {
         string events = string.Join(Environment.NewLine, _breadcrumbs.Snapshot().Select(entry => $"  {entry}"));
 
-        return $"Frames of the first island: {RenderFrames.Counter.DescribeFirstIsland()}. Documents: {_surfaces.Count}, shown: {_surfaces.Values.Count(surface => surface.IsHostVisible)}. Latest events:{Environment.NewLine}{events}";
+        return $"Frames of the first island: {RenderFrames.Counter.DescribeFirstIsland()}. Documents: {_surfaces.Count}, shown: {CountShownSurfaces()}. Latest events:{Environment.NewLine}{events}";
+    }
+
+    // The state goes into the log of a failure, and the islands that it asks can fail to answer in the state that the log
+    // describes: the description must not fail the handler of that error.
+    private string CountShownSurfaces()
+    {
+        try
+        {
+            return $"{_surfaces.Values.Count(surface => surface.IsHostVisible)}";
+        }
+        catch (Exception failure)
+        {
+            return $"unknown ({failure.GetType().Name})";
+        }
     }
 
     private void ArmRenderWatch(Exception exception)
