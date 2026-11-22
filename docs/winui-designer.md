@@ -119,7 +119,7 @@ The policies apply on both loading paths, so a member is treated the same way on
 | Path | Where the policies apply |
 | --- | --- |
 | Prepared XAML | The surface parses the prepared XAML once, rewrites that document, and passes the result to the XAML reader. Source mapping uses the same document: a dropped element cannot claim a source position, and line information still refers to the prepared file. |
-| Construction actions | Actions carry CLR names only, so the surface cannot tell which prefix a member had. The instance manager asks, for each property it is about to build, whether the property was written under a dropped prefix. Templates are covered the same way: Visual Studio sends a template as a generated shell that declares none of the document's prefixes, and builds its content with construction actions. |
+| Construction actions | Actions carry CLR names only, so the surface cannot tell which prefix a member had. The instance manager asks, for each property it is about to build, whether the property was written under a dropped prefix. Templates are covered the same way: Visual Studio sends a template as a generated shell that declares none of the document's prefixes, and builds its content with construction actions (read in the designer assemblies of Visual Studio 18.13; 17.14 was not inspected). |
 
 A document without a policy namespace is recognized early and is not processed further: the surface looks at its `xmlns` declarations, and the Visual Studio side scans the text once each time it changes. A policy that fails is logged and skipped; it does not fail document construction.
 
