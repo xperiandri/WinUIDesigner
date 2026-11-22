@@ -1,7 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
-using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace WinUIDesigner.Surface.Runtime;
 
@@ -13,7 +13,11 @@ namespace WinUIDesigner.Surface.Runtime;
 /// </summary>
 internal sealed class RenderStallReports
 {
-    private readonly HashSet<object> _told = new(ReferenceEqualityComparer.Instance);
+    private static readonly object _Told = new();
+
+    // The surfaces are held weakly: a process whose framework has stopped can go on for a long time, and a surface that
+    // was closed must not be kept alive, with its whole document, only because it was told.
+    private readonly ConditionalWeakTable<object, object> _told = new();
 
     /// <summary>Whether the framework of the process has stopped drawing.</summary>
     public bool HasStalled { get; private set; }
@@ -32,5 +36,5 @@ internal sealed class RenderStallReports
     }
 
     /// <summary>Whether the surface still has to be told that nothing is drawn: once for each surface, after the stall.</summary>
-    public bool ShouldTell(object surface) => HasStalled && _told.Add(surface);
+    public bool ShouldTell(object surface) => HasStalled && _told.TryAdd(surface, _Told);
 }

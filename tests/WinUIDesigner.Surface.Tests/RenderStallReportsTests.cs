@@ -1,6 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Runtime.CompilerServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
@@ -10,6 +11,16 @@ public sealed class RenderStallReportsTests
     // Stands for a surface: the reports tell surfaces apart by identity, as a reloaded document gets a new one.
     private sealed class Surface
     {
+    }
+
+    // The surface is out of reach of the test once this returns, also in a debug build, which keeps locals alive.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference Tell(RenderStallReports reports)
+    {
+        var surface = new Surface();
+        Assert.IsTrue(reports.ShouldTell(surface));
+
+        return new WeakReference(surface);
     }
 
     [TestMethod]
@@ -44,6 +55,21 @@ public sealed class RenderStallReportsTests
 
         Assert.IsTrue(reports.ShouldTell(new Surface()));
         Assert.IsTrue(reports.ShouldTell(new Surface()));
+    }
+
+    [TestMethod]
+    public void ASurfaceThatWasToldIsNotKeptAlive()
+    {
+        // The process goes on after the stall, and closed documents must not pile up in it.
+        var reports = new RenderStallReports();
+        reports.Stalled("stopped", "details");
+        WeakReference told = Tell(reports);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.IsFalse(told.IsAlive);
     }
 
     [TestMethod]
