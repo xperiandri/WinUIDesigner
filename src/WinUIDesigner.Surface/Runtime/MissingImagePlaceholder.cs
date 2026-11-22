@@ -78,9 +78,10 @@ internal static class MissingImagePlaceholder
             return path;
         }
 
-        // Missing or different: written under a name of this process first, so that no process reads half a file.
+        // Missing or different: written under a name of this process first, so that no process reads half a file. The
+        // name keeps the extension of the image, because this process uses the file when it cannot replace the other.
         Directory.CreateDirectory(directory);
-        string temporary = FormattableString.Invariant($"{path}.{Environment.ProcessId}.tmp");
+        string temporary = Path.ChangeExtension(path, FormattableString.Invariant($"{Environment.ProcessId}{Path.GetExtension(path)}"));
         File.WriteAllBytes(temporary, content);
 
         try

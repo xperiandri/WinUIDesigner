@@ -144,19 +144,24 @@ public sealed class MissingImagePlaceholderTests
     }
 
     [TestMethod]
-    public void PlaceholderThatCannotBeReplacedNowIsLeftAlone()
+    [DataRow("Files/Assets/logo.svg", "missing-image.svg")]
+    [DataRow("Files/Assets/logo.png", "missing-image.png")]
+    public void PlaceholderThatCannotBeReplacedNowIsLeftAlone(string name, string fileName)
     {
         // A file with other content that another process holds open: this process uses a copy of its own.
         Directory.CreateDirectory(_directory);
-        string path = Path.Combine(_directory, "missing-image.svg");
-        File.WriteAllText(path, "<svg/>");
+        string path = Path.Combine(_directory, fileName);
+        File.WriteAllText(path, "other content");
 
         using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            string own = MissingImagePlaceholder.Write(_directory, "Files/Assets/logo.svg");
+            string own = MissingImagePlaceholder.Write(_directory, name);
 
+            // The copy is a file of the same kind in the same folder, in case the extension decides how it is decoded.
             Assert.AreNotEqual(path, own);
-            Assert.StartsWith("<svg xmlns=\"http://www.w3.org/2000/svg\"", File.ReadAllText(own));
+            Assert.AreEqual(_directory, Path.GetDirectoryName(own));
+            Assert.AreEqual(Path.GetExtension(fileName), Path.GetExtension(own));
+            CollectionAssert.AreEqual(File.ReadAllBytes(MissingImagePlaceholder.Write(Path.Combine(_directory, "reference"), name)), File.ReadAllBytes(own));
         }
     }
 
