@@ -42,19 +42,26 @@ internal sealed partial class WinUIDesignerInstanceManager
         // cleaning): construction actions have no nodes for the members of an ignorable Uno namespace.
         _memberDispositions.TargetPlatform = UnoPlatformPrefixes.DefaultTargetPlatform;
 
-        // The request can carry App.xaml and the design-time resources as well; they were not necessarily
-        // prepared together with the target, so they are looked at on their own.
+        // The request carries exactly the target, App.xaml and the design-time resources, so only those are looked
+        // at. The other documents that Visual Studio prepared, such as dictionaries merged through Source, are not
+        // sent with it, and nothing in this package loads them: they keep their prepared XAML as it is.
         var seen = new HashSet<int>();
         PreparePlatformElements(targetDocument, seen);
-        for (int index = 0; index < preparedDocuments.Count; index++)
-        {
-            PreparePlatformElements(preparedDocuments[index], seen);
-        }
 
         if (MarkupProvider is WinUISurfaceProcessMarkupProvider provider)
         {
-            PreparePlatformElements(provider.AppXaml, seen);
-            PreparePlatformElements(provider.DesignTimeResources, seen);
+            // CreateRequestAsync sends App.xaml while it is prepared and the design-time resources only when they are
+            // prepared. A document in the Loading state belongs to a request that is still waiting for the surface,
+            // which may be reading its prepared file right now: the second cleaning would rewrite that file.
+            if (provider.AppXaml is { ConstructionState: <= ConstructionState.Prepared } application)
+            {
+                PreparePlatformElements(application, seen);
+            }
+
+            if (provider.DesignTimeResources is { ConstructionState: ConstructionState.Prepared } resources)
+            {
+                PreparePlatformElements(resources, seen);
+            }
         }
 
         return Task.CompletedTask;
