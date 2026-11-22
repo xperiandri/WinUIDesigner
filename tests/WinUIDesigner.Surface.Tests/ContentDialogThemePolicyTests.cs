@@ -262,19 +262,22 @@ public sealed class ContentDialogThemePolicyTests
                 ("Light", "SolidBackgroundFillColorBaseBrush", LightBase),
                 ("Light", "ContentDialogForeground", LightTextPrimary),
                 ("Light", "ContentDialogBackground", LightBase),
-                ("Light", "ContentDialogBorderBrush", LightStroke));
+                ("Light", "ContentDialogBorderBrush", LightStroke)
+            );
 
             Palette = Set(
                 ("Default", "SurfaceBrush", DarkSurface),
                 ("Default", "OnSurfaceVariantBrush", DarkOnSurfaceVariant),
                 ("Light", "SurfaceBrush", LightSurface),
-                ("Light", "OnSurfaceVariantBrush", LightOnSurfaceVariant));
+                ("Light", "OnSurfaceVariantBrush", LightOnSurfaceVariant)
+            );
 
             DialogReferences = Set(
                 ("Default", "ContentDialogBackground", LightSurface),
                 ("Default", "ContentDialogForeground", LightOnSurfaceVariant),
                 ("Light", "ContentDialogBackground", LightSurface),
-                ("Light", "ContentDialogForeground", LightOnSurfaceVariant));
+                ("Light", "ContentDialogForeground", LightOnSurfaceVariant)
+            );
 
             All = referencesFirst ? [WinUI, DialogReferences, Palette] : [WinUI, Palette, DialogReferences];
         }

@@ -183,11 +183,13 @@ internal static class ContentDialogThemePolicy
         ThemeEvidence evidence = new(current);
         foreach (ThemeDictionarySet set in dictionaries)
         {
+            // A set that lacks one of the two themes does not say what the brush of the other theme is.
             if (set.For(applicationTheme) is not { } application || set.For(previewTheme) is not { } preview)
             {
                 continue;
             }
 
+            // The object is the brush of the theme of the preview under these keys.
             foreach (KeyValuePair<string, ThemeBrush> entry in preview)
             {
                 if (ReferenceEquals(entry.Value.Brush, current.Brush))
@@ -196,6 +198,7 @@ internal static class ContentDialogThemePolicy
                 }
             }
 
+            // The object is the brush of the theme of the application under these keys.
             foreach (KeyValuePair<string, ThemeBrush> entry in application)
             {
                 if (ReferenceEquals(entry.Value.Brush, current.Brush))
@@ -224,11 +227,13 @@ internal static class ContentDialogThemePolicy
         List<(string Key, ThemeBrush Brush)> candidates = [];
         foreach (ThemeDictionarySet set in dictionaries)
         {
+            // A set that lacks one of the two themes has no key that is another brush in the other theme.
             if (set.For(applicationTheme) is not { } application || set.For(previewTheme) is not { } preview)
             {
                 continue;
             }
 
+            // The keys that have this colour in the theme of the application and another brush in the theme of the preview.
             foreach (KeyValuePair<string, ThemeBrush> entry in application)
             {
                 if (entry.Value.Color is not null
@@ -242,6 +247,7 @@ internal static class ContentDialogThemePolicy
             }
         }
 
+        // No key qualifies: the dialog keeps the brush.
         if (PreferredKey(candidates.Select(candidate => candidate.Key)) is not { } key)
         {
             return BrushChoice.Keep($"'{reference}' was resolved for one theme, and no key has its colour in the {applicationTheme} theme and another one in the {previewTheme} theme");

@@ -45,6 +45,7 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private void PreviewContentDialog()
     {
+        // The root is not a dialog, or there is no island to show it in yet.
         if (_content is not ContentDialog dialog
             || _xamlSource is null
             || _viewportRoot.XamlRoot is not { } xamlRoot)
@@ -52,6 +53,7 @@ internal sealed partial class DesignerSurface
             return;
         }
 
+        // The dialog is shown already: it is only fitted again.
         if (ReferenceEquals(_shownDialog, dialog))
         {
             FitContentDialog();
@@ -95,6 +97,7 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private void FitContentDialog()
     {
+        // No dialog is shown, or the surface or its island is gone.
         if (_disposed || _shownDialog is not { } dialog || _viewportRoot.XamlRoot is null)
         {
             return;
@@ -111,6 +114,7 @@ internal sealed partial class DesignerSurface
         {
             SetSize(dialog, artboardWidth, artboardHeight);
 
+            // The dialog is loaded and its template still has no card: said once.
             if (dialog.IsLoaded && !_loggedDialogCard)
             {
                 _loggedDialogCard = true;
@@ -141,17 +145,20 @@ internal sealed partial class DesignerSurface
         (double areaWidth, double areaHeight) = ContentDialogPreviewPolicy.DialogArea(artboardWidth, artboardHeight, needed.Width, needed.Height);
         SetSize(dialog, areaWidth, areaHeight);
 
+        // The first time that the card is there: what it asks for is logged once.
         if (!_loggedDialogCard)
         {
             _loggedDialogCard = true;
             WinUIDesignerLogger.LogInformation(
                 "Surface",
-                $"The card of the ContentDialog ('{card.Name}') and its margin take {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for); the dialog is an area of {dialog.Width}x{dialog.Height} over the artboard of {artboardWidth}x{artboardHeight}, which it follows when it is panned and zoomed.");
+                $"The card of the ContentDialog ('{card.Name}') and its margin take {needed.Width}x{needed.Height} (design size {designWidth}x{designHeight}, NaN: not asked for); the dialog is an area of {dialog.Width}x{dialog.Height} over the artboard of {artboardWidth}x{artboardHeight}, which it follows when it is panned and zoomed."
+            );
         }
 
+        // A verbose log has the state of the dialog after every fit.
         if (WinUIDesignerLogger.IsVerboseLoggingEnabled)
         {
-            WinUIDesignerLogger.LogTrace("Surface", "ContentDialog: " + DescribeContentDialog());
+            WinUIDesignerLogger.LogTrace("Surface", $"ContentDialog: {DescribeContentDialog()}");
         }
     }
 
@@ -211,6 +218,7 @@ internal sealed partial class DesignerSurface
 
     private void ApplyArtboardTransformToDialog()
     {
+        // No dialog is shown.
         if (_shownDialog is not { } dialog)
         {
             return;
@@ -247,11 +255,13 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private void SyncContentDialogTheme(bool afterEdits = false)
     {
+        // No dialog is shown.
         if (_shownDialog is not { } dialog)
         {
             return;
         }
 
+        // The popup layer does not give the dialog the theme of the preview: it is set on the dialog.
         ElementTheme theme = _viewportRoot.RequestedTheme;
         if (dialog.RequestedTheme != theme)
         {
@@ -270,6 +280,7 @@ internal sealed partial class DesignerSurface
 
         SyncSmokeLayerTheme(dialog, previewTheme, applicationTheme);
 
+        // The brushes of the style are there once the dialog is loaded.
         if (dialog.IsLoaded)
         {
             RetargetDialogBrushes(dialog, previewTheme, applicationTheme, afterEdits);
@@ -284,6 +295,7 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private void RefreshContentDialog()
     {
+        // The surface is disposed, or no dialog is shown.
         if (_disposed || _shownDialog is null)
         {
             return;
@@ -304,6 +316,7 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private void SyncSmokeLayerTheme(ContentDialog dialog, string? previewTheme, string applicationTheme)
     {
+        // The island is gone.
         if (_viewportRoot.XamlRoot is not { } root)
         {
             return;
@@ -325,6 +338,7 @@ internal sealed partial class DesignerSurface
                 _frameworkSmokeFill = smoke.Fill;
             }
 
+            // Another theme than the application: the fill of the theme of the preview; the same theme: the one of the framework.
             Brush? fill = ContentDialogThemePolicy.PreviewThemeDiffers(previewTheme, applicationTheme) ? SmokeFill(previewTheme) : _frameworkSmokeFill;
             if (fill is not null && !ReferenceEquals(smoke.Fill, fill))
             {
@@ -340,6 +354,7 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private Brush SmokeFill(string theme)
     {
+        // The first time for this theme: the brush of the resources, or else the colour of the framework.
         if (!_smokeFills.TryGetValue(theme, out Brush? fill))
         {
             fill = FindThemeBrush(Application.Current.Resources, ContentDialogThemePolicy.SmokeBrushKey, theme, 0)
@@ -356,6 +371,7 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private static Brush? FindThemeBrush(ResourceDictionary dictionary, string key, string theme, int depth)
     {
+        // Dictionaries that merge each other: the search stops.
         if (depth > 12)
         {
             return null;
@@ -365,6 +381,7 @@ internal sealed partial class DesignerSurface
         {
             if (dictionary.ThemeDictionaries.TryGetValue(themeKey, out object? themed) && themed is ResourceDictionary themeDictionary)
             {
+                // The theme dictionary has the brush.
                 if (themeDictionary.TryGetValue(key, out object? value) && value is Brush brush)
                 {
                     return brush;
@@ -375,6 +392,7 @@ internal sealed partial class DesignerSurface
             }
         }
 
+        // Not in the theme dictionary of this dictionary: the dictionaries that it merges, the last one first.
         IList<ResourceDictionary> merged = dictionary.MergedDictionaries;
         for (int index = merged.Count - 1; index >= 0; index--)
         {
@@ -431,6 +449,7 @@ internal sealed partial class DesignerSurface
         }
         catch (Exception exception)
         {
+            // The resources could not be read: the dialog keeps the brushes that it has.
             WinUIDesignerLogger.LogTrace("Surface", $"The brushes of the ContentDialog could not be matched with a theme: {exception.Message}");
         }
     }
@@ -452,11 +471,13 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private static List<ThemeDictionarySet> CollectThemeDictionaries(ResourceDictionary dictionary, IReadOnlyCollection<string> themes, List<ThemeDictionarySet> sets, int depth)
     {
+        // Dictionaries that merge each other: the search stops.
         if (depth > 12)
         {
             return sets;
         }
 
+        // A dictionary that has theme dictionaries is one set.
         if (dictionary.ThemeDictionaries.Count > 0)
         {
             Dictionary<string, IReadOnlyDictionary<string, ThemeBrush>> brushesByTheme = new(StringComparer.Ordinal);
@@ -474,6 +495,7 @@ internal sealed partial class DesignerSurface
             sets.Add(new ThemeDictionarySet(brushesByTheme));
         }
 
+        // The dictionaries that it merges are sets of their own.
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
             CollectThemeDictionaries(merged, themes, sets, depth + 1);
@@ -489,6 +511,7 @@ internal sealed partial class DesignerSurface
     /// </summary>
     private static void CollectBrushes(ResourceDictionary dictionary, Dictionary<string, ThemeBrush> brushes, int depth)
     {
+        // The entries of the dictionary itself come first.
         foreach (KeyValuePair<object, object> entry in dictionary)
         {
             if (entry.Key?.ToString() is { } key && entry.Value is Brush brush)
@@ -497,11 +520,13 @@ internal sealed partial class DesignerSurface
             }
         }
 
+        // Dictionaries that merge each other: the search stops.
         if (depth > 12)
         {
             return;
         }
 
+        // Then those of the dictionaries that it merges, the last one first.
         IList<ResourceDictionary> merged = dictionary.MergedDictionaries;
         for (int index = merged.Count - 1; index >= 0; index--)
         {
@@ -511,11 +536,13 @@ internal sealed partial class DesignerSurface
 
     private static ThemeBrush DescribeThemeBrush(Brush brush)
     {
+        // A brush of another kind than a solid colour has no colour that the choice compares.
         if (brush is not SolidColorBrush solid)
         {
             return new ThemeBrush(brush, null, brush.Opacity);
         }
 
+        // A solid colour: its colour as ARGB.
         Windows.UI.Color color = solid.Color;
         return new ThemeBrush(brush, ((uint)color.A << 24) | ((uint)color.R << 16) | ((uint)color.G << 8) | color.B, solid.Opacity);
     }
@@ -557,24 +584,24 @@ internal sealed partial class DesignerSurface
     private static string DescribeBrush(Brush? brush) => brush switch
     {
         null => "-",
-        SolidColorBrush solid => solid.Color.ToString() + (solid.Opacity < 1 ? $"@{solid.Opacity}" : string.Empty),
+        SolidColorBrush solid => $"{solid.Color}{(solid.Opacity < 1 ? $"@{solid.Opacity}" : string.Empty)}",
         _ => brush.GetType().Name,
     };
 
     /// <summary>What the framework says about the dialog, for the log when something is not drawn that should be.</summary>
     private string DescribeContentDialog()
     {
+        // No dialog is shown, or the island is gone.
         if (_shownDialog is not { } dialog || _viewportRoot.XamlRoot is not { } root)
         {
             return "no dialog is shown";
         }
 
         FrameworkElement? card = FindDialogCard(dialog);
+        string cardState = card is null ? "card not found" : $"card actual={card.ActualWidth}x{card.ActualHeight} opacity={card.Opacity} visibility={card.Visibility}";
         string popups = string.Join(", ", VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Select(popup => $"{popup.Child?.GetType().Name ?? "-"} {(popup.IsOpen ? "open" : "closed")}"));
 
-        return $"dialog loaded={dialog.IsLoaded} opacity={dialog.Opacity} visibility={dialog.Visibility} actual={dialog.ActualWidth}x{dialog.ActualHeight} theme={dialog.ActualTheme}/{dialog.RequestedTheme} background={DescribeBrush(dialog.Background)}; "
-            + (card is null ? "card not found; " : $"card actual={card.ActualWidth}x{card.ActualHeight} opacity={card.Opacity} visibility={card.Visibility}; ")
-            + $"open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; artboard={_deviceWidth}x{_deviceHeight} pan=({_artboardOffsetX},{_artboardOffsetY}) zoom={_artboardScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}; application theme={Application.Current.RequestedTheme}; frozen={IsFrozen} rendering suspended={_renderingSuspended}";
+        return $"dialog loaded={dialog.IsLoaded} opacity={dialog.Opacity} visibility={dialog.Visibility} actual={dialog.ActualWidth}x{dialog.ActualHeight} theme={dialog.ActualTheme}/{dialog.RequestedTheme} background={DescribeBrush(dialog.Background)}; {cardState}; open popups=[{popups}]; host visible={root.IsHostVisible}; island={root.Size.Width}x{root.Size.Height} scale={root.RasterizationScale}; artboard={_deviceWidth}x{_deviceHeight} pan=({_artboardOffsetX},{_artboardOffsetY}) zoom={_artboardScale}; root theme={_viewportRoot.ActualTheme}/{_viewportRoot.RequestedTheme}; application theme={Application.Current.RequestedTheme}; frozen={IsFrozen} rendering suspended={_renderingSuspended}";
     }
 
     private static FrameworkElement? FindNamedElement(DependencyObject parent, string name)
@@ -582,12 +609,14 @@ internal sealed partial class DesignerSurface
         int count = VisualTreeHelper.GetChildrenCount(parent);
         for (int index = 0; index < count; index++)
         {
+            // The child is the part.
             DependencyObject child = VisualTreeHelper.GetChild(parent, index);
             if (child is FrameworkElement element && element.Name == name)
             {
                 return element;
             }
 
+            // The part is below the child.
             if (FindNamedElement(child, name) is { } found)
             {
                 return found;
@@ -608,13 +637,16 @@ internal sealed partial class DesignerSurface
         }
         catch (Exception exception)
         {
+            // Another dialog is open, or the island is gone: the document is shown without the dialog.
             WinUIDesignerLogger.LogWarning("Surface", "The ContentDialog of the preview could not be shown.", exception);
         }
         finally
         {
+            // The dialog was closed, or could not be shown: the surface lets go of it.
             dialog.Loaded -= OnShownDialogLoaded;
             dialog.SizeChanged -= OnShownDialogSizeChanged;
 
+            // Still the dialog of the surface, not one that the root of a document has replaced meanwhile.
             if (ReferenceEquals(_shownDialog, dialog))
             {
                 _shownDialog = null;
@@ -640,17 +672,20 @@ internal sealed partial class DesignerSurface
         _frameworkSmokeFill = null;
         _limitedCard = null;
 
+        // A dialog that goes no longer fits the surface when it changes.
         if (dialog is not null)
         {
             dialog.Loaded -= OnShownDialogLoaded;
             dialog.SizeChanged -= OnShownDialogSizeChanged;
         }
 
+        // No dialog was shown, or the surface has no island left to close it in.
         if (dialog is null || !ContentDialogPreviewPolicy.ClosesShownDialog(_disposed, _xamlSource is not null))
         {
             return;
         }
 
+        // The island is there, shown or hidden: the dialog is closed.
         try
         {
             dialog.Hide();
