@@ -114,6 +114,7 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
                 }
                 else if (SurfaceProcessExit.IsFailure(exitCode))
                 {
+                    // Any other non-zero exit code is a failure of the surface, such as a crash or an unhandled exception.
                     WinUIDesignerLogger.LogError("Host", $"WinUISurface.exe exited (PID={process.Id}, ExitCode={SurfaceProcessExit.FormatExitCode(exitCode)}).");
                 }
             }
