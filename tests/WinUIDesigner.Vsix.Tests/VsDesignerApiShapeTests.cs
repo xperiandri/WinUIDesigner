@@ -146,7 +146,9 @@ public sealed class VsDesignerApiShapeTests
     public void ElementReferenceResolvesPrefixes()
     {
         // XmlElementReference implements GetXmlNamespace publicly in Visual Studio 18 and explicitly in
-        // Visual Studio 17.14, so the extension calls it through the interface that both versions have.
+        // Visual Studio 17.14, so the interface member is the one both versions have. The extension calls the
+        // public member in the 18 build and reaches the interface member through XmlElementReferenceExtensions
+        // in the 17.14 build.
         MethodDefinition method = RequireMethod(_XmlNamespaceResolver, "GetXmlNamespace", "XmlnsPrefix");
 
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
