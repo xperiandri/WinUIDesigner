@@ -524,6 +524,9 @@ internal sealed partial class SurfaceService
 
                     if (cleanedXaml.Root is not null)
                     {
+                        // The UWP cleaner writes its own stand-in for AdaptiveTrigger; load the trigger of WinUI.
+                        UwpStandIns.RenameStandIns(cleanedXaml.Root);
+
                         foreach (XElement element in cleanedXaml.Root.DescendantsAndSelf())
                         {
                             // The UWP cleaner can suppress project code and emit its own stand-in.
@@ -536,12 +539,6 @@ internal sealed partial class SurfaceService
                                 {
                                     element.SetAttributeValue("Content", originalType.Value);
                                 }
-                            }
-
-                            // The UWP cleaner writes its own stand-in for AdaptiveTrigger; load the trigger of WinUI.
-                            if (UwpStandIns.GetRuntimeElementName(element.Name) is { } runtimeName)
-                            {
-                                element.Name = runtimeName;
                             }
 
                             foreach (XAttribute attribute in new List<XAttribute>(element.Attributes()))

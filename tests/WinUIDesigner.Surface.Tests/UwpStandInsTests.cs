@@ -95,16 +95,40 @@ public sealed class UwpStandInsTests
             """
         );
 
-        foreach (XElement element in document.Root!.DescendantsAndSelf())
-        {
-            if (UwpStandIns.GetRuntimeElementName(element.Name) is { } runtimeName)
-            {
-                element.Name = runtimeName;
-            }
-        }
+        UwpStandIns.RenameStandIns(document.Root!);
 
         string xaml = document.ToString(SaveOptions.DisableFormatting);
         Assert.Contains("<AdaptiveTrigger MinWindowWidth=\"700\" />", xaml);
         Assert.DoesNotContain("xsurf:AdaptiveTrigger", xaml);
+    }
+
+    [TestMethod]
+    public void RootThatIsAStandInIsRenamedToo()
+    {
+        var root = XElement.Parse("""<xsurf:AdaptiveTrigger xmlns:xsurf="using:XSurfUwp" MinWindowHeight="630" />""");
+
+        UwpStandIns.RenameStandIns(root);
+
+        Assert.AreEqual(XName.Get("AdaptiveTrigger", "http://schemas.microsoft.com/winfx/2006/xaml/presentation"), root.Name);
+    }
+
+    [TestMethod]
+    public void RenamingTheStandInsLeavesTheOtherElementsAlone()
+    {
+        // The trigger of WinUI, a trigger of the project with the same name, and another element of the stand-in namespace.
+        XDocument document = XDocument.Parse(
+            """
+            <Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:xsurf="using:XSurfUwp" xmlns:local="using:Ecierge.Triggers">
+              <AdaptiveTrigger MinWindowWidth="700" />
+              <local:AdaptiveTrigger MinWindowWidth="700" />
+              <xsurf:StateTrigger />
+            </Grid>
+            """
+        );
+        string expected = document.ToString(SaveOptions.DisableFormatting);
+
+        UwpStandIns.RenameStandIns(document.Root!);
+
+        Assert.AreEqual(expected, document.ToString(SaveOptions.DisableFormatting));
     }
 }
