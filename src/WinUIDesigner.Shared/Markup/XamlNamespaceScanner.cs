@@ -96,7 +96,7 @@ internal static class XamlNamespaceScanner
                     }
                     else if (reader.LocalName == _IgnorableAttribute && reader.NamespaceURI == XamlNamespaces.MarkupCompatibility)
                     {
-                        // mc:Ignorable lists the prefixes whose members the XAML reader skips.
+                        // mc:Ignorable lists the prefixes whose members a reader may skip.
                         AddPrefixes(ignorablePrefixes, reader.Value);
                     }
                 }
