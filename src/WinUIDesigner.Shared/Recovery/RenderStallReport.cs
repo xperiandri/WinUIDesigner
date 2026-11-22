@@ -46,18 +46,20 @@ internal static class RenderStallReport
     /// <summary>The context of the surface that a report names in its call stack; null when it names none.</summary>
     public static string? ReadContext(string? callStack)
     {
+        // A call stack that does not start with a context.
         if (callStack is null || !callStack.StartsWith(_ContextPrefix, StringComparison.Ordinal))
         {
             return null;
         }
 
+        // The rest of the first line is the context; a string is made only for the context that is returned.
         int end = callStack.IndexOfAny(_LineBreaks, _ContextPrefix.Length);
         int length = (end < 0 ? callStack.Length : end) - _ContextPrefix.Length;
-        string context = callStack.Substring(_ContextPrefix.Length, length).Trim();
+        ReadOnlySpan<char> context = callStack.AsSpan(_ContextPrefix.Length, length).Trim();
 
-        return context.Length == 0 ? null : context;
+        return context.IsEmpty ? null : context.ToString();
     }
 
     // Visual Studio trims the message of an unhandled exception before it keeps it; the text may arrive padded.
-    private static bool Is(string? message, string text) => string.Equals(message?.Trim(), text, StringComparison.Ordinal);
+    private static bool Is(string? message, string text) => message.AsSpan().Trim().Equals(text.AsSpan(), StringComparison.Ordinal);
 }

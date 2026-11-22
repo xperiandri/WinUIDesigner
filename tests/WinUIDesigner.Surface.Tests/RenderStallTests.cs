@@ -44,16 +44,10 @@ public sealed class RenderStallTests
     }
 
     [TestMethod]
-    public void FramesThatWereNotCountedSayNothingAboutTheFirstFrame()
-    {
-        Assert.IsFalse(RenderStall.StoppedAtFirstFrame(null));
-    }
+    public void FramesThatWereNotCountedSayNothingAboutTheFirstFrame() => Assert.IsFalse(RenderStall.StoppedAtFirstFrame(null));
 
     [TestMethod]
-    public async Task ARenderThatCompletesDraws()
-    {
-        Assert.IsTrue(await RenderStall.CompletesAsync(Task.CompletedTask, _Short, _Short));
-    }
+    public async Task ARenderThatCompletesDraws() => Assert.IsTrue(await RenderStall.CompletesAsync(Task.CompletedTask, _Short, _Short));
 
     [TestMethod]
     public async Task ARenderThatNeverCompletesDoesNotDraw()

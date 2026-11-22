@@ -10,10 +10,7 @@ public sealed class RenderStallRecoveryTests
     private static readonly DateTime _Start = new(2026, 11, 16, 12, 0, 0, DateTimeKind.Utc);
 
     [TestMethod]
-    public void TheReportIsRecognizedByItsText()
-    {
-        Assert.IsTrue(RenderStallReport.IsReport(RenderStallReport.Message));
-    }
+    public void TheReportIsRecognizedByItsText() => Assert.IsTrue(RenderStallReport.IsReport(RenderStallReport.Message));
 
     [TestMethod]
     public void TheReportIsRecognizedWithSpacesAroundIt()

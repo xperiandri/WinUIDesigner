@@ -47,10 +47,7 @@ public sealed class FreezeRecoveryTests
     }
 
     [TestMethod]
-    public void ASurfaceUnfreezesItselfAfterTenSeconds()
-    {
-        Assert.AreEqual(TimeSpan.FromSeconds(10), FreezeRecovery.Timeout);
-    }
+    public void ASurfaceUnfreezesItselfAfterTenSeconds() => Assert.AreEqual(TimeSpan.FromSeconds(10), FreezeRecovery.Timeout);
 
     [TestMethod]
     public void RenderingIsResumedOnlyWhileNoSurfaceIsFrozen()

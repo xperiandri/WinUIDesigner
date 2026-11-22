@@ -48,11 +48,13 @@ internal sealed class FrameCounter
     /// <summary>Counts the first frames of the first island of the process; does nothing for the islands after it.</summary>
     public void MeasureFirstIsland()
     {
+        // The islands after the first one are not counted.
         if (_firstIslandMeasured)
         {
             return;
         }
 
+        // The first island of the process, counted from its first frame if the frame event can be attached.
         _firstIslandMeasured = true;
         if (Attach())
         {
@@ -85,8 +87,13 @@ internal sealed class FrameCounter
     /// <summary>The frames of the first island, for the log.</summary>
     public string DescribeFirstIsland() => _firstIslandFrames switch
     {
+        // No island yet, or its frames could not be counted.
         null => _firstIslandMeasured ? "not counted" : "no island yet",
+
+        // The island has drawn more than its first frame.
         >= FramesOfAnIslandThatDraws => "more than one",
+
+        // The island has drawn its first frame, or none yet.
         int frames => $"{frames}",
     };
 

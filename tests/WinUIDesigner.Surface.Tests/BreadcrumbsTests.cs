@@ -12,10 +12,7 @@ public sealed class BreadcrumbsTests
     private static string Text(string entry) => entry[(entry.IndexOf(' ') + 1)..];
 
     [TestMethod]
-    public void AFreshJournalIsEmpty()
-    {
-        Assert.IsEmpty(new Breadcrumbs(4).Snapshot());
-    }
+    public void AFreshJournalIsEmpty() => Assert.IsEmpty(new Breadcrumbs(4).Snapshot());
 
     [TestMethod]
     public void EntriesComeOutOldestFirst()
@@ -72,10 +69,7 @@ public sealed class BreadcrumbsTests
     }
 
     [TestMethod]
-    public void ACapacityOfZeroIsRejected()
-    {
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new Breadcrumbs(0));
-    }
+    public void ACapacityOfZeroIsRejected() => Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new Breadcrumbs(0));
 
     [TestMethod]
     public void EntriesAddedFromManyThreadsAreAllKeptWithinTheCapacity()
