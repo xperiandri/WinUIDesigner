@@ -88,7 +88,8 @@ internal sealed partial class SurfaceService
             return new ResponseWithError()
             {
                 HResult = 0,
-                // Objects that their fallbacks replaced: Visual Studio shows why on their elements, and keeps the edit.
+                // Objects that their fallbacks replaced: Visual Studio reads the errors whatever the HResult is, and
+                // shows why on their elements.
                 Error = _constructionFallbacks.TakeErrors(),
             };
         }
