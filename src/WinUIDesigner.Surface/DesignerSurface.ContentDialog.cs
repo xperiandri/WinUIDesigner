@@ -633,10 +633,12 @@ internal sealed partial class DesignerSurface
         ContentDialog? dialog = _shownDialog;
         _shownDialog = null;
 
-        // The brushes that the surface wrote and the layer of smoke belong to the dialog that goes.
+        // The brushes that the surface wrote, the layer of smoke and the card whose limits were recorded belong to the dialog
+        // that goes: nothing of it is held, and the next dialog records the limits of its own card.
         _dialogBrushes.Forget();
         _smokeLayer = null;
         _frameworkSmokeFill = null;
+        _limitedCard = null;
 
         if (dialog is not null)
         {
