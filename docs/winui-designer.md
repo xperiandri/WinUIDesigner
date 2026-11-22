@@ -224,7 +224,7 @@ Failures can occur before the surface starts, while the connection initializes, 
 | Platform and staging | Reject missing private contracts, unsupported project/runtime architectures, missing payloads, and detected WinUI runtime version mismatches. |
 | Startup and communication | Log startup exceptions and child-process exits; bound frame sizes and fail incomplete messages. |
 | Document construction | Attempt the action-based loading alternative, then return construction failure information and publish error notifications. |
-| Runtime operations | Return contract-specific failure results or notifications; dispatcher work observes cancellation and timeouts. |
+| Runtime operations | Return contract-specific failure results or notifications. Work on a document waits for the UI thread as long as it takes and ends only with the protocol or the dispatcher queue; the synchronous requests of Visual Studio give up after 30 seconds and are answered without the UI thread. |
 | Shutdown | Cancel pending protocol work, release document services and native windows, and dispose the connection. |
 
 ```mermaid
