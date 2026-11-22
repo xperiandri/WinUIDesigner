@@ -64,11 +64,13 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
         }
 
         // The scopes of the owner, the search parents that Visual Studio sent first, then the application, then the theme.
-        IEnumerable<ResourceDictionary> dictionaries = ResourceScopeWalk.Dictionaries(
+        IEnumerable<ResourceDictionary> dictionaries = ResourceScopeWalk.StaticResourceDictionaries(
             owner,
-            GetStaticResourceParent,
+            _parents,
+            GetLiveParent,
             GetScopeDictionary,
-            [Application.Current.Resources, _themeResources]
+            Application.Current.Resources,
+            _themeResources
         );
         foreach (ResourceDictionary dictionary in dictionaries)
         {
@@ -99,11 +101,13 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
     public ThemeResourceMatch ResolveThemeResource(object owner, object? key, string theme)
     {
         ResourceDictionary application = Application.Current.Resources;
-        IEnumerable<ResourceDictionary> dictionaries = ResourceScopeWalk.Dictionaries(
+        IEnumerable<ResourceDictionary> dictionaries = ResourceScopeWalk.ThemeResourceDictionaries(
             owner,
-            GetThemeResourceParent,
+            _parents,
+            GetLiveParent,
             GetScopeDictionary,
-            [application, _themeResources]
+            application,
+            _themeResources
         );
         return ThemeResourceLookup.Resolve(new List<ResourceDictionary>(dictionaries), key, theme, _dictionaries, application);
     }
@@ -220,8 +224,6 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
     }
 
     private static object? GetLiveParent(object current) => (current as FrameworkElement)?.Parent;
-
-    private object? GetStaticResourceParent(object current) => ResourceScopeWalk.SearchParentFirst(current, _parents, GetLiveParent);
 
     private object? GetThemeResourceParent(object current) => ResourceScopeWalk.LiveParentFirst(current, _parents, GetLiveParent);
 

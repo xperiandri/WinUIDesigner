@@ -75,4 +75,50 @@ internal static class ResourceScopeWalk
     {
         return liveParent(current) ?? (searchParents.TryGetValue(current, out T? parent) ? parent : null);
     }
+
+    /// <summary>
+    /// The dictionaries that a <c>{StaticResource}</c> lookup searches, in order: those of <paramref name="owner"/> and its
+    /// ancestors, taking the search parent that Visual Studio sent first (<see cref="SearchParentFirst{T}"/>), then
+    /// <paramref name="application"/>, then <paramref name="themeScope"/> when there is one.
+    /// </summary>
+    public static IEnumerable<TDictionary> StaticResourceDictionaries<TScope, TDictionary>(
+        TScope owner,
+        IReadOnlyDictionary<TScope, TScope> searchParents,
+        Func<TScope, TScope?> liveParent,
+        Func<TScope, TDictionary?> dictionaryOf,
+        TDictionary application,
+        TDictionary? themeScope)
+        where TScope : class
+        where TDictionary : class
+    {
+        return Dictionaries(
+            owner,
+            current => SearchParentFirst(current, searchParents, liveParent),
+            dictionaryOf,
+            [application, themeScope]
+        );
+    }
+
+    /// <summary>
+    /// The dictionaries that a <c>{ThemeResource}</c> lookup searches, in order: those of <paramref name="owner"/> and its
+    /// ancestors, taking the live parent of an attached object first (<see cref="LiveParentFirst{T}"/>), then
+    /// <paramref name="application"/>, then <paramref name="themeScope"/> when there is one.
+    /// </summary>
+    public static IEnumerable<TDictionary> ThemeResourceDictionaries<TScope, TDictionary>(
+        TScope owner,
+        IReadOnlyDictionary<TScope, TScope> searchParents,
+        Func<TScope, TScope?> liveParent,
+        Func<TScope, TDictionary?> dictionaryOf,
+        TDictionary application,
+        TDictionary? themeScope)
+        where TScope : class
+        where TDictionary : class
+    {
+        return Dictionaries(
+            owner,
+            current => LiveParentFirst(current, searchParents, liveParent),
+            dictionaryOf,
+            [application, themeScope]
+        );
+    }
 }
