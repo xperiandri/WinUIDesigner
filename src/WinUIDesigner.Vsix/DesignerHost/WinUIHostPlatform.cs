@@ -33,6 +33,8 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
 
     // The designer pane asks this before it creates the designer and shows the summary and details in place
     // of the design surface, so an unsupported project gets an explanation instead of an unhandled exception.
+    // It asks only the host of the project's identity: a project whose active target is not Windows has no
+    // WinUI host, and Visual Studio shows its own message pane without text for it.
     public override bool IsCompatibleRuntimePlatform(IHostProject hostProject, out string errorSummary, out string errorDetails)
     {
         if (!base.IsCompatibleRuntimePlatform(hostProject, out errorSummary, out errorDetails))

@@ -10,7 +10,7 @@ Having trouble? Please [report a bug on GitHub](https://github.com/0x5bfa/WinUID
 - x86 is not supported.
 - `Window` and its subclasses cannot be previewed; only `FrameworkElement` subclasses are supported.
 - Windows App SDK 2.5.1 is required.
-- In a multi-targeted project (for example an Uno Platform project), the Windows target (`net*-windows10.0.*`) must be the active target framework of the project that contains the XAML file. Uno.Sdk projects select the Windows App SDK version with the `WinAppSdkVersion` property.
+- In a multi-targeted project (for example an Uno Platform project), the Windows target (`net*-windows10.0.*`) must be the active target framework of the project that contains the XAML file. For any other target Visual Studio does not ask this extension, and the design view shows neither a preview nor an explanation. Uno.Sdk projects select the Windows App SDK version with the `WinAppSdkVersion` property.
 - The same goes for a multi-targeted library that the project references. Visual Studio gives the designer the build of the library for the target that is selected for it, and the controls of a build for another platform are not WinUI controls: the designer then reports `XDG0048` and `XDG0012` errors for every element of such a control and shows "Invalid Markup". With Uno.Sdk the selection is the `_UnoSelectedTargetFramework` property of the `.csproj.user` file of the library; set it to the Windows target, and reload the solution.
 
 ## Architecture
