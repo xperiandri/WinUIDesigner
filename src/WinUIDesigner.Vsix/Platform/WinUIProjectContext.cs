@@ -8,6 +8,7 @@ using Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.Project;
 using Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation;
 using Microsoft.VisualStudio.DesignTools.SurfaceDesigner.UI.PropertyInspector;
 using Microsoft.VisualStudio.DesignTools.UwpSurfaceDesigner.UI.PropertyInspector;
+using Microsoft.VisualStudio.DesignTools.Utility;
 using Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents;
 
 namespace WinUIDesigner.Platform;
@@ -71,9 +72,9 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
     }
 
     // Visual Studio calls this member through IProjectContext right before it launches the surface, and its
-    // implementation dereferences the process host and the project metadata without checking them. Re-implement
-    // the interface member so a context that cannot launch a surface fails with a reason in the log and on the
-    // design surface instead of a NullReferenceException.
+    // implementation dereferences the project, the process host and the platform part of the project metadata
+    // without checking them. Re-implement the interface member so a context that cannot launch a surface fails
+    // with a reason in the log and on the design surface instead of a NullReferenceException.
     SurfaceProcessInfo IProjectContext.CreateSurfaceProcessInfo(bool forcePlatformOnly)
     {
         if (GetSurfaceLaunchBlocker(this) is { } blocker)
@@ -88,27 +89,23 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
 
     private static string? GetSurfaceLaunchBlocker(IProjectContext? projectContext)
     {
-        if (projectContext is null)
-        {
-            return "The design surface has no project context.";
-        }
+        return WinUISurfaceLaunch.GetBlocker(projectContext is null ? null : new SurfaceLaunchContext(projectContext));
+    }
 
-        if (projectContext.IsDisposed)
-        {
-            return $"The designer context of project '{projectContext.ProjectName}' was closed before its design surface started. Close and reopen the XAML document.";
-        }
+    // A project context as WinUISurfaceLaunch sees it.
+    private sealed class SurfaceLaunchContext(IProjectContext projectContext) : ISurfaceLaunchContext
+    {
+        public string? ProjectName => projectContext.ProjectName;
 
-        if (!WinUIPlatformSupport.IsHosted(projectContext.PlatformIdentifier))
-        {
-            return $"Project '{projectContext.ProjectName}' cannot start a WinUI design surface: no WinUI process host matches '{projectContext.PlatformIdentifier?.Identifier}'. "
-                + "Make a Windows target framework (net*-windows10.0.*) the active target of this project.";
-        }
+        public bool IsDisposed => projectContext.IsDisposed;
 
-        if (projectContext.Metadata is null)
-        {
-            return $"Project '{projectContext.ProjectName}' has no designer metadata, so its design surface cannot be started. Close and reopen the XAML document.";
-        }
+        // ProjectContextBase.CreateSurfaceProcessInfo hands its HostProject to the process host.
+        public bool HasHostProject => projectContext is not ProjectContextBase { HostProject: null };
 
-        return null;
+        public PlatformIdentifier? PlatformIdentifier => projectContext.PlatformIdentifier;
+
+        public bool HasMetadata => projectContext.Metadata is not null;
+
+        public bool HasPlatformMetadata => projectContext.Metadata?.PlatformMetadata is not null;
     }
 }

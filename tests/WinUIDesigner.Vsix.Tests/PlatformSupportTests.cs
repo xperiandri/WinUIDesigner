@@ -145,4 +145,68 @@ public sealed class PlatformSupportTests
         Assert.IsNull(WinUIProjectRequirements.FindWinUIRuntimePath([references[1]]));
         Assert.IsNull(WinUIProjectRequirements.FindWinUIRuntimePath(null));
     }
+
+    [TestMethod]
+    public void SurfaceIsLaunchedThroughACompleteContextOfAHostedProject()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        Assert.IsNull(WinUISurfaceLaunch.GetBlocker(new FakeProject()));
+    }
+
+    [TestMethod]
+    public void SurfaceLaunchBlockerNamesWhatTheContextLacks()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        AssertExplains("no project context", WinUISurfaceLaunch.GetBlocker(null));
+        AssertExplains("was closed", WinUISurfaceLaunch.GetBlocker(new FakeProject { IsDisposed = true }));
+        AssertExplains("no WinUI process host", WinUISurfaceLaunch.GetBlocker(new FakeProject { PlatformIdentifier = AndroidTarget }));
+        AssertExplains("no designer metadata", WinUISurfaceLaunch.GetBlocker(new FakeProject { HasMetadata = false }));
+    }
+
+    [TestMethod]
+    public void SurfaceIsNotLaunchedThroughAContextWithoutItsProject()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        // Visual Studio hands the project of the context to the process host without checking it.
+        AssertExplains("has no project", WinUISurfaceLaunch.GetBlocker(new FakeProject { HasHostProject = false }));
+
+        // Without its project the context reports no name and no platform identity either.
+        var detached = new FakeProject { HasHostProject = false, ProjectName = null, PlatformIdentifier = null };
+        AssertExplains("has no project", WinUISurfaceLaunch.GetBlocker(detached));
+    }
+
+    [TestMethod]
+    public void SurfaceIsNotLaunchedWithoutThePlatformPartOfTheMetadata()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        // Visual Studio reads the control assemblies to shadow-copy from it without checking it.
+        AssertExplains("platform metadata", WinUISurfaceLaunch.GetBlocker(new FakeProject { HasPlatformMetadata = false }));
+    }
+
+    // Asserts that a reason is given and that it contains the expected text.
+    private static void AssertExplains(string expected, string? reason)
+    {
+        Assert.IsNotNull(reason, $"Expected a reason that contains '{expected}'.");
+        Assert.Contains(expected, reason);
+    }
+
+    // A complete project context of a hosted Windows target; each test changes what it is about.
+    private sealed class FakeProject : ISurfaceLaunchContext
+    {
+        public string? ProjectName { get; set; } = "App";
+
+        public bool IsDisposed { get; set; }
+
+        public bool HasHostProject { get; set; } = true;
+
+        public PlatformIdentifier? PlatformIdentifier { get; set; } = WindowsTarget;
+
+        public bool HasMetadata { get; set; } = true;
+
+        public bool HasPlatformMetadata { get; set; } = true;
+    }
 }
