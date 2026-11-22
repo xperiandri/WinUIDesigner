@@ -87,6 +87,47 @@ public sealed class StyleEditTests
     }
 
     [TestMethod]
+    public void TakingOneCollectionLeavesTheOtherPendingInsertionsInTheirOriginalOrder()
+    {
+        var first = new List<string>();
+        var second = new List<string>();
+        var third = new List<string>();
+        var queue = new DeferredInsertionQueue<Insertion>(insertion => insertion.Collection);
+        queue.Add(new(first, 0, "a"));
+        queue.Add(new(second, 0, "x"));
+        queue.Add(new(third, 0, "m"));
+        queue.Add(new(second, 1, "y"));
+        queue.Add(new(first, 1, "b"));
+
+        Assert.IsEmpty(queue.TakeFor(new List<string>()), "No insertion names this collection.");
+        CollectionAssert.AreEqual(new[] { "x", "y" }, queue.TakeFor(second).Select(insertion => insertion.Item).ToArray());
+        CollectionAssert.AreEqual(new[] { "a", "m", "b" }, queue.TakeAll().Select(insertion => insertion.Item).ToArray());
+    }
+
+    [TestMethod]
+    public void TakingForACollectionWithNothingPendingCopiesNothing()
+    {
+        // Every GetChild, RemoveChild and ClearCollectionProperty takes from the queue, which holds every setter of a
+        // document while the document is built.
+        var pending = new List<string>();
+        var queue = new DeferredInsertionQueue<Insertion>(insertion => insertion.Collection);
+        for (int index = 0; index < 1000; index++)
+        {
+            queue.Add(new(pending, index, "Margin=4"));
+        }
+
+        var other = new List<string>();
+        queue.TakeFor(other);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        List<Insertion> taken = queue.TakeFor(other);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.IsEmpty(taken);
+        Assert.AreEqual(1000, queue.Count);
+        Assert.IsLessThan(1024, allocated, "Copying the pending insertions would allocate about 8 KB.");
+    }
+
+    [TestMethod]
     [DataRow(false, true, false, true, DisplayName = "The setters of a visual state that can be active")]
     [DataRow(false, true, true, false, DisplayName = "The setters of a visual state of a new document or a lookup")]
     [DataRow(true, true, true, true, DisplayName = "A sealed setter collection of a visual state")]

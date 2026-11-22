@@ -30,19 +30,25 @@ internal sealed class DeferredInsertionQueue<TEntry>(Func<TEntry, object> getTar
     /// <summary>
     /// Removes and returns the pending insertions into <paramref name="target"/>, oldest first.
     /// </summary>
+    /// <remarks>
+    /// The surface takes before every GetChild, RemoveChild and ClearCollectionProperty, whatever the collection is,
+    /// and while a document is built the queue holds every setter of the document. Most calls therefore find nothing,
+    /// and then the queue is left as it is.
+    /// </remarks>
     public List<TEntry> TakeFor(object target)
     {
         var taken = new List<TEntry>();
-        var remaining = new List<TEntry>(_entries.Count);
         foreach (TEntry entry in _entries)
         {
-            (ReferenceEquals(getTarget(entry), target) ? taken : remaining).Add(entry);
+            if (ReferenceEquals(getTarget(entry), target))
+            {
+                taken.Add(entry);
+            }
         }
 
         if (taken.Count != 0)
         {
-            _entries.Clear();
-            _entries.AddRange(remaining);
+            _entries.RemoveAll(entry => ReferenceEquals(getTarget(entry), target));
         }
 
         return taken;
