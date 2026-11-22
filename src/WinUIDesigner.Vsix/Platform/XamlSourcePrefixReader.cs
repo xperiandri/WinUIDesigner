@@ -129,18 +129,29 @@ internal static class XamlSourcePrefixReader
                 return XamlSourcePrefix.None;
             }
 
-            // A property set through element content has no container of its own.
-            return parentNode.GetContainerContext(property) switch
-            {
-                XmlElementReference propertyElement => ReadElementPrefix(propertyElement),
-                XmlAttributeReference attribute => ReadAttributePrefix(attribute),
-                _ => XamlSourcePrefix.None,
-            };
+            return ReadContainerPrefix(parentNode.GetContainerContext(property));
         }
         catch (Exception)
         {
             return XamlSourcePrefix.None;
         }
+    }
+
+    /// <summary>
+    /// Returns the prefix of the attribute or the property element that the source reference
+    /// <paramref name="container"/> refers to.
+    /// </summary>
+    /// <returns>The prefix, or <see cref="XamlSourcePrefix.None"/> for any other container.</returns>
+    /// <remarks>Unlike the public methods, this one lets a failure of the designer's references through.</remarks>
+    internal static XamlSourcePrefix ReadContainerPrefix(object? container)
+    {
+        // A property set through element content has no container of its own.
+        return container switch
+        {
+            XmlElementReference propertyElement => ReadElementPrefix(propertyElement),
+            XmlAttributeReference attribute => ReadAttributePrefix(attribute),
+            _ => XamlSourcePrefix.None,
+        };
     }
 
     private static XamlSourcePrefix ReadElementPrefix(XmlElementReference element)
