@@ -48,11 +48,14 @@ internal sealed class DeferredInsertionQueue<TEntry>(Func<TEntry, object> getTar
 
         if (taken.Count != 0)
         {
-            _entries.RemoveAll(entry => ReferenceEquals(getTarget(entry), target));
+            RemoveEntriesFor(target);
         }
 
         return taken;
     }
+
+    // A method of its own: a lambda that captured the target inside TakeFor would allocate its closure on every call.
+    private void RemoveEntriesFor(object target) => _entries.RemoveAll(entry => ReferenceEquals(getTarget(entry), target));
 
     /// <summary>
     /// Inserts the pending entries for <paramref name="target"/>, oldest first, and then runs
