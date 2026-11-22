@@ -46,7 +46,9 @@ internal static class ProjectRuntimeResolver
 
     /// <summary>
     /// Lets the surface's own copy of a WinRT projection serve a project's reference to a newer version of it, which
-    /// the runtime does not bind to that copy by itself (<see cref="AssemblyReferenceCompatibility.Resolve"/>).
+    /// the runtime does not bind to that copy by itself. The handler that serves it is
+    /// <see cref="AssemblyReferenceCompatibility.ServeFromSurfaceCopy"/>, and
+    /// <see cref="AssemblyReferenceCompatibility.Resolve"/> decides which references it serves.
     /// </summary>
     /// <remarks>
     /// Call it before any other handler of <see cref="AssemblyLoadContext.Resolving"/> is added. Visual Studio's handler
@@ -148,6 +150,8 @@ internal static class ProjectRuntimeResolver
 
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
+            // A staged assembly that the surface does not carry is loaded from its staged path; every other reference (a
+            // carried assembly, or one that is not staged) is left to the other handlers.
             return AssemblyReferenceCompatibility.Resolve(name, _SurfaceAssemblies, _Assemblies.ContainsKey) == ReferenceResolution.ProjectCopy
                 ? AssemblyLoadContext.Default.LoadFromAssemblyPath(_Assemblies[name.Name!])
                 : null;
