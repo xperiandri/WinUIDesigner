@@ -44,7 +44,12 @@ public sealed class ThemeResourceLookupTests
         palette.Theme(ThemeResourceThemes.Default).Own["AccentBrush"] = "accent";
         palette.Theme(ThemeResourceThemes.HighContrast).Own["AccentBrush"] = "accent high contrast";
 
-        Assert.AreEqual("accent", Resolve(throughFramework, ThemeResourceThemes.Light, "AccentBrush", Application(palette)).Value);
+        ThemeResourceMatch match = Resolve(throughFramework, ThemeResourceThemes.Light, "AccentBrush", Application(palette));
+
+        // The fake framework would answer the same from its lookup, so the lookup itself must have found it.
+        Assert.AreEqual("accent", match.Value);
+        Assert.IsFalse(match.IsFrameworkFallback);
+        Assert.Contains("theme dictionary 'Default'", match.Path);
     }
 
     [TestMethod]
@@ -167,7 +172,12 @@ public sealed class ThemeResourceLookupTests
         dictionary.ThemeDictionaries[ThemeResourceThemes.Light] = "not a dictionary";
         dictionary.Theme(ThemeResourceThemes.Default).Own[Key] = "page default";
 
-        Assert.AreEqual("page default", Resolve(throughFramework, ThemeResourceThemes.Light, Key, dictionary).Value);
+        ThemeResourceMatch match = Resolve(throughFramework, ThemeResourceThemes.Light, Key, dictionary);
+
+        // The fake framework would answer the same from its lookup, so the lookup itself must have found it.
+        Assert.AreEqual("page default", match.Value);
+        Assert.IsFalse(match.IsFrameworkFallback);
+        Assert.AreEqual("theme dictionary 'Default' > own entry", match.Path);
     }
 
     [TestMethod]
@@ -229,11 +239,52 @@ public sealed class ThemeResourceLookupTests
     [TestMethod]
     public void SelfMergingDictionariesTerminate()
     {
+        // A dictionary that merges itself, directly and through its theme dictionary, is searched once. Only the depth
+        // limit would end a lookup that searched it again at every level, after 3 to the power of 12 searches.
         var dictionary = new FakeDictionary("Self");
         dictionary.Merge(dictionary).Merge(dictionary);
-        dictionary.Theme(ThemeResourceThemes.Default).Merge(dictionary);
+        FakeDictionary themeDictionary = dictionary.Theme(ThemeResourceThemes.Default).Merge(dictionary);
+        var dictionaries = new FakeDictionaries(false);
 
-        Assert.Throws<KeyNotFoundException>(() => Resolve(false, ThemeResourceThemes.Dark, Key, dictionary));
+        Assert.Throws<KeyNotFoundException>(
+            () => ThemeResourceLookup.Resolve([dictionary], Key, ThemeResourceThemes.Dark, dictionaries, null)
+        );
+
+        Assert.AreEqual(1, dictionaries.OwnEntryLookups[dictionary]);
+        Assert.AreEqual(1, dictionaries.OwnEntryLookups[themeDictionary]);
+    }
+
+    [TestMethod]
+    public void ADictionaryThatCanBeReachedTwiceIsSearchedOnce()
+    {
+        // Top merges Left and Right, and both merge Shared.
+        var shared = new FakeDictionary("Shared");
+        FakeDictionary left = new FakeDictionary("Left").Merge(shared);
+        FakeDictionary right = new FakeDictionary("Right").Merge(shared);
+        FakeDictionary top = new FakeDictionary("Top").Merge(left).Merge(right);
+        var dictionaries = new FakeDictionaries(false);
+
+        Assert.Throws<KeyNotFoundException>(
+            () => ThemeResourceLookup.Resolve([top], Key, ThemeResourceThemes.Dark, dictionaries, null)
+        );
+
+        Assert.AreEqual(1, dictionaries.OwnEntryLookups[shared]);
+    }
+
+    [TestMethod]
+    public void ADictionaryThatTwoScopesShareIsSearchedOnce()
+    {
+        // The page and the application merge the same dictionary: what the page's search missed, the application's would miss.
+        var shared = new FakeDictionary("Shared");
+        FakeDictionary page = new FakeDictionary("Page").Merge(shared);
+        FakeDictionary application = new FakeDictionary("Application.Resources").Merge(shared);
+        var dictionaries = new FakeDictionaries(false);
+
+        Assert.Throws<KeyNotFoundException>(
+            () => ThemeResourceLookup.Resolve([page, application], Key, ThemeResourceThemes.Dark, dictionaries, null)
+        );
+
+        Assert.AreEqual(1, dictionaries.OwnEntryLookups[shared]);
     }
 
     [TestMethod]

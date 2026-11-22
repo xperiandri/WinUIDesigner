@@ -95,8 +95,12 @@ internal sealed class FakeDictionary(string name)
 internal sealed class FakeDictionaries(bool ownEntriesThroughFramework, FakeDictionary? emptyDictionary = null)
     : IThemeResourceDictionaries<FakeDictionary>
 {
+    /// <summary>How often the lookup asked for the own entry of each dictionary: once for every dictionary it searched.</summary>
+    public Dictionary<FakeDictionary, int> OwnEntryLookups { get; } = new(ReferenceEqualityComparer.Instance);
+
     public bool TryGetOwnValue(FakeDictionary dictionary, object key, out object? value)
     {
+        OwnEntryLookups[dictionary] = OwnEntryLookups.GetValueOrDefault(dictionary) + 1;
         return ownEntriesThroughFramework
             ? ThemeResourceLookup.TryGetOwnValueByElimination(dictionary, key, this, emptyDictionary, out value)
             : dictionary.Own.TryGetValue(key, out value);
