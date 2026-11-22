@@ -47,6 +47,13 @@ public sealed class RenderStallRecoveryTests
     }
 
     [TestMethod]
+    public void TheReportOfAStallAtTheFirstFrameDoesNotStateTheCauseAsFact()
+    {
+        // The stall does not depend on the document; where its cause is has not been established.
+        Assert.Contains("probably", RenderStallReport.FirstFrameMessage);
+    }
+
+    [TestMethod]
     public void TheContextOfTheSurfaceTravelsOnTheFirstLineOfTheCallStack()
     {
         string callStack = RenderStallReport.WithContext("3F2A9C1B7E4D5A60", "System.Runtime.InteropServices.COMException (0x80004005): Unspecified error");

@@ -22,11 +22,11 @@ internal static class RenderStallReport
     public const string Message = "The XAML framework reported an unspecified error and has not drawn a frame since. Reload the designer to continue.";
 
     /// <summary>
-    /// The text of the report when the framework stopped at the first frame of the first document of the process. Every
-    /// new process loads the same document and App.xaml and stops the same way, so the surface is restarted once for it,
-    /// and a reload does not help.
+    /// The text of the report when the framework stopped at the first frame of the first document of the process. A new
+    /// process loads the same document and App.xaml and is likely to stop the same way, so the surface is restarted once
+    /// for it, and a reload does not help.
     /// </summary>
-    public const string FirstFrameMessage = "The XAML framework reported an unspecified error at the first frame of the designer and has not drawn since. The cause is in what the document or App.xaml loads, which a reload does not change: rebuild the project to start the designer again.";
+    public const string FirstFrameMessage = "The XAML framework reported an unspecified error at the first frame of the designer and has not drawn since. The cause is probably in what the document or App.xaml loads, which a reload does not change: rebuild the project to start the designer again.";
 
     private const string _ContextPrefix = "Surface context: ";
     private static readonly char[] _LineBreaks = ['\r', '\n'];

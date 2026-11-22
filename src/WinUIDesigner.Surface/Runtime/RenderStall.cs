@@ -57,8 +57,8 @@ internal static class RenderStall
 
     /// <summary>
     /// Whether the framework stopped at the first frame of the first island of the process, by the frames that island
-    /// drew (<see cref="FrameCounter.FirstIslandFrames"/>): the cause is then in what the document or App.xaml loads, which
-    /// every new process loads again.
+    /// drew (<see cref="FrameCounter.FirstIslandFrames"/>): the cause is then probably in what the document or App.xaml
+    /// loads, which every new process loads again.
     /// </summary>
     public static bool StoppedAtFirstFrame(int? firstIslandFrames) => firstIslandFrames < FrameCounter.FramesOfAnIslandThatDraws;
 

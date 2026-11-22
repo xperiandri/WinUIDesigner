@@ -77,7 +77,7 @@ internal sealed partial class WinUISurfaceProcessContext
 
             // A new process stopped at its first frame again, with the same staged files and App.xaml.
             case RenderStallRestart.StopsAtFirstFrame:
-                WinUIDesignerLogger.LogWarning("Platform", $"The surface of '{project}' has stopped drawing at its first frame again after a restart. The cause is in what the document or App.xaml loads; the surface is not restarted for it until App.xaml or the build of the project changes.");
+                WinUIDesignerLogger.LogWarning("Platform", $"The surface of '{project}' has stopped drawing at its first frame again after a restart. The cause is probably in what the document or App.xaml loads; the surface is not restarted for it until App.xaml or the build of the project changes.");
                 break;
 
             // Restarted too often: the process stays, and the stall that it reports for a document loaded later is

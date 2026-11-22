@@ -273,7 +273,7 @@ An error of the framework can leave it unable to draw. After such an error the s
 Nothing in such a process draws again, and "Click here to reload the designer" reloads the documents inside the same process. The extension therefore restarts the process when it sees the report:
 
 - A process is restarted once, and a project at most three times in two minutes. A report after the limit is decided again, so reloading the designer restarts the surface once the limit allows it.
-- When the first island of the process stopped at its first frame, the cause is in what the document or App.xaml loads, which every new process loads again. The report says so, and names the context of the surface: the staged files of the project and App.xaml. Such a process is restarted once for its context; when the new process stops at its first frame again, it keeps the error view until App.xaml or the build of the project changes.
+- When the first island of the process stopped at its first frame, the cause is probably in what the document or App.xaml loads, which every new process loads again; that has not been established. The report says so, and names the context of the surface: the staged files of the project and App.xaml. Such a process is restarted once for its context; when the new process stops at its first frame again, it keeps the error view until App.xaml or the build of the project changes.
 
 As a precaution, a surface that Visual Studio froze and did not unfreeze within ten seconds unfreezes itself, and rendering that a freeze left suspended is resumed when Visual Studio shows a surface while none is frozen.
 
