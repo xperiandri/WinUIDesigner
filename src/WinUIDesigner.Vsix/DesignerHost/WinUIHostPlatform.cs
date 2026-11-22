@@ -43,7 +43,7 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
         string? reason;
         try
         {
-            reason = WinUIProjectRequirements.GetUnsupportedReason(hostProject.PlatformIdentifier, hostProject.References?.Select(reference => reference.Path));
+            reason = WinUIProjectRequirements.GetUnsupportedReason(new HostProjectRequirements(hostProject), FindSurfaceApplication(hostProject));
         }
         catch (Exception exception)
         {
@@ -68,6 +68,15 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
         errorDetails = reason;
 
         return false;
+    }
+
+    // The application whose surface process previews the documents of the project when that is another project.
+    // ProjectContextBase looks for it the same way when it creates the surface process of the project.
+    private static IWinUIRequirementsProject? FindSurfaceApplication(IHostProject hostProject)
+    {
+        IHostProject? application = hostProject.IsValid ? hostProject.FindApplicationProject() : null;
+
+        return application is null || application.ProjectGuid == hostProject.ProjectGuid ? null : new HostProjectRequirements(application);
     }
 
     protected override ISurfaceProcess ActivateSurface(IServiceProvider serviceProvider, Guid surfaceProcessId, string path, string tapPath, IPipeDataBridge dataBridge, bool inhibitStartupWatsons, CancellationToken cancelToken)
@@ -172,5 +181,14 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
         WinUIDesignerLogger.LogError("Host", $"Failed to start WinUISurface.exe at '{path}'.");
 
         throw new InvalidProgramException(path);
+    }
+
+    // A Visual Studio project as WinUIProjectRequirements sees it.
+    private sealed class HostProjectRequirements(IHostProject project) : IWinUIRequirementsProject
+    {
+        public PlatformIdentifier? PlatformIdentifier => project.PlatformIdentifier;
+
+        public string? WinUIRuntimeFileVersion
+            => WinUIProjectRequirements.GetWinUIRuntimeFileVersion(project.References?.Select(reference => reference.Path));
     }
 }

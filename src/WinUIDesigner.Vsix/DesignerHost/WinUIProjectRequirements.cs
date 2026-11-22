@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using Microsoft.VisualStudio.DesignTools.Utility;
+using WinUIDesigner.Platform;
 
 namespace WinUIDesigner.DesignerHost;
 
@@ -87,6 +88,35 @@ internal static class WinUIProjectRequirements
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Explains why a document of <paramref name="project"/> cannot be previewed in the surface process it would use,
+    /// or returns <see langword="null"/> when it can.
+    /// </summary>
+    /// <param name="project">The project that contains the document.</param>
+    /// <param name="application">
+    /// The application that Visual Studio finds for the surface process of <paramref name="project"/> when that is
+    /// another project, otherwise <see langword="null"/>.
+    /// </param>
+    /// <remarks>
+    /// A library is previewed in the surface process of the application that references it when that application can
+    /// launch one, and that process runs the application's WinUI runtime. The library binds to it there, because
+    /// Microsoft.WinUI.dll keeps its assembly version across Windows App SDK versions, so the version the library
+    /// itself references does not matter then.
+    /// </remarks>
+    public static string? GetUnsupportedReason(IWinUIRequirementsProject project, IWinUIRequirementsProject? application)
+    {
+        // A library in the surface process of its application: only its own target framework and runtime count.
+        if (application is not null
+            && WinUIPlatformSupport.IsHosted(application.PlatformIdentifier)
+            && GetUnsupportedReason(application.PlatformIdentifier, application.WinUIRuntimeFileVersion) is null)
+        {
+            return GetUnsupportedReason(project.PlatformIdentifier, (string?)null);
+        }
+
+        // Any other project starts a surface process of its own, which runs the WinUI runtime the project references.
+        return GetUnsupportedReason(project.PlatformIdentifier, project.WinUIRuntimeFileVersion);
     }
 
     /// <summary>

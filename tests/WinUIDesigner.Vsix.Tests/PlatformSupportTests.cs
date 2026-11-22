@@ -215,6 +215,52 @@ public sealed class PlatformSupportTests
         AssertExplains("no project context", WinUISurfaceLaunch.GetSharingBlocker(null));
     }
 
+    [TestMethod]
+    public void LibraryIsCheckedAgainstTheWinUIRuntimeOfTheApplicationWhoseSurfaceProcessItUses()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        // A library on Windows App SDK 1.8 binds to the 2.5.1 runtime of its application in that application's process.
+        var library = new FakeProject { WinUIRuntimeFileVersion = "3.0.0.2602" };
+        Assert.IsNull(WinUIProjectRequirements.GetUnsupportedReason(library, new FakeProject()));
+
+        // Without such an application the library starts a surface process of its own, on its own runtime.
+        AssertExplains("3.0.0.2602", WinUIProjectRequirements.GetUnsupportedReason(library, null));
+    }
+
+    [TestMethod]
+    public void LibraryIsCheckedAgainstItsOwnWinUIRuntimeWhenItsApplicationCannotShare()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+        var library = new FakeProject { WinUIRuntimeFileVersion = "3.0.0.2602" };
+        var applicationOnOtherRuntime = new FakeProject { WinUIRuntimeFileVersion = "3.0.0.2608" };
+        var androidHead = new FakeProject { PlatformIdentifier = AndroidTarget };
+
+        // An application on Windows App SDK 2.4.0, and an Uno app head whose active target is Android.
+        AssertExplains("3.0.0.2602", WinUIProjectRequirements.GetUnsupportedReason(library, applicationOnOtherRuntime));
+        AssertExplains("3.0.0.2602", WinUIProjectRequirements.GetUnsupportedReason(library, androidHead));
+
+        // A surface process of its own previews a library on the verified runtime.
+        Assert.IsNull(WinUIProjectRequirements.GetUnsupportedReason(new FakeProject(), applicationOnOtherRuntime));
+    }
+
+    [TestMethod]
+    public void LibraryTargetCountsAlsoInTheSurfaceProcessOfItsApplication()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+        var native = new FakeProject
+        {
+            PlatformIdentifier = new PlatformIdentifier(
+                new PlatformName("Windows", new Version(10, 0, 26100, 0)),
+                "Native",
+                _Net10,
+                XamlRuntimeNames.WinUI
+            ),
+        };
+
+        AssertExplains("managed", WinUIProjectRequirements.GetUnsupportedReason(native, new FakeProject()));
+    }
+
     // Asserts that a reason is given and that it contains the expected text.
     private static void AssertExplains(string expected, string? reason)
     {
