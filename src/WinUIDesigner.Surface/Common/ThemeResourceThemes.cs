@@ -99,12 +99,14 @@ internal static class ThemeResourceThemes
     {
         foreach (string key in KnownThemeDictionaryKeys)
         {
+            // The map holds this very dictionary under that key: its theme is the one that the key stands for.
             if (themeDictionaries.TryGetValue(key, out object? value) && ReferenceEquals(value, dictionary))
             {
                 return FromThemeDictionaryKey(key, themeDictionaries.ContainsKey);
             }
         }
 
+        // Under none of the keys that the surface knows.
         return null;
     }
 
@@ -153,6 +155,7 @@ internal static class ThemeResourceThemes
         var facts = new List<ThemeScopeFacts>(scopes.Count);
         for (int index = 0; index < scopes.Count; index++)
         {
+            // The last scope has no next scope that it could be an entry of.
             string? theme = index + 1 < scopes.Count ? dictionaryTheme(scopes[index], scopes[index + 1]) : null;
             facts.Add(new(theme, requestedTheme(scopes[index])));
         }

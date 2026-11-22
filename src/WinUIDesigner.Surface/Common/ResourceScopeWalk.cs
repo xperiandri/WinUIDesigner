@@ -39,6 +39,7 @@ internal static class ResourceScopeWalk
         where TScope : class
         where TDictionary : class
     {
+        // The owner and its ancestors, nearest first; a scope without a dictionary has nothing to search.
         foreach (TScope scope in Ancestors(owner, parentOf))
         {
             if (dictionaryOf(scope) is { } dictionary)
@@ -47,6 +48,7 @@ internal static class ResourceScopeWalk
             }
         }
 
+        // Then the dictionaries that come after every scope; one that is missing is skipped.
         foreach (TDictionary? dictionary in last)
         {
             if (dictionary is not null)

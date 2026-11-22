@@ -749,6 +749,7 @@ internal sealed partial class SurfaceService
 
     private void CompleteActionBatch()
     {
+        // A RequestedTheme changed, or content came under a surface, during this batch.
         if (_themeReferencesNeedReapply)
         {
             ReapplyThemeReferences("an action batch");

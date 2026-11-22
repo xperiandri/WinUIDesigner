@@ -92,6 +92,7 @@ internal sealed class ThemeResourceRegistry
                     continue;
                 }
 
+                // The new value is in place: the entry follows the new theme.
                 if (apply(entry, theme))
                 {
                     _entries[entryKey] = entry with { Theme = theme };
@@ -99,6 +100,7 @@ internal sealed class ThemeResourceRegistry
                 }
                 else
                 {
+                    // The value could not be applied: the entry keeps its old theme and is tried again by the next pass.
                     failed++;
                 }
             }

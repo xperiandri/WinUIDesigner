@@ -42,6 +42,7 @@ internal sealed partial class SurfaceService
         _themeResourceEvaluationTicks += Stopwatch.GetTimestamp() - started;
         _evaluatedThemeResource = new(owner, key!, theme.Theme);
 
+        // Only a trace that is read pays for the description of the scope.
         if (WinUIDesignerLogger.IsVerboseLoggingEnabled)
         {
             string found = match.IsFrameworkFallback
@@ -152,6 +153,8 @@ internal sealed partial class SurfaceService
         public void Dispose()
         {
             int evaluations = service._themeResourceEvaluations - _evaluations;
+
+            // A document without a theme reference has nothing to report.
             if (evaluations > 0)
             {
                 double milliseconds = (service._themeResourceEvaluationTicks - _ticks) * 1000.0 / Stopwatch.Frequency;
