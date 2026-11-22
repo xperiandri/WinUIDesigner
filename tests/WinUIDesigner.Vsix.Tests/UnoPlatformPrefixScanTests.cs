@@ -298,7 +298,6 @@ public sealed class UnoPlatformPrefixScanTests
         }
     }
 
-
     [TestMethod]
     [DataRow("win", "http://schemas.microsoft.com/winfx/2006/xaml/presentation", false, "win", "Keep")]
     [DataRow("win", "http://schemas.microsoft.com/winfx/2006/xaml/presentation", false, "android", "Drop")]

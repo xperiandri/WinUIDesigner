@@ -5,8 +5,9 @@ using WinUIDesigner.Markup;
 using WinUIDesigner.Surface.Markup;
 
 /// <summary>
-/// Covers which Uno platform prefixes apply to which previewed platform. The verdict comes from the prefix:
-/// <c>win</c>, <c>not_android</c> and the default namespace all name the presentation namespace.
+/// Covers which Uno platform prefixes apply to which previewed platform. The verdict comes from the prefix, except
+/// on Windows, where the namespace decides (see <see cref="UnoPlatformPrefixes.Classify"/>): <c>win</c>,
+/// <c>not_android</c> and the default namespace all name the presentation namespace.
 /// </summary>
 [TestClass]
 public sealed class UnoPlatformPrefixesTests

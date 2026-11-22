@@ -13,11 +13,13 @@ namespace WinUIDesigner.Markup;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The decision is driven by the prefix: <c>win</c>, <c>not_android</c> and the default namespace
-/// all share the presentation URI. The prefixes are those of the "Available prefixes" tables of
-/// https://platform.uno/docs/articles/platform-specific-xaml.html, in every version of that page:
-/// Uno 7 names target frameworks (<c>desktop</c>, <c>tvos</c>, <c>winappsdk</c>), earlier versions also
-/// name the renderer (<c>skia</c>, <c>androidskia</c>) and the reference build of a library (<c>netstdref</c>).
+/// The decision is driven by the prefix, except on Windows, where the namespace decides (see
+/// <see cref="Classify"/>): <c>win</c>, <c>not_android</c> and the default namespace all share the
+/// presentation URI, so for every other target only the prefix tells them apart. The prefixes are those
+/// of the "Available prefixes" tables of https://platform.uno/docs/articles/platform-specific-xaml.html,
+/// in every version of that page: Uno 7 names target frameworks (<c>desktop</c>, <c>tvos</c>,
+/// <c>winappsdk</c>), earlier versions also name the renderer (<c>skia</c>, <c>androidskia</c>) and the
+/// reference build of a library (<c>netstdref</c>).
 /// </para>
 /// <para>
 /// The previewed platform is one of the target names of the table below. The classification is the same for every
