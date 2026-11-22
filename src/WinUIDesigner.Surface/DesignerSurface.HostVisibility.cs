@@ -14,8 +14,8 @@ internal sealed partial class DesignerSurface
     // Hiding the window and showing it again is tried this many times before the surface leaves the host as it is.
     private const int _MaximumHostVisibilityRepairs = 3;
 
-    // A timer that nothing refers to is collected, and does not fire.
-    private DispatcherQueueTimer? _hostVisibilityTimer;
+    // Created the first time that the framework says that the host is hidden, and disposed with the surface.
+    private HostVisibilityWatch? _hostVisibilityWatch;
 
     private int _hostVisibilityRepairs;
 
@@ -48,24 +48,17 @@ internal sealed partial class DesignerSurface
             _hostVisibilityRepairs = 0;
         }
 
-        DispatcherQueueTimer timer = _hostVisibilityTimer ??= DispatcherQueue.GetForCurrentThread().CreateTimer();
-        if (!timer.IsRunning)
-        {
-            timer.Interval = _HostVisibilityInterval;
-            timer.IsRepeating = true;
-            timer.Tick -= OnHostVisibilityTimerTick;
-            timer.Tick += OnHostVisibilityTimerTick;
-            timer.Start();
-        }
+        _hostVisibilityWatch ??= new HostVisibilityWatch(DispatcherQueue.GetForCurrentThread().CreateTimer(), _HostVisibilityInterval, OnHostVisibilityTimerTick);
+        _hostVisibilityWatch.Start();
     }
 
     private void StopWatchingHostVisibility()
     {
         _hostVisibilityRepairs = 0;
-        _hostVisibilityTimer?.Stop();
+        _hostVisibilityWatch?.Stop();
     }
 
-    private void OnHostVisibilityTimerTick(DispatcherQueueTimer sender, object args)
+    private void OnHostVisibilityTimerTick(HostVisibilityWatch watch)
     {
         if (_disposed || _xamlSource is null || _viewportRoot.XamlRoot is not { } root || root.IsHostVisible)
         {
@@ -87,7 +80,7 @@ internal sealed partial class DesignerSurface
                 break;
 
             case HostVisibilityAction.GiveUp:
-                sender.Stop();
+                watch.Stop();
                 WinUIDesignerLogger.LogWarning("Surface", $"The framework still says that the host of the island is hidden while its window is visible, after the window was hidden and shown again {_hostVisibilityRepairs} times; it is left as it is until Visual Studio shows or moves the surface.");
                 break;
         }

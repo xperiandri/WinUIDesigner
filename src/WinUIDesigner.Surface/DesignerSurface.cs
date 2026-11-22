@@ -396,7 +396,7 @@ internal sealed partial class DesignerSurface : IDisposable
             root.Changed -= OnXamlRootChanged;
         }
 
-        StopWatchingHostVisibility();
+        _hostVisibilityWatch?.Dispose();
 
         if (_compositionRenderingHandler is not null)
         {
