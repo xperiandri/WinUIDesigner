@@ -240,7 +240,7 @@ public sealed class ThemeResourceLookupTests
     public void SelfMergingDictionariesTerminate()
     {
         // A dictionary that merges itself, directly and through its theme dictionary, is searched once. Only the depth
-        // limit would end a lookup that searched it again at every level, after 3 to the power of 12 searches.
+        // limit would end a lookup that searched it again every time it met it, after 80,781 searches.
         var dictionary = new FakeDictionary("Self");
         dictionary.Merge(dictionary).Merge(dictionary);
         FakeDictionary themeDictionary = dictionary.Theme(ThemeResourceThemes.Default).Merge(dictionary);
