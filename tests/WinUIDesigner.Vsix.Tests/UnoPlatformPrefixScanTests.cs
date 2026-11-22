@@ -12,9 +12,6 @@ using WinUIDesigner.Markup;
 [TestClass]
 public sealed class UnoPlatformPrefixScanTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _MarkupCompatibility = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-
     // The markup of https://github.com/0x5bfa/WinUIDesigner/issues/5.
     private const string _IssuePage = """
         <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -52,7 +49,7 @@ public sealed class UnoPlatformPrefixScanTests
         Assert.IsTrue(scan.HasPlatformNamespaces);
         Assert.IsTrue(scan.HasPlatformPrefixedObjectElements);
         Assert.IsTrue(XamlNamespacePolicies.MayAffect(scan, UnoPlatformPrefixes.DefaultTargetPlatform, evaluateCondition: null));
-        Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(scan).Count);
+        Assert.IsEmpty(UnoPlatformPrefixes.FindMissingIgnorable(scan));
     }
 
     [TestMethod]
@@ -60,7 +57,7 @@ public sealed class UnoPlatformPrefixScanTests
     {
         // The cleaner passes attributes and property elements of an ignorable namespace through as written.
         string xaml =
-            $"<Page xmlns=\"{_Presentation}\" xmlns:mc=\"{_MarkupCompatibility}\" xmlns:win=\"{_Presentation}\" xmlns:android=\"http://uno.ui/android\" mc:Ignorable=\"android\">" +
+            $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:mc=\"{XamlNamespaces.MarkupCompatibility}\" xmlns:win=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\" mc:Ignorable=\"android\">" +
             "<Grid win:Tag=\"w\" android:Tag=\"a\"><android:Grid.RowDefinitions><RowDefinition /></android:Grid.RowDefinitions><win:Border /></Grid></Page>";
 
         XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
@@ -78,20 +75,20 @@ public sealed class UnoPlatformPrefixScanTests
     public void PageWithoutUnoNamespacesIsNotLookedAtFurther()
     {
         // win: alone is the presentation namespace: the cleaner resolves everything, nothing is replaced.
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:win=\"{_Presentation}\"><win:Border win:Tag=\"w\" /></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:win=\"{XamlNamespaces.Presentation}\"><win:Border win:Tag=\"w\" /></Page>";
 
         XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
 
         Assert.IsFalse(scan.HasPlatformNamespaces);
         Assert.IsFalse(scan.HasPlatformPrefixedObjectElements);
-        Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(scan).Count);
+        Assert.IsEmpty(UnoPlatformPrefixes.FindMissingIgnorable(scan));
         Assert.AreEqual(PlatformElementsBuild.PreparedXaml, UnoPlatformPrefixes.ChooseBuild(scan, reprepareRawElements: true, FailWhenCalled));
     }
 
     [TestMethod]
     public void PageThatOnlyDeclaresAPlatformNamespaceKeepsItsPreparedXaml()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"http://uno.ui/android\" />";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\" />";
 
         XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
 
@@ -164,7 +161,7 @@ public sealed class UnoPlatformPrefixScanTests
         XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
         IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(scan);
 
-        Assert.AreEqual(1, missing.Count);
+        Assert.HasCount(1, missing);
         Assert.AreEqual("not_win", missing[0].Prefix);
         Assert.AreEqual("http://uno.ui/not_win#using:My.App", missing[0].Uri.Original);
         Assert.AreEqual(4, missing[0].LineNumber);
@@ -173,7 +170,8 @@ public sealed class UnoPlatformPrefixScanTests
         // The prefix is applied all the same: its members are not part of the Windows preview.
         Assert.AreEqual(
             XamlPrefixDisposition.Drop,
-            UnoPlatformPrefixes.Classify("not_win", missing[0].Uri, scan.IsIgnorable("not_win"), UnoPlatformPrefixes.DefaultTargetPlatform));
+            UnoPlatformPrefixes.Classify("not_win", missing[0].Uri, scan.IsIgnorable("not_win"), UnoPlatformPrefixes.DefaultTargetPlatform)
+        );
         Assert.IsTrue(scan.HasPlatformPrefixedObjectElements);
     }
 
@@ -183,11 +181,11 @@ public sealed class UnoPlatformPrefixScanTests
     [DataRow("<Grid><android:Grid.RowDefinitions /></Grid>")]
     public void PlatformNamespaceIsUsedByAnElementAnAttributeOrAPropertyElement(string content)
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"http://uno.ui/android\">{content}</Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\">{content}</Page>";
 
         IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml));
 
-        Assert.AreEqual(1, missing.Count);
+        Assert.HasCount(1, missing);
         Assert.AreEqual("android", missing[0].Prefix);
     }
 
@@ -213,7 +211,7 @@ public sealed class UnoPlatformPrefixScanTests
         XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
 
         Assert.IsTrue(scan.HasPlatformNamespaces);
-        Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(scan).Count);
+        Assert.IsEmpty(UnoPlatformPrefixes.FindMissingIgnorable(scan));
     }
 
     [TestMethod]
@@ -223,8 +221,8 @@ public sealed class UnoPlatformPrefixScanTests
         // to the platform namespace with a CLR namespace, and writes an element under it: that use belongs to the
         // declaration of the grid, so the one of the page is not reported.
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:android="http://uno.ui/android">
-              <Grid xmlns:android="http://uno.ui/android#using:My.Droid">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}">
+              <Grid xmlns:android="{TestXamlNamespaces.Android}#using:My.Droid">
                 <android:Border />
               </Grid>
             </Page>
@@ -232,20 +230,20 @@ public sealed class UnoPlatformPrefixScanTests
 
         IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml));
 
-        Assert.AreEqual(1, missing.Count);
+        Assert.HasCount(1, missing);
         Assert.AreEqual(2, missing[0].LineNumber);
-        Assert.AreEqual("http://uno.ui/android#using:My.Droid", missing[0].Uri.Original);
+        Assert.AreEqual($"{TestXamlNamespaces.Android}#using:My.Droid", missing[0].Uri.Original);
     }
 
     [TestMethod]
     public void PlatformNamespaceWithAUsingSuffixIsUsedByItsPrefix()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:ios=\"http://uno.ui/ios#using:My.Ios\"><ios:Border /></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}#using:My.Droid\"><android:Border /></Page>";
 
         IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml));
 
-        Assert.AreEqual(1, missing.Count);
-        Assert.AreEqual("http://uno.ui/ios#using:My.Ios", missing[0].Uri.Original);
+        Assert.HasCount(1, missing);
+        Assert.AreEqual($"{TestXamlNamespaces.Android}#using:My.Droid", missing[0].Uri.Original);
     }
 
     [TestMethod]

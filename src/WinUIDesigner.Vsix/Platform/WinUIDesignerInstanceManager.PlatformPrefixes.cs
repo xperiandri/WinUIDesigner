@@ -49,6 +49,7 @@ internal sealed partial class WinUIDesignerInstanceManager
         var seen = new HashSet<int>();
         PreparePlatformElements(targetDocument, seen);
 
+        // App.xaml and the design-time resources are the business of the WinUI provider.
         if (MarkupProvider is WinUISurfaceProcessMarkupProvider provider)
         {
             // CreateRequestAsync sends App.xaml while it is prepared and the design-time resources only when they are
@@ -59,6 +60,7 @@ internal sealed partial class WinUIDesignerInstanceManager
                 PreparePlatformElements(application, seen);
             }
 
+            // The design-time resources are sent when they are exactly prepared.
             if (provider.DesignTimeResources is { ConstructionState: ConstructionState.Prepared } resources)
             {
                 PreparePlatformElements(resources, seen);
@@ -83,6 +85,7 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// </summary>
     private void PreparePlatformElements(ISurfaceProcessDocument? document, HashSet<int> seen)
     {
+        // A document that is missing, or that was looked at for this request already, needs nothing more.
         if (document is null || !seen.Add(document.DocumentId))
         {
             return;
@@ -121,6 +124,7 @@ internal sealed partial class WinUIDesignerInstanceManager
         }
         catch (Exception ex)
         {
+            // The document is built as Visual Studio prepared it.
             WinUIDesignerLogger.LogWarning("Platform", $"Preparing the Uno platform prefixes of document {documentId} failed; it is built as prepared.", ex);
         }
     }
@@ -129,6 +133,7 @@ internal sealed partial class WinUIDesignerInstanceManager
     {
         try
         {
+            // Only the markup provider of this extension can prepare a document a second time.
             return MarkupProvider is WinUISurfaceProcessMarkupProvider provider && provider.ReprepareRawPlatformElements(document);
         }
         catch (Exception ex)

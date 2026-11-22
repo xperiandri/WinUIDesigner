@@ -36,11 +36,13 @@ internal partial class WinUIInstanceBuilderPlatform
 
     public override FallbackTypeInfo GetFallbackTypeInfo(IType typeToReplace, bool forLayoutFault)
     {
+        // While a document is cleaned a second time, an element that cannot be resolved gets no stand-in.
         if (_keepUnresolvedElements > 0 && !forLayoutFault && FallbackTypeUtility.DoesTypeAlwaysNeedFallback(typeToReplace))
         {
             return FallbackTypeInfo.Invalid;
         }
 
+        // Every other stand-in is the one that Visual Studio chooses.
         return base.GetFallbackTypeInfo(typeToReplace, forLayoutFault);
     }
 

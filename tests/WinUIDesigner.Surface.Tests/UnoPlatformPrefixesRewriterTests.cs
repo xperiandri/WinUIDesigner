@@ -13,27 +13,24 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class UnoPlatformPrefixesRewriterTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _XamlLanguage = "http://schemas.microsoft.com/winfx/2006/xaml";
-    private const string _MarkupCompatibility = "http://schemas.openxmlformats.org/markup-compatibility/2006";
     private const string _DesignTime = "using:XSurfUwp";
     private const string _NullExtension = "{x:Null}";
 
-    private static readonly XNamespace _P = _Presentation;
-    private static readonly XNamespace _X = _XamlLanguage;
+    private static readonly XNamespace _P = XamlNamespaces.Presentation;
+    private static readonly XNamespace _X = XamlNamespaces.XamlLanguage;
     private static readonly XNamespace _D = _DesignTime;
 
     // The page of the issue as Visual Studio prepares it: xmlns:d is re-pointed to the designer's own
     // namespace and design-time attributes are added; everything under a platform prefix is as written.
     private static readonly string _IssuePage = $"""
         <Page xmlns:_0="{_DesignTime}"
-              xmlns="{_Presentation}"
-              xmlns:x="{_XamlLanguage}"
+              xmlns="{XamlNamespaces.Presentation}"
+              xmlns:x="{XamlNamespaces.XamlLanguage}"
               xmlns:d="{_DesignTime}"
-              xmlns:mc="{_MarkupCompatibility}"
-              xmlns:win="{_Presentation}"
-              xmlns:not_win="http://uno.ui/not_win"
-              xmlns:skia="http://uno.ui/skia"
+              xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
+              xmlns:win="{XamlNamespaces.Presentation}"
+              xmlns:not_win="{TestXamlNamespaces.NotWin}"
+              xmlns:skia="{TestXamlNamespaces.Skia}"
               mc:Ignorable="d not_win skia" _0:DT.ShouldDisableImplicitStyle="True" d:DT.DesignWidth="800">
           <StackPanel x:Name="Root">
             <win:Border xmlns:tv="using:WinUI.TableView" x:Name="OnWindows">
@@ -55,13 +52,13 @@ public sealed class UnoPlatformPrefixesRewriterTests
 
     // One page with a branch for each of several platforms.
     private static readonly string _MultiPlatformPage = $"""
-        <Page xmlns="{_Presentation}"
-              xmlns:mc="{_MarkupCompatibility}"
-              xmlns:win="{_Presentation}"
-              xmlns:not_android="{_Presentation}"
-              xmlns:android="http://uno.ui/android"
-              xmlns:not_win="http://uno.ui/not_win"
-              xmlns:ios="http://uno.ui/ios"
+        <Page xmlns="{XamlNamespaces.Presentation}"
+              xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
+              xmlns:win="{XamlNamespaces.Presentation}"
+              xmlns:not_android="{XamlNamespaces.Presentation}"
+              xmlns:android="{TestXamlNamespaces.Android}"
+              xmlns:not_win="{TestXamlNamespaces.NotWin}"
+              xmlns:ios="{TestXamlNamespaces.Ios}"
               mc:Ignorable="android not_win ios">
           <StackPanel>
             <win:Border Tag="windows" />
@@ -82,15 +79,16 @@ public sealed class UnoPlatformPrefixesRewriterTests
 
         Assert.IsTrue(result.Changed);
         Assert.AreEqual(2, result.DroppedElements);
-        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "ListView"));
+        Assert.DoesNotContain(element => element.Name.LocalName == "ListView", document.Descendants());
         CollectionAssert.AreEqual(
             new[] { "OnWindows" },
-            document.Descendants().Where(element => element.Name.LocalName == "Border").Select(Name).ToArray());
+            document.Descendants().Where(element => element.Name.LocalName == "Border").Select(Name).ToArray()
+        );
 
         // Nothing of an Uno namespace is left for the XAML reader, and the dropped elements are reported.
-        Assert.IsFalse(document.Descendants().Any(element => UnoPlatformPrefixes.IsPlatformUri(element.Name.NamespaceName)));
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("not_win:Border", StringComparison.Ordinal) && message.Contains("line 14", StringComparison.Ordinal)));
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("skia:ColumnDefinition", StringComparison.Ordinal) && message.Contains("line 19", StringComparison.Ordinal)));
+        Assert.DoesNotContain(element => UnoPlatformPrefixes.IsPlatformUri(element.Name.NamespaceName), document.Descendants());
+        Assert.Contains(message => message.Contains("not_win:Border", StringComparison.Ordinal) && message.Contains("line 14", StringComparison.Ordinal), result.Diagnostics);
+        Assert.Contains(message => message.Contains("skia:ColumnDefinition", StringComparison.Ordinal) && message.Contains("line 19", StringComparison.Ordinal), result.Diagnostics);
     }
 
     [TestMethod]
@@ -122,7 +120,8 @@ public sealed class UnoPlatformPrefixesRewriterTests
         CollectionAssert.AreEqual(new[] { "IsDoubleTapEnabled=True" }, PlainAttributes(document.Descendants(_P + "Grid").Single()));
         CollectionAssert.AreEqual(
             new[] { "SelectionFlyout={x:Null}", "TextReadingOrder=DetectFromContent" },
-            PlainAttributes(document.Descendants(_P + "TextBox").Single()));
+            PlainAttributes(document.Descendants(_P + "TextBox").Single())
+        );
         Assert.AreEqual(3, result.NormalizedMembers);
         Assert.AreEqual(0, result.DroppedAttributes);
         Assert.AreEqual(0, result.RepointedDeclarations);
@@ -144,11 +143,11 @@ public sealed class UnoPlatformPrefixesRewriterTests
         Assert.AreEqual(_DesignTime, (string?)root.Attribute(XNamespace.Xmlns + "_0"));
         Assert.AreEqual("True", (string?)root.Attribute(_D + "DT.ShouldDisableImplicitStyle"));
         Assert.AreEqual("800", (string?)root.Attribute(_D + "DT.DesignWidth"));
-        Assert.AreEqual("d not_win skia", (string?)root.Attribute(XNamespace.Get(_MarkupCompatibility) + "Ignorable"));
+        Assert.AreEqual("d not_win skia", (string?)root.Attribute(XNamespace.Get(XamlNamespaces.MarkupCompatibility) + "Ignorable"));
 
         // The declarations of the platform prefixes stay as well; nothing refers to the dropped ones any more.
-        Assert.AreEqual(_Presentation, (string?)root.Attribute(XNamespace.Xmlns + "win"));
-        Assert.AreEqual("http://uno.ui/not_win", (string?)root.Attribute(XNamespace.Xmlns + "not_win"));
+        Assert.AreEqual(XamlNamespaces.Presentation, (string?)root.Attribute(XNamespace.Xmlns + "win"));
+        Assert.AreEqual(TestXamlNamespaces.NotWin, (string?)root.Attribute(XNamespace.Xmlns + "not_win"));
         Assert.AreEqual("Root", (string?)root.Elements().Single().Attribute(_X + "Name"));
     }
 
@@ -167,7 +166,8 @@ public sealed class UnoPlatformPrefixesRewriterTests
         CollectionAssert.AreEqual(survivors, document.Descendants().Select(LineInfo).ToArray());
         CollectionAssert.AreEqual(
             new[] { "Page", "StackPanel", "Border", "TableView", "Grid", "Grid.ColumnDefinitions", "ColumnDefinition", "TextBox" },
-            document.Descendants().Select(element => element.Name.LocalName).ToArray());
+            document.Descendants().Select(element => element.Name.LocalName).ToArray()
+        );
     }
 
     [TestMethod]
@@ -175,7 +175,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     {
         // The XAML reader does not find win:Tag on an element whose own namespace is not the presentation namespace.
         string xaml = $"""
-            <Grid xmlns="{_Presentation}" xmlns:win="{_Presentation}" xmlns:prim="using:Microsoft.UI.Xaml.Controls.Primitives">
+            <Grid xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}" xmlns:prim="using:Microsoft.UI.Xaml.Controls.Primitives">
               <prim:ToggleButton win:Tag="w" win:Grid.Row="1" Content="toggle" />
             </Grid>
             """;
@@ -186,14 +186,14 @@ public sealed class UnoPlatformPrefixesRewriterTests
         Assert.AreEqual(XNamespace.Get("using:Microsoft.UI.Xaml.Controls.Primitives") + "ToggleButton", button.Name);
         CollectionAssert.AreEqual(new[] { "Tag=w", "Grid.Row=1", "Content=toggle" }, PlainAttributes(button));
         Assert.AreEqual(2, result.NormalizedMembers);
-        StringAssert.Contains(document.ToString(SaveOptions.DisableFormatting), "<prim:ToggleButton Tag=\"w\" Grid.Row=\"1\" Content=\"toggle\" />");
+        Assert.Contains("<prim:ToggleButton Tag=\"w\" Grid.Row=\"1\" Content=\"toggle\" />", document.ToString(SaveOptions.DisableFormatting));
     }
 
     [TestMethod]
     public void PropertyElementFollowsItsPrefix()
     {
         string xaml = $"""
-            <Grid xmlns="{_Presentation}" xmlns:mc="{_MarkupCompatibility}" xmlns:win="{_Presentation}" xmlns:not_win="http://uno.ui/not_win" mc:Ignorable="not_win">
+            <Grid xmlns="{XamlNamespaces.Presentation}" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" xmlns:win="{XamlNamespaces.Presentation}" xmlns:not_win="{TestXamlNamespaces.NotWin}" mc:Ignorable="not_win">
               <win:Grid.ColumnDefinitions>
                 <ColumnDefinition />
               </win:Grid.ColumnDefinitions>
@@ -206,7 +206,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(xaml, "win", out XDocument document);
 
         CollectionAssert.AreEqual(new[] { _P + "Grid.ColumnDefinitions" }, document.Root!.Elements().Select(element => element.Name).ToArray());
-        Assert.IsFalse(document.Descendants(_P + "RowDefinition").Any());
+        Assert.IsEmpty(document.Descendants(_P + "RowDefinition"));
         Assert.AreEqual(1, result.DroppedElements);
     }
 
@@ -233,14 +233,15 @@ public sealed class UnoPlatformPrefixesRewriterTests
         Assert.IsTrue(document.Descendants().All(element => element.Name.Namespace == _P));
         CollectionAssert.AreEqual(
             new[] { "Text=inside android", "Text=on Android|FontSize=12" },
-            document.Descendants(_P + "TextBlock").Select(element => string.Join("|", PlainAttributes(element))).ToArray());
+            document.Descendants(_P + "TextBlock").Select(element => string.Join("|", PlainAttributes(element))).ToArray()
+        );
         Assert.AreEqual(2, result.DroppedElements);
         Assert.AreEqual(2, result.DroppedAttributes);
 
         // The kept Uno namespaces now name the presentation namespace, so prefixed values keep resolving.
-        Assert.AreEqual(_Presentation, (string?)document.Root!.Attribute(XNamespace.Xmlns + "android"));
-        Assert.AreEqual(_Presentation, (string?)document.Root.Attribute(XNamespace.Xmlns + "not_win"));
-        Assert.AreEqual("http://uno.ui/ios", (string?)document.Root.Attribute(XNamespace.Xmlns + "ios"));
+        Assert.AreEqual(XamlNamespaces.Presentation, (string?)document.Root!.Attribute(XNamespace.Xmlns + "android"));
+        Assert.AreEqual(XamlNamespaces.Presentation, (string?)document.Root.Attribute(XNamespace.Xmlns + "not_win"));
+        Assert.AreEqual(TestXamlNamespaces.Ios, (string?)document.Root.Attribute(XNamespace.Xmlns + "ios"));
         Assert.AreEqual(2, result.RepointedDeclarations);
     }
 
@@ -248,7 +249,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     public void PlatformPrefixThatIsMissingFromIgnorableIsStillDropped()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:android="http://uno.ui/android">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}">
               <android:Border />
               <TextBlock android:Text="droid" Text="everywhere" />
             </StackPanel>
@@ -264,7 +265,8 @@ public sealed class UnoPlatformPrefixesRewriterTests
         // The caller reports the declaration the XAML compiler would reject.
         CollectionAssert.AreEqual(
             new[] { "android" },
-            UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml)).Select(declaration => declaration.Prefix).ToArray());
+            UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml)).Select(declaration => declaration.Prefix).ToArray()
+        );
     }
 
     [TestMethod]
@@ -272,7 +274,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     {
         // The Windows XAML compiler resolves the presentation namespace whatever the prefix is called.
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:not_win="{_Presentation}" xmlns:android="{_Presentation}">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:not_win="{XamlNamespaces.Presentation}" xmlns:android="{XamlNamespaces.Presentation}">
               <not_win:Border Tag="kept" android:Padding="4" />
             </StackPanel>
             """;
@@ -297,7 +299,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     public void UnknownUnoPrefixIsDroppedWhenItIsIgnorableAndLeftOtherwise()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:mc="{_MarkupCompatibility}" xmlns:legacy="http://uno.ui/legacy" xmlns:other="http://uno.ui/other" mc:Ignorable="legacy">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" xmlns:legacy="http://uno.ui/legacy" xmlns:other="http://uno.ui/other" mc:Ignorable="legacy">
               <legacy:Border legacy:Tag="1" />
               <other:Border />
               <TextBlock legacy:Text="old" Text="new" />
@@ -309,7 +311,8 @@ public sealed class UnoPlatformPrefixesRewriterTests
         // The element that is not ignorable stays for the XAML reader to reject, as the XAML compiler would.
         CollectionAssert.AreEqual(
             new[] { XNamespace.Get("http://uno.ui/other") + "Border", _P + "TextBlock" },
-            document.Root!.Elements().Select(element => element.Name).ToArray());
+            document.Root!.Elements().Select(element => element.Name).ToArray()
+        );
         CollectionAssert.AreEqual(new[] { "Text=new" }, PlainAttributes(document.Descendants(_P + "TextBlock").Single()));
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(1, result.DroppedAttributes);
@@ -319,7 +322,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     public void UsingSuffixNamesTheNamespaceOfAKeptPrefixAndChangesNothingForADroppedOne()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:mc="{_MarkupCompatibility}" xmlns:android="http://uno.ui/android#using:My.Droid;My.Other" mc:Ignorable="android">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" xmlns:android="{TestXamlNamespaces.Android}#using:My.Droid;My.Other" mc:Ignorable="android">
               <android:NativeView android:Tag="x" />
               <TextBlock />
             </StackPanel>
@@ -341,7 +344,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     public void PrefixOfAClrNamespaceIsNotAPlatformPrefixWhateverItIsCalled()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:skia="using:SkiaSharp.Views.Windows" xmlns:desktop="using:My.App.Desktop">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:skia="using:SkiaSharp.Views.Windows" xmlns:desktop="using:My.App.Desktop">
               <skia:SKXamlCanvas skia:Tag="1" />
               <desktop:Shell />
             </StackPanel>
@@ -361,7 +364,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     public void DocumentWithoutPlatformPrefixesIsNotTouched()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" xmlns:d="{_DesignTime}" xmlns:local="using:My.App" xmlns:mc="{_MarkupCompatibility}" mc:Ignorable="d">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:d="{_DesignTime}" xmlns:local="using:My.App" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" mc:Ignorable="d">
               <local:Card x:Name="card" d:DT.DesignWidth="800" Title="Why?" />
             </Page>
             """;
@@ -370,7 +373,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(xaml, "win", out XDocument document);
 
         Assert.AreSame(XamlNamespaceRewriteResult.Unchanged, result);
-        Assert.AreEqual(0, result.Diagnostics.Count);
+        Assert.IsEmpty(result.Diagnostics);
         Assert.AreEqual(before, document.ToString(SaveOptions.DisableFormatting));
     }
 
@@ -378,7 +381,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
     public void DocumentThatOnlyUsesTheWindowsPrefixOnElementsKeepsItsText()
     {
         // win:Border already is an element of the presentation namespace: there is nothing to rewrite.
-        string xaml = $"""<Grid xmlns="{_Presentation}" xmlns:win="{_Presentation}"><win:Border><win:TextBlock /></win:Border></Grid>""";
+        string xaml = $"""<Grid xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}"><win:Border><win:TextBlock /></win:Border></Grid>""";
         string before = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace).ToString(SaveOptions.DisableFormatting);
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, "win", out XDocument document);
@@ -393,10 +396,7 @@ public sealed class UnoPlatformPrefixesRewriterTests
         return XamlNamespaceRewriter.Rewrite(document, new XamlNamespaceRewriteOptions { SourceXaml = xaml, TargetPlatform = targetPlatform });
     }
 
-    private static string? Name(XElement element)
-    {
-        return (string?)element.Attribute(_X + "Name");
-    }
+    private static string? Name(XElement element) => (string?)element.Attribute(_X + "Name");
 
     private static string?[] BorderTags(XDocument document)
     {

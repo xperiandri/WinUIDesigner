@@ -93,11 +93,14 @@ internal static class UnoPlatformPrefixes
     {
         platform = string.Empty;
         isNegated = false;
+
+        // There is no prefix to look at.
         if (prefix is null || prefix.Length == 0)
         {
             return false;
         }
 
+        // "xamarin" is the Uno 4 spelling of "not_win".
         if (string.Equals(prefix, _Xamarin, StringComparison.Ordinal))
         {
             platform = _Windows;
@@ -105,8 +108,11 @@ internal static class UnoPlatformPrefixes
             return true;
         }
 
+        // Any other prefix names a platform of the table, with or without the negation.
         bool hasNegation = prefix.StartsWith(_NegationPrefix, StringComparison.Ordinal);
         string name = hasNegation ? prefix.Substring(_NegationPrefix.Length) : prefix;
+
+        // The table does not know the platform: the prefix is an ordinary one.
         if (FindTargets(name) is null)
         {
             return false;
@@ -151,6 +157,7 @@ internal static class UnoPlatformPrefixes
             return XamlPrefixDisposition.Leave;
         }
 
+        // A platform prefix of the table: the previewed platform decides.
         if (TryParse(prefix, out string platform, out bool isNegated))
         {
             // A prefix bound to a CLR namespace names the types of that namespace, whatever it is called:
@@ -179,6 +186,7 @@ internal static class UnoPlatformPrefixes
             return XamlPrefixDisposition.Drop;
         }
 
+        // Any other prefix is no business of the platform policy.
         return XamlPrefixDisposition.Leave;
     }
 
@@ -276,10 +284,7 @@ internal static class UnoPlatformPrefixes
         return PlatformElementsBuild.ConstructionActions;
     }
 
-    private static KeyValuePair<string, string[]> Platform(string prefix, params string[] targets)
-    {
-        return new KeyValuePair<string, string[]>(prefix, targets);
-    }
+    private static KeyValuePair<string, string[]> Platform(string prefix, params string[] targets) => new(prefix, targets);
 
     private static bool IsIncluded(string platform, bool isNegated, string? targetPlatform)
     {
@@ -302,11 +307,13 @@ internal static class UnoPlatformPrefixes
 
     private static string NormalizeTarget(string? targetPlatform)
     {
+        // No target at all means the platform that is previewed by default.
         if (targetPlatform is null || targetPlatform.Length == 0)
         {
             return DefaultTargetPlatform;
         }
 
+        // The Uno 7 name of the Windows target is the same target.
         return string.Equals(targetPlatform, _WindowsAppSdk, StringComparison.Ordinal) ? _Windows : targetPlatform;
     }
 
