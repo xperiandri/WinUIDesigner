@@ -55,6 +55,7 @@ internal sealed class XamlConditionQuery
     /// </param>
     public static XamlConditionQuery Create(string? condition, Func<string, string?>? resolveNamespace)
     {
+        // A built-in method, or a text that is no condition, has no condition type to look for.
         XamlCondition parsed = XamlCondition.Parse(condition);
         if (parsed.Kind != XamlConditionKind.Custom)
         {
@@ -84,10 +85,7 @@ internal sealed class XamlConditionQuery
     /// </summary>
     /// <param name="condition">The text of <see cref="Condition"/>.</param>
     /// <param name="predicateNamespace">The value of <see cref="PredicateNamespace"/>.</param>
-    public static XamlConditionQuery Create(string? condition, string? predicateNamespace)
-    {
-        return Create(condition, _ => predicateNamespace);
-    }
+    public static XamlConditionQuery Create(string? condition, string? predicateNamespace) => Create(condition, _ => predicateNamespace);
 
     private static XamlConditionQuery CreateBuiltIn(XamlCondition condition)
     {
@@ -98,6 +96,7 @@ internal sealed class XamlConditionQuery
 
     private static string? GetClrNamespace(string? namespaceUri)
     {
+        // The prefix is not declared.
         if (namespaceUri is null)
         {
             return null;

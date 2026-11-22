@@ -31,10 +31,7 @@ internal readonly struct XamlAttributeName
     public string LocalName => _localName ?? string.Empty;
 
     /// <inheritdoc/>
-    public override string ToString()
-    {
-        return Prefix.Length == 0 ? LocalName : $"{Prefix}:{LocalName}";
-    }
+    public override string ToString() => Prefix.Length == 0 ? LocalName : $"{Prefix}:{LocalName}";
 }
 
 /// <summary>
@@ -56,11 +53,14 @@ internal static class XamlStartTagReader
     public static IReadOnlyList<XamlAttributeName> ReadAttributeNames(string? startTagText)
     {
         var names = new List<XamlAttributeName>();
+
+        // There is no text.
         if (startTagText is null)
         {
             return names;
         }
 
+        // The text does not begin with a start tag.
         int index = SkipWhitespace(startTagText, 0);
         if (index >= startTagText.Length || startTagText[index] != '<')
         {
@@ -76,6 +76,7 @@ internal static class XamlStartTagReader
 
         while (true)
         {
+            // The end of the tag: there are no more attributes.
             index = SkipWhitespace(startTagText, index);
             if (index >= startTagText.Length || startTagText[index] == '>' || startTagText[index] == '/')
             {
@@ -90,12 +91,14 @@ internal static class XamlStartTagReader
 
             string qualifiedName = startTagText.Substring(nameStart, index - nameStart);
 
+            // An attribute without a value is no XML.
             index = SkipWhitespace(startTagText, index);
             if (index >= startTagText.Length || startTagText[index] != '=')
             {
                 return names;
             }
 
+            // A value is quoted.
             index = SkipWhitespace(startTagText, index + 1);
             if (index >= startTagText.Length || (startTagText[index] != '"' && startTagText[index] != '\''))
             {
@@ -127,6 +130,7 @@ internal static class XamlStartTagReader
     /// <returns><see langword="false"/> when the text does not begin with an attribute name.</returns>
     public static bool TryReadAttributeName(string? attributeText, out XamlAttributeName name)
     {
+        // There is no text.
         name = default;
         if (attributeText is null)
         {
@@ -149,12 +153,14 @@ internal static class XamlStartTagReader
     /// <returns><see langword="false"/> when the text does not begin with a start tag that has a name.</returns>
     public static bool TryReadElementName(string? startTagText, out XamlAttributeName name)
     {
+        // There is no text.
         name = default;
         if (startTagText is null)
         {
             return false;
         }
 
+        // The text does not begin with a start tag.
         int start = SkipWhitespace(startTagText, 0);
         if (start >= startTagText.Length || startTagText[start] != '<')
         {
@@ -181,6 +187,8 @@ internal static class XamlStartTagReader
     public static IReadOnlyList<XamlAttributeName> ReadPropertyElementNames(string? contentText)
     {
         var names = new List<XamlAttributeName>();
+
+        // There is no text.
         if (contentText is null)
         {
             return names;
@@ -191,6 +199,7 @@ internal static class XamlStartTagReader
         int index = 0;
         while (index < contentText.Length)
         {
+            // No tag is left in the text.
             int open = contentText.IndexOf('<', index);
             if (open < 0)
             {
@@ -237,12 +246,14 @@ internal static class XamlStartTagReader
                 nameEnd++;
             }
 
+            // The tag is not closed.
             int tagEnd = FindTagEnd(contentText, nameEnd);
             if (tagEnd < 0)
             {
                 break;
             }
 
+            // A property element is a child of the element itself whose name has a type and a property.
             if (depth == 0
                 && TryParseName(contentText.Substring(open + 1, nameEnd - open - 1), out XamlAttributeName name)
                 && name.LocalName.IndexOf('.') > 0)
@@ -250,6 +261,7 @@ internal static class XamlStartTagReader
                 names.Add(name);
             }
 
+            // A tag that does not close itself opens a child.
             if (contentText[tagEnd - 1] != '/')
             {
                 depth++;
@@ -271,6 +283,7 @@ internal static class XamlStartTagReader
     {
         for (; index < text.Length; index++)
         {
+            // The end of the tag.
             char current = text[index];
             if (current == '>')
             {
@@ -280,6 +293,7 @@ internal static class XamlStartTagReader
             // The value of an attribute ends at the quote it began with and may contain a '>'.
             if (current == '"' || current == '\'')
             {
+                // The quote is not closed.
                 int valueEnd = text.IndexOf(current, index + 1);
                 if (valueEnd < 0)
                 {
@@ -295,6 +309,7 @@ internal static class XamlStartTagReader
 
     private static bool TryParseName(string qualifiedName, out XamlAttributeName name)
     {
+        // A name, or a prefix and a name, each beginning with a letter or an underscore; one colon at most.
         int colon = qualifiedName.IndexOf(':');
         if (qualifiedName.Length == 0
             || colon == 0

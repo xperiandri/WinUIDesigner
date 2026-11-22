@@ -151,7 +151,8 @@ internal sealed partial class WinUIDesignerInstanceManager
                     "Platform",
                     $"The value of {lost} on <{parentNode.Type.Name}> is lost while the document is built from construction actions: "
                     + $"{dropped.Name} follows it and does not apply, and Visual Studio's document model keeps only the last value written for a property. "
-                    + "The property stays unset in the preview. Writing the member that applies last avoids this.");
+                    + "The property stays unset in the preview. Writing the member that applies last avoids this."
+                );
             }
         }
         catch (Exception ex)

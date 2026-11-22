@@ -104,7 +104,8 @@ internal sealed class XamlConditionAnswers
         _trace = trace;
         _conditions = new XamlConditionService(
             localProbes ?? throw new ArgumentNullException(nameof(localProbes)),
-            message => Report($"Conditional XAML: {message}"));
+            message => Report($"Conditional XAML: {message}")
+        );
     }
 
     /// <summary>
@@ -158,10 +159,7 @@ internal sealed class XamlConditionAnswers
     /// </summary>
     /// <param name="queries">The conditions of the documents that are about to be built; may be empty.</param>
     /// <param name="timeout">How long to wait. The surface answers in the order it receives messages.</param>
-    public Task AskAsync(IReadOnlyCollection<XamlConditionQuery> queries, TimeSpan timeout)
-    {
-        return AskAsync(queries, timeout, timeout);
-    }
+    public Task AskAsync(IReadOnlyCollection<XamlConditionQuery> queries, TimeSpan timeout) => AskAsync(queries, timeout, timeout);
 
     /// <summary>
     /// Asks the surface the questions it has not been asked yet, waits a limited time for the answers that

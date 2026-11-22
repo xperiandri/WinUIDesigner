@@ -126,7 +126,7 @@ public sealed class ConditionalXamlRewriteTests
         Assert.Contains("set twice", warnings[0]);
         Assert.Contains("line 1", warnings[0]);
         Assert.DoesNotContain(message => message.Contains("twice", StringComparison.Ordinal), reports);
-        CollectionAssert.Contains(result.Diagnostics.ToArray(), warnings[0]);
+        Assert.Contains(warnings[0], result.Diagnostics);
     }
 
     [TestMethod]
@@ -216,7 +216,7 @@ public sealed class ConditionalXamlRewriteTests
         // What the XAML reader is given is the serialized document, so that is what has to be right.
         XDocument reloaded = Reload(document);
         XElement merged = reloaded.Root!.Element(_P + "ResourceDictionary.MergedDictionaries")!;
-        Assert.AreEqual(expectedDictionaries, merged.Elements().Count());
+        Assert.HasCount(expectedDictionaries, merged.Elements());
         if (expectedDictionaries == 1)
         {
             // The element is in the presentation namespace although it redeclares the default namespace for itself.
@@ -245,7 +245,8 @@ public sealed class ConditionalXamlRewriteTests
 
         CollectionAssert.AreEqual(
             new[] { "Padding=4", "CornerRadius=8" },
-            document.Root!.Elements(_P + "Setter").Select(setter => $"{(string?)setter.Attribute("Property")}={(string?)setter.Attribute("Value")}").ToArray());
+            document.Root!.Elements(_P + "Setter").Select(setter => $"{(string?)setter.Attribute("Property")}={(string?)setter.Attribute("Value")}").ToArray()
+        );
         Assert.AreEqual(2, result.DroppedElements);
         Assert.HasCount(2, document.Root.Elements());
     }
@@ -270,7 +271,8 @@ public sealed class ConditionalXamlRewriteTests
 
         CollectionAssert.AreEqual(
             new[] { "outer", "inner again", "outer again" },
-            document.Descendants(_P + "Border").Select(border => (string?)border.Attribute("Tag")).ToArray());
+            document.Descendants(_P + "Border").Select(border => (string?)border.Attribute("Tag")).ToArray()
+        );
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(3, result.RepointedDeclarations);
         AssertNoConditionIsLeft(document);
@@ -333,7 +335,8 @@ public sealed class ConditionalXamlRewriteTests
         // Each condition was evaluated once, with the argument as written; the declaration of "cond" is untouched.
         CollectionAssert.AreEquivalent(
             new[] { "custom My.App.FeatureFlagCondition[NewExperience]", "custom My.App.FeatureFlagCondition[LegacyMode]" },
-            probes.Calls);
+            probes.Calls
+        );
         Assert.AreEqual("using:My.App", (string?)document.Root!.Attribute(XNamespace.Xmlns + "cond"));
         AssertNoConditionIsLeft(document);
     }
@@ -453,7 +456,8 @@ public sealed class ConditionalXamlRewriteTests
 
         CollectionAssert.AreEqual(
             new[] { "SolidColorBrush Accent Red", "Style Card Border" },
-            document.Root!.Elements().Select(element => $"{element.Name.LocalName} {(string?)element.Attribute(_X + "Key")} {(string?)element.Attribute("Color") ?? (string?)element.Attribute("TargetType")}").ToArray());
+            document.Root!.Elements().Select(element => $"{element.Name.LocalName} {(string?)element.Attribute(_X + "Key")} {(string?)element.Attribute("Color") ?? (string?)element.Attribute("TargetType")}").ToArray()
+        );
         Assert.IsTrue(document.Root.Elements().All(element => element.Name.Namespace == _P));
         Assert.AreEqual(2, result.DroppedElements);
     }
@@ -562,7 +566,8 @@ public sealed class ConditionalXamlRewriteTests
                 "managed property Microsoft.UI.Xaml.Controls.Control.CornerRadius",
                 "managed property Microsoft.UI.Xaml.Controls.Control.NoSuchProperty",
             },
-            probes.Calls);
+            probes.Calls
+        );
     }
 
     [TestMethod]
@@ -631,7 +636,8 @@ public sealed class ConditionalXamlRewriteTests
         XElement panel = document.Root!.Element(_P + "StackPanel")!;
         CollectionAssert.AreEqual(
             new[] { _P + "TextBlock", _P + "TextBlock", _P + "Border", _P + "Border", primitives + "ToggleButton", _P + "Border" },
-            panel.Elements().Select(element => element.Name).ToArray());
+            panel.Elements().Select(element => element.Name).ToArray()
+        );
         CollectionAssert.AreEqual(new[] { "c7", "c99n" }, Texts(document));
 
         // Both borders get the branch that holds, whichever attribute comes first, and keep their design-time attribute.
@@ -675,10 +681,7 @@ public sealed class ConditionalXamlRewriteTests
     /// <summary>
     /// Returns the document as the XAML reader gets it: serialized and parsed again.
     /// </summary>
-    private static XDocument Reload(XDocument document)
-    {
-        return XDocument.Parse(document.ToString(SaveOptions.DisableFormatting));
-    }
+    private static XDocument Reload(XDocument document) => XDocument.Parse(document.ToString(SaveOptions.DisableFormatting));
 
     private static void AssertNoConditionIsLeft(XDocument document)
     {
@@ -757,7 +760,8 @@ public sealed class ConditionalXamlRewriteTests
                         };
                     },
                 },
-                Reports.Add);
+                Reports.Add
+            );
         }
 
         public XamlConditionService Conditions { get; }

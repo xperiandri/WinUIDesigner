@@ -73,7 +73,8 @@ public sealed class XamlConditionAnswersTests
         // A malformed condition and an empty one need no surface.
         CollectionAssert.AreEquivalent(
             new[] { $"{_C7}|", $"{_C99}|", $"{_NewExperience}|using:My.App", $"{_LegacyMode}|using:My.App", $"{_ColorPicker}|" },
-            surface.Requests[0].Conditions!.Zip(surface.Requests[0].PredicateNamespaces!, (condition, predicateNamespace) => $"{condition}|{predicateNamespace}").ToArray());
+            surface.Requests[0].Conditions!.Zip(surface.Requests[0].PredicateNamespaces!, (condition, predicateNamespace) => $"{condition}|{predicateNamespace}").ToArray()
+        );
 
         Assert.AreEqual(true, answers.Evaluate(_C7, Namespaces));
         Assert.AreEqual(false, answers.Evaluate(_C7N, Namespaces));
@@ -383,7 +384,8 @@ public sealed class XamlConditionAnswersTests
         [
             new EvaluateXamlConditionsResponse { Outcomes = [], Error = "the surface is busy" },
             new EvaluateXamlConditionsResponse { Outcomes = [true, true, true] },
-        ]);
+        ]
+        );
         var surface = new FakeSurface();
         surface.Reply = request => Task.FromResult(replies.Count != 0 ? replies.Dequeue() : surface.Answer(request));
         XamlConditionAnswers answers = surface.CreateAnswers();
@@ -458,7 +460,8 @@ public sealed class XamlConditionAnswersTests
             CancellationToken.None,
             () => throw new InvalidOperationException("the listener failed"),
             new XamlConditionProbeSet(),
-            (_, _) => throw new InvalidOperationException("the log is closed"));
+            (_, _) => throw new InvalidOperationException("the log is closed")
+        );
 
         await answers.AskAsync(Queries(_C7, "IsTypePresent("), _Long);
 
@@ -731,7 +734,8 @@ public sealed class XamlConditionAnswersTests
                 proceed.Wait(_Long);
             },
             new XamlConditionProbeSet(),
-            (_, _) => { });
+            (_, _) => { }
+        );
         await answers.AskAsync([], _Long);
         await WaitFor(() => !answers.IsRequestInFlight);
 
@@ -759,7 +763,8 @@ public sealed class XamlConditionAnswersTests
             CancellationToken.None,
             () => appliedOn = Environment.CurrentManagedThreadId,
             new XamlConditionProbeSet(),
-            (_, _) => { });
+            (_, _) => { }
+        );
         using var context = new SingleThreadContext();
 
         // The document is built on the thread of its caller next; the answers must not take effect on another one.

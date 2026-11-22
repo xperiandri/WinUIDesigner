@@ -25,7 +25,8 @@ public sealed class XamlConditionServiceTests
 
         CollectionAssert.AreEqual(
             new[] { $"contract {_Contract} 7", $"contract {_Contract} 99", $"contract {_Contract} 7.2" },
-            probes.Calls);
+            probes.Calls
+        );
         Assert.IsEmpty(probes.Reports);
     }
 
@@ -95,7 +96,8 @@ public sealed class XamlConditionServiceTests
 
         CollectionAssert.AreEqual(
             new[] { "custom My.App.FeatureFlagCondition[ NewExperience, 2 ]", "custom My.App.FeatureFlagCondition[NewExperience, 2]" },
-            probes.Calls);
+            probes.Calls
+        );
         Assert.IsEmpty(probes.Reports);
     }
 
@@ -116,7 +118,8 @@ public sealed class XamlConditionServiceTests
         conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:Other.App")));
         CollectionAssert.AreEqual(
             new[] { "custom My.App.Flag[On]", "custom My.App.Flag[Off]", "custom Other.App.Flag[On]" },
-            probes.Calls);
+            probes.Calls
+        );
     }
 
     [TestMethod]
@@ -260,7 +263,8 @@ public sealed class XamlConditionServiceTests
 
         CollectionAssert.AreEqual(
             new[] { $"contract {_Contract} 7", $"custom My.App.IsApiContractPresent[{_Contract},7]" },
-            probes.Calls);
+            probes.Calls
+        );
     }
 
     [TestMethod]
@@ -418,10 +422,7 @@ public sealed class XamlConditionServiceTests
         Assert.IsTrue(new XamlConditionService(new XamlConditionProbeSet { EvaluateCustom = (_, _) => true }).CanEvaluate(query));
     }
 
-    private static string? NoNamespaces(string prefix)
-    {
-        return null;
-    }
+    private static string? NoNamespaces(string prefix) => null;
 
     private static Func<string, string?> Namespaces(params (string Prefix, string Namespace)[] declarations)
     {

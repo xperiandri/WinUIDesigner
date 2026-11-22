@@ -47,10 +47,7 @@ public sealed class XamlRebuildTargetsTests
     }
 
     [TestMethod]
-    public void NothingIsBuiltForNoNodes()
-    {
-        Assert.IsEmpty(XamlRebuildTargets.Minimize([], (Node node) => node.Parent));
-    }
+    public void NothingIsBuiltForNoNodes() => Assert.IsEmpty(XamlRebuildTargets.Minimize([], (Node node) => node.Parent));
 
     [TestMethod]
     public void NodeIsItselfWhateverEqualsSaysOfIt()

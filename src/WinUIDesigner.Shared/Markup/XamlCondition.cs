@@ -63,7 +63,8 @@ internal sealed class XamlCondition
 
     private static readonly string[] _NoArguments = new string[0];
     private static readonly XamlCondition _Empty = new(
-        string.Empty, XamlConditionKind.Empty, isNegated: false, string.Empty, string.Empty, string.Empty, _NoArguments, 0, null, string.Empty, error: null);
+        string.Empty, XamlConditionKind.Empty, isNegated: false, string.Empty, string.Empty, string.Empty, _NoArguments, 0, null, string.Empty, error: null
+    );
 
     private readonly string[] _arguments;
 
@@ -167,17 +168,20 @@ internal sealed class XamlCondition
     /// </summary>
     public static XamlCondition Parse(string? text)
     {
+        // There is no predicate after the '?'.
         if (text is null || text.Length == 0)
         {
             return _Empty;
         }
 
+        // There is no argument list.
         int open = text.IndexOf('(');
         if (open < 0)
         {
             return Invalid(text, "the argument list is missing: a condition is written as Name(arguments)");
         }
 
+        // The argument list is not the end of the text.
         if (text[text.Length - 1] != ')')
         {
             return Invalid(text, text.IndexOf(')', open) < 0
@@ -300,6 +304,7 @@ internal sealed class XamlCondition
     /// </summary>
     private static bool TryParseVersion(string text, out int version)
     {
+        // A version is one to five digits: the largest number is 65535.
         version = 0;
         if (text.Length == 0 || text.Length > 5)
         {
@@ -308,6 +313,7 @@ internal sealed class XamlCondition
 
         foreach (char character in text)
         {
+            // Anything but a digit makes the text no plain number.
             if (character < '0' || character > '9')
             {
                 return false;
@@ -321,6 +327,7 @@ internal sealed class XamlCondition
 
     private static bool IsName(string text, bool isPrefix)
     {
+        // A name begins with a letter or an underscore.
         if (text.Length == 0 || !(char.IsLetter(text[0]) || text[0] == '_'))
         {
             return false;

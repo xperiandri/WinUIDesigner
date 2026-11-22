@@ -92,15 +92,18 @@ internal static class XamlConditionProbes
 
     /// <summary>
     /// Creates a custom condition and evaluates it. Conditions are objects of the previewed application and
-    /// usually derive from <c>DependencyObject</c>, so this has to run on the UI thread.
+    /// usually derive from <see cref="Microsoft.UI.Xaml.DependencyObject"/>, so this has to run on the UI thread.
     /// </summary>
     /// <param name="typeName">The full name of a type that implements <see cref="IXamlCondition"/>.</param>
     /// <param name="argument">The text between the parentheses of the condition, exactly as written.</param>
     /// <exception cref="Exception">The type cannot be found, is not a condition, or fails.</exception>
     public static bool? EvaluateCustom(string typeName, string argument)
     {
+        // No assembly that can be loaded here defines the type.
         Type type = FindType(typeName, loadProjections: false)
             ?? throw new TypeLoadException($"The type '{typeName}' was not found. Build the project so that the designer can load its assembly.");
+
+        // The type exists and is no condition.
         if (!typeof(IXamlCondition).IsAssignableFrom(type))
         {
             throw new InvalidCastException($"The type '{typeName}' does not implement {typeof(IXamlCondition).FullName}.");
@@ -136,17 +139,19 @@ internal static class XamlConditionProbes
     /// projection assemblies of the Windows App SDK that are not loaded yet.
     /// </summary>
     /// <remarks>
-    /// The name is taken as written. <c>XamlRuntimeUtilities.ResolveType</c> is of no use here: it turns
+    /// The name is taken as written. <see cref="WinUIDesigner.Surface.Common.XamlRuntimeUtilities.ResolveType(string)"/> is of no use here: it turns
     /// <c>Windows.UI.Xaml</c> names into <c>Microsoft.UI.Xaml</c> names, which are different types to a condition.
     /// </remarks>
     private static Type? FindType(string typeName, bool loadProjections)
     {
+        // A name the runtime resolves by itself.
         Type? type = Type.GetType(typeName, throwOnError: false);
         if (type is not null)
         {
             return type;
         }
 
+        // A type of an assembly that is loaded already.
         foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             type = assembly.GetType(typeName, throwOnError: false, ignoreCase: false);
@@ -156,6 +161,7 @@ internal static class XamlConditionProbes
             }
         }
 
+        // A type of the staged project.
         try
         {
             type = ProjectRuntimeResolver.ResolveType(typeName);
@@ -169,6 +175,7 @@ internal static class XamlConditionProbes
             // The staged assembly that defines the type cannot be loaded: the type is not available here.
         }
 
+        // Only a Windows Runtime type is looked for in projection assemblies that are not loaded yet.
         if (!loadProjections)
         {
             return null;

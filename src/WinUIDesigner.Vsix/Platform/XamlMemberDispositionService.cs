@@ -450,11 +450,8 @@ internal readonly struct XamlVerdictPlace(DocumentCompositeNode node, IProperty?
     public IProperty? Property { get; } = property;
 
     /// <inheritdoc/>
-    public bool Equals(XamlVerdictPlace other)
-    {
-        // A node is itself, whatever Equals says about the nodes of a document.
-        return ReferenceEquals(Node, other.Node) && Equals(Property, other.Property);
-    }
+    // A node is itself, whatever Equals says about the nodes of a document.
+    public bool Equals(XamlVerdictPlace other) => ReferenceEquals(Node, other.Node) && Equals(Property, other.Property);
 
     /// <inheritdoc/>
     public override bool Equals(object? obj) => obj is XamlVerdictPlace other && Equals(other);

@@ -157,7 +157,8 @@ internal sealed class XamlVerdictWatcher(XamlMemberDispositionService dispositio
             WinUIDesignerLogger.LogWarning(
                 "Platform",
                 "Conditional XAML: an edit changed which members of the root element, or directly inside it, apply. "
-                + "The preview shows them as before until the designer is reloaded.");
+                + "The preview shows them as before until the designer is reloaded."
+            );
         }
     }
 
