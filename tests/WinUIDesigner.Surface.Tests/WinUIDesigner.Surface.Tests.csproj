@@ -22,4 +22,14 @@
 		</Reference>
 	</ItemGroup>
 
+	<!-- The design-time options of the CreateSurface request, read with Visual Studio's own protocol types. -->
+	<ItemGroup>
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/CreateSurfaceRequestContract.cs" Link="CreateSurfaceRequestContract.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Shared/DesignTime/**/*.cs" LinkBase="DesignTime" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Shared/Protocol/DesignerMessageId.cs" Link="DesignerMessageId.cs" Visible="false" />
+		<Reference Include="Microsoft.VisualStudio.DesignTools.RuntimeHost">
+			<HintPath>$(VsInstallRoot)/Common7/IDE/PrivateAssemblies/Microsoft.VisualStudio.DesignTools.RuntimeHost.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
 </Project>
