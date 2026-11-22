@@ -117,8 +117,8 @@ internal sealed class GuardedClipboard : IClipboard
         }
     }
 
-    // Never null: some of Visual Studio's paste code uses the result without checking it.
-    // With an object that holds no format, pasting ends with the "cannot paste" message.
+    // Never null: some of Visual Studio's paste code uses the result without checking it. With an object that holds
+    // no format, pasting ends with the designer's message "The copied content cannot be pasted here."
     public IDataObject GetDataObject()
     {
         // Within the retry delay: an empty clipboard, without waiting for it again.
