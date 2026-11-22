@@ -44,11 +44,13 @@ internal sealed class HostVisibilityWatch : IDisposable
     /// <param name="startAgain">Earlier attempts do not count.</param>
     public void Start(bool startAgain)
     {
+        // Visual Studio has placed the surface again: earlier attempts do not count.
         if (startAgain)
         {
             StartAttemptsAgain();
         }
 
+        // The timer is not running yet (after Dispose there is none).
         if (_timer is { IsRunning: false } timer)
         {
             timer.Start();
@@ -96,6 +98,7 @@ internal sealed class HostVisibilityWatch : IDisposable
     /// <summary>Stops the timer, takes the handler away from it and lets go of it, so that the timer no longer keeps the surface alive.</summary>
     public void Dispose()
     {
+        // Disposed already.
         if (_timer is not { } timer)
         {
             return;
