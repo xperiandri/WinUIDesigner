@@ -171,8 +171,9 @@ internal static class ProjectRuntimeResolver
     /// The metadata of a CLR type among the providers of the project. XAML asks for the metadata of the type of a
     /// property when it sets the property, and a nested type, such as the enumeration <c>SafeArea.InsetMask</c> of
     /// the Uno Toolkit, must not be looked up by <see cref="Type.FullName"/>: the providers know it with a dot where the
-    /// name has a plus sign. Without its metadata the property cannot be set from XAML. A provider that throws is
-    /// skipped, and its failure is written to the log once (<see cref="MetadataProviderFailures"/>).
+    /// name has a plus sign. Without its metadata the property cannot be set from XAML. A provider that throws when it
+    /// is asked about the type itself is skipped, and its failure is written to the log once
+    /// (<see cref="MetadataProviderFailures"/>).
     /// </summary>
     public static IXamlType? GetXamlType(Type type)
     {

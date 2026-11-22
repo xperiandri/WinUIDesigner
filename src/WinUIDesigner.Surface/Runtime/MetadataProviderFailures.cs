@@ -7,11 +7,12 @@ using System.Collections.Generic;
 namespace WinUIDesigner.Surface.Runtime;
 
 /// <summary>
-/// Keeps a metadata provider of the project that fails from ending the process. The providers are code of the project,
-/// and XAML asks them from inside its own code, where an exception that leaves ends the process (<c>0xC000027B</c>)
-/// without a word in the log, for example the <see cref="System.IO.FileLoadException"/> of a provider that was compiled
-/// against a newer version of an assembly than the surface carries. It has no WinUI types of its own, so that the rule
-/// can be tested.
+/// Makes a question to a metadata provider of the project safe to ask from inside XAML: a provider that throws is
+/// treated as one that does not know the answer, and its failure is written to the log once. The providers are code of
+/// the project, and XAML asks them from inside its own code, where an exception that leaves ends the process
+/// (<c>0xC000027B</c>) without a word in the log, for example the <see cref="System.IO.FileLoadException"/> of a
+/// provider that was compiled against a newer version of an assembly than the surface carries. Only a question that
+/// goes through <see cref="Isolate{T}"/> is covered. It has no WinUI types of its own, so that the rule can be tested.
 /// </summary>
 internal sealed class MetadataProviderFailures(Action<string, Exception> logWarning)
 {
