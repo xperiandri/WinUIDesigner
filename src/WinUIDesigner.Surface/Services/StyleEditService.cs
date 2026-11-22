@@ -23,8 +23,9 @@ namespace WinUIDesigner.Surface.Services;
 /// the merged setters of styles BasedOn the edited one, re-applies implicit styles and refreshes every element that
 /// uses the style. Dictionary edits through XAML Diagnostics also re-resolve the <c>{StaticResource}</c> references
 /// that the framework recorded for the key. VisualState setter collections are not sealed, but only XAML Diagnostics
-/// applies an edit to the state that is active. The surface sends these edits through its own TAP; objects that are
-/// not sealed keep the public API.
+/// applies an edit to the state that is active. The surface sends these edits through its own TAP: those of sealed
+/// objects, those of visual states that can be active, and the removal of a style from a dictionary together with the
+/// addition that pairs with it. Other edits keep the public API.
 /// </para>
 /// <para>
 /// The framework records the elements that use a style only while it stores source information, so Program enables
@@ -39,7 +40,7 @@ internal sealed class StyleEditService
     private const string BasedOnPropertyName = "Microsoft.UI.Xaml.Style.BasedOn";
     private const string RefreshAdvice = "Refresh the designer to see the change.";
     private const string VisualStateFallback = "the setters of a visual state change in the preview when the state is entered again or the designer is refreshed.";
-    private const string DictionaryFallback = "references to a rebuilt or moved style keep the old style until the designer is refreshed, except the Style of elements, which moves to a rebuilt style.";
+    private const string DictionaryFallback = "elements whose Style is a rebuilt style move to the new one; other references to a rebuilt or moved style, and the elements that use it as an implicit style, keep the old style until the designer is refreshed.";
 
     private readonly Action _requestDiagnosticsConnection;
     private readonly ConditionalWeakTable<SetterBaseCollection, DependencyObject> _setterCollectionOwners = new();
