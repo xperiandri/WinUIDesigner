@@ -143,7 +143,7 @@ internal static class Program
         AppDomain.CurrentDomain.FirstChanceException += (_, args) =>
         {
             Exception exception = args.Exception;
-            if (_isLoggingLoadFailure || !IsLoadFailure(exception))
+            if (_isLoggingLoadFailure || !AssemblyLoadFailures.IsWorthLogging(exception))
             {
                 return;
             }
@@ -151,24 +151,12 @@ internal static class Program
             _isLoggingLoadFailure = true;
             try
             {
-                WinUIDesignerLogger.LogTrace("Surface", $"{exception.GetType().Name} while loading: {exception.Message}");
+                WinUIDesignerLogger.LogTrace("Surface", AssemblyLoadFailures.Describe(exception));
             }
             finally
             {
                 _isLoggingLoadFailure = false;
             }
-        };
-    }
-
-    private static bool IsLoadFailure(Exception exception)
-    {
-        // Probing for the satellite assemblies of resources fails all the time and says nothing.
-        return exception switch
-        {
-            FileNotFoundException { FileName: { } fileName } => !fileName.Contains(".resources", StringComparison.OrdinalIgnoreCase),
-            FileNotFoundException => true,
-            FileLoadException or BadImageFormatException or TypeLoadException => true,
-            _ => false,
         };
     }
 }
