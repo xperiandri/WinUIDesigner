@@ -287,7 +287,7 @@ public sealed class DispatcherOperationTests
     [DataRow(20, 10, false)]
     public async Task StepThatTookLongerThanTheInteractiveLimitIsReportedAsSlow(int waitSeconds, int runSeconds, bool slow)
     {
-        string step = $"{nameof(StepThatTookLongerThanTheInteractiveLimitIsReportedAsSlow)} {waitSeconds}+{runSeconds}";
+        string step = FormattableString.Invariant($"{nameof(StepThatTookLongerThanTheInteractiveLimitIsReportedAsSlow)} {waitSeconds}+{runSeconds}");
         var time = new ManualTimeProvider();
         Action? queued = null;
         var queue = new DispatcherQueue(action => { queued = action; return true; });
