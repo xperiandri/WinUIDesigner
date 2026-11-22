@@ -3,6 +3,7 @@
 
 using System;
 using System.Xml.Linq;
+using WinUIDesigner.Markup;
 
 namespace WinUIDesigner.Surface.Markup;
 
@@ -11,6 +12,23 @@ namespace WinUIDesigner.Surface.Markup;
 /// </summary>
 internal static class PreparedXamlNames
 {
+    private const string _XamlControlsNamespace = "using:Microsoft.UI.Xaml.Controls";
+
+    /// <summary>
+    /// Returns whether a <c>XamlControlsResources</c> element in <paramref name="namespaceName"/> is a copy of the
+    /// Fluent resources that the application loads.
+    /// </summary>
+    /// <remarks>
+    /// The type is usually written under its CLR namespace, and the presentation namespace contains it as well.
+    /// Only an unconditional spelling counts: the XAML reader decides a condition on its own and skips the element
+    /// when it fails. Members whose condition the namespace policies decide are dropped, or renamed to the
+    /// namespace without the condition, before they get here.
+    /// </remarks>
+    public static bool IsXamlControlsNamespace(string namespaceName)
+    {
+        return namespaceName is _XamlControlsNamespace or XamlNamespaceUri.PresentationNamespace;
+    }
+
     /// <summary>
     /// Returns whether an element named <paramref name="name"/> can be the markup an object of
     /// <paramref name="runtimeType"/> was loaded from.
