@@ -166,15 +166,25 @@ internal sealed partial class SurfaceService
             return;
         }
 
-        // Visual Studio shows the error on the view of the document that it names, and ignores one that names none. The
-        // context is named anew each time: a report after a change of App.xaml or of the staged files may restart again.
-        _protocolHandler.PostMessage((int)DesignerMessageId.UnhandledException, new UnhandledExceptionResponse()
+        // Telling Visual Studio is best effort: a failure must not fail the creation or the position of the document that
+        // asked, and the next call tells the surface again.
+        try
         {
-            DocumentId = documentId,
-            Message = _renderStall.Message,
-            CallStack = RenderStallReport.WithContext(IdentifySurfaceContext(), _renderStall.Details),
-            IsArtboardException = true,
-        });
+            // Visual Studio shows the error on the view of the document that it names, and ignores one that names none. The
+            // context is named anew each time: a report after a change of App.xaml or of the staged files may restart again.
+            _protocolHandler.PostMessage((int)DesignerMessageId.UnhandledException, new UnhandledExceptionResponse()
+            {
+                DocumentId = documentId,
+                Message = _renderStall.Message,
+                CallStack = RenderStallReport.WithContext(IdentifySurfaceContext(), _renderStall.Details),
+                IsArtboardException = true,
+            });
+        }
+        catch (Exception failure)
+        {
+            _renderStall.NotTold(surface);
+            WinUIDesignerLogger.LogWarning("Surface", $"The report that the surface of document {documentId} is not drawn could not be sent.", failure);
+        }
     }
 
     private string IdentifySurfaceContext()

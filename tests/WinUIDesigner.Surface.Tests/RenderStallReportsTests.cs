@@ -58,6 +58,37 @@ public sealed class RenderStallReportsTests
     }
 
     [TestMethod]
+    public void ASurfaceWhoseReportCouldNotBeSentIsToldAgain()
+    {
+        var reports = new RenderStallReports();
+        var surface = new Surface();
+        reports.Stalled("stopped", "details");
+        Assert.IsTrue(reports.ShouldTell(surface));
+
+        // The message failed: the next call tells the surface, once.
+        reports.NotTold(surface);
+
+        Assert.IsTrue(reports.ShouldTell(surface));
+        Assert.IsFalse(reports.ShouldTell(surface));
+    }
+
+    [TestMethod]
+    public void TakingBackTheTellOfOneSurfaceLeavesTheOthersTold()
+    {
+        var reports = new RenderStallReports();
+        var failed = new Surface();
+        var told = new Surface();
+        reports.Stalled("stopped", "details");
+        Assert.IsTrue(reports.ShouldTell(failed));
+        Assert.IsTrue(reports.ShouldTell(told));
+
+        reports.NotTold(failed);
+
+        Assert.IsFalse(reports.ShouldTell(told));
+        Assert.IsTrue(reports.ShouldTell(failed));
+    }
+
+    [TestMethod]
     public void ASurfaceThatWasToldIsNotKeptAlive()
     {
         // The process goes on after the stall, and closed documents must not pile up in it.

@@ -37,4 +37,10 @@ internal sealed class RenderStallReports
 
     /// <summary>Whether the surface still has to be told that nothing is drawn: once for each surface, after the stall.</summary>
     public bool ShouldTell(object surface) => HasStalled && _told.TryAdd(surface, _Told);
+
+    /// <summary>
+    /// Takes back that the surface was told, because the report could not be sent: the next <see cref="ShouldTell"/> says
+    /// yes again, so that one failed message does not leave the surface without its error for good.
+    /// </summary>
+    public void NotTold(object surface) => _told.Remove(surface);
 }
