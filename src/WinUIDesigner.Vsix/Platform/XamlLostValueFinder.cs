@@ -36,7 +36,7 @@ internal static class XamlLostValueFinder
         Func<string, string?> getBaseNamespace,
         Func<string, XamlPrefixDisposition> classify)
     {
-        string property = GetPropertyName(dropped.LocalName);
+        ReadOnlySpan<char> property = GetPropertyName(dropped.LocalName);
         string? droppedNamespace = dropped.Prefix.Length == 0 ? null : getBaseNamespace(dropped.Prefix);
         foreach (XamlAttributeName member in members)
         {
@@ -47,7 +47,7 @@ internal static class XamlLostValueFinder
             }
 
             // Another member with the same name, such as d:DataContext, sets a property of its own.
-            if (!string.Equals(GetPropertyName(member.LocalName), property, StringComparison.Ordinal))
+            if (!GetPropertyName(member.LocalName).SequenceEqual(property))
             {
                 continue;
             }
@@ -88,9 +88,9 @@ internal static class XamlLostValueFinder
     }
 
     // The name of a property element is that of its type and the property: Border.Background sets Background.
-    private static string GetPropertyName(string localName)
+    private static ReadOnlySpan<char> GetPropertyName(string localName)
     {
         int dot = localName.LastIndexOf('.');
-        return dot < 0 ? localName : localName.Substring(dot + 1);
+        return localName.AsSpan(dot + 1);
     }
 }

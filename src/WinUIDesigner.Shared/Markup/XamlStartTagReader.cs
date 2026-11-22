@@ -89,7 +89,7 @@ internal static class XamlStartTagReader
                 index++;
             }
 
-            string qualifiedName = startTagText.Substring(nameStart, index - nameStart);
+            ReadOnlySpan<char> qualifiedName = startTagText.AsSpan(nameStart, index - nameStart);
 
             // An attribute without a value is no XML.
             index = SkipWhitespace(startTagText, index);
@@ -144,7 +144,7 @@ internal static class XamlStartTagReader
             end++;
         }
 
-        return TryParseName(attributeText.Substring(start, end - start), out name);
+        return TryParseName(attributeText.AsSpan(start, end - start), out name);
     }
 
     /// <summary>
@@ -173,7 +173,7 @@ internal static class XamlStartTagReader
             end++;
         }
 
-        return TryParseName(startTagText.Substring(start + 1, end - start - 1), out name);
+        return TryParseName(startTagText.AsSpan(start + 1, end - start - 1), out name);
     }
 
     /// <summary>
@@ -255,7 +255,7 @@ internal static class XamlStartTagReader
 
             // A property element is a child of the element itself whose name has a type and a property.
             if (depth == 0
-                && TryParseName(contentText.Substring(open + 1, nameEnd - open - 1), out XamlAttributeName name)
+                && TryParseName(contentText.AsSpan(open + 1, nameEnd - open - 1), out XamlAttributeName name)
                 && name.LocalName.IndexOf('.') > 0)
             {
                 names.Add(name);
@@ -307,7 +307,8 @@ internal static class XamlStartTagReader
         return -1;
     }
 
-    private static bool TryParseName(string qualifiedName, out XamlAttributeName name)
+    // The text is only looked at: a string is created for each part of a name that is kept.
+    private static bool TryParseName(ReadOnlySpan<char> qualifiedName, out XamlAttributeName name)
     {
         // A name, or a prefix and a name, each beginning with a letter or an underscore; one colon at most.
         int colon = qualifiedName.IndexOf(':');
@@ -323,8 +324,8 @@ internal static class XamlStartTagReader
         }
 
         name = colon < 0
-            ? new XamlAttributeName(string.Empty, qualifiedName)
-            : new XamlAttributeName(qualifiedName.Substring(0, colon), qualifiedName.Substring(colon + 1));
+            ? new XamlAttributeName(string.Empty, qualifiedName.ToString())
+            : new XamlAttributeName(qualifiedName.Slice(0, colon).ToString(), qualifiedName.Slice(colon + 1).ToString());
         return true;
     }
 

@@ -102,23 +102,25 @@ internal sealed class XamlConditionQuery
             return null;
         }
 
-        string? name = null;
+        // The name is only looked at: a string is created for the one that is returned.
+        ReadOnlySpan<char> name = default;
         if (namespaceUri.StartsWith(XamlNamespaceUri.UsingScheme, StringComparison.Ordinal))
         {
-            name = namespaceUri.Substring(XamlNamespaceUri.UsingScheme.Length);
+            // "using:My.App" names the namespace after the scheme.
+            name = namespaceUri.AsSpan(XamlNamespaceUri.UsingScheme.Length);
         }
         else if (namespaceUri.StartsWith(_ClrNamespaceScheme, StringComparison.Ordinal))
         {
             // "clr-namespace:My.App;assembly=My.App" names the namespace up to the first ';'.
-            name = namespaceUri.Substring(_ClrNamespaceScheme.Length);
+            name = namespaceUri.AsSpan(_ClrNamespaceScheme.Length);
             int separator = name.IndexOf(';');
             if (separator >= 0)
             {
-                name = name.Substring(0, separator);
+                name = name.Slice(0, separator);
             }
         }
 
-        name = name?.Trim();
-        return string.IsNullOrEmpty(name) ? null : name;
+        name = name.Trim();
+        return name.IsEmpty ? null : name.ToString();
     }
 }
