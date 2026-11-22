@@ -320,12 +320,26 @@ public sealed class XamlSourcePrefixReaderTests
 
         private static XmlDocument Parse(string xaml)
         {
+            // These tests are a tripwire: a Visual Studio that changes the internal parser fails them with a message
+            // that names the member that is gone, not with a bare MissingMethodException or NullReferenceException.
             Type? parserType = typeof(XmlDocument).Assembly.GetType("Microsoft.VisualStudio.DesignTools.Markup.Xml.Parser");
             Assert.IsNotNull(parserType, "The designer's XML parser was not found, so the ranges it reports cannot be checked.");
 
+            var parseDocument = parserType.GetMethod("ParseDocument", Type.EmptyTypes);
+            Assert.IsNotNull(parseDocument, "The designer's XML parser no longer has ParseDocument(); its ranges cannot be checked.");
+
             var errors = new List<ErrorNode>();
-            object parser = Activator.CreateInstance(parserType, new Document("test.xaml", new DocumentText(xaml)), errors)!;
-            var xmlDocument = (XmlDocument)parserType.GetMethod("ParseDocument")!.Invoke(parser, null)!;
+            object? parser = null;
+            try
+            {
+                parser = Activator.CreateInstance(parserType, new Document("test.xaml", new DocumentText(xaml)), errors);
+            }
+            catch (MissingMethodException)
+            {
+                Assert.Fail("The designer's XML parser no longer has a constructor that takes a document and a list of errors; its ranges cannot be checked.");
+            }
+
+            var xmlDocument = (XmlDocument)parseDocument.Invoke(parser, null)!;
             Assert.IsEmpty(errors, "The designer's XML parser reported errors for the sample text.");
             return xmlDocument;
         }
