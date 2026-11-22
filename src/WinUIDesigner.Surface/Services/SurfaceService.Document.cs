@@ -538,6 +538,12 @@ internal sealed partial class SurfaceService
                                 }
                             }
 
+                            // The UWP cleaner writes its own stand-in for AdaptiveTrigger; load the trigger of WinUI.
+                            if (UwpStandIns.GetRuntimeElementName(element.Name) is { } runtimeName)
+                            {
+                                element.Name = runtimeName;
+                            }
+
                             foreach (XAttribute attribute in new List<XAttribute>(element.Attributes()))
                             {
                                 if (!attribute.IsNamespaceDeclaration && attribute.Name.NamespaceName == _XSurfUwpNamespace)

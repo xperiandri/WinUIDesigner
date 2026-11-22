@@ -57,6 +57,13 @@ internal static class XamlRuntimeUtilities
             return typeof(Microsoft.UI.Xaml.Controls.ContentControl);
         }
 
+        // The other stand-ins of Visual Studio's UWP surface name its assembly "UwpSurface", which this process does
+        // not have: the type of WinUI, or of this surface, that takes their place is found by its full name.
+        if (UwpStandIns.GetRuntimeTypeName(candidate) is { } standInTypeName)
+        {
+            return typeof(UIElement).Assembly.GetType(standInTypeName) ?? typeof(XamlRuntimeUtilities).Assembly.GetType(standInTypeName);
+        }
+
         Type? type = Type.GetType(candidate, throwOnError: false);
         if (type is not null)
         {
