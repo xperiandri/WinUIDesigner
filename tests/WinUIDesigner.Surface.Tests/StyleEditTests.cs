@@ -279,6 +279,25 @@ public sealed class StyleEditTests
     }
 
     [TestMethod]
+    public void AStepThatFailsIsReportedAndTheOtherStepsStillRun()
+    {
+        var failure = new InvalidOperationException("A child of the visual tree could not be read.");
+        var failures = new List<Exception>();
+        var steps = new BestEffortSteps(failures.Add);
+        var ran = new List<string>();
+
+        steps.Run(() => ran.Add("elements"));
+        Assert.IsEmpty(failures);
+
+        steps.Run(() => throw failure);
+        steps.Run(() => ran.Add("styles BasedOn the replaced style"));
+
+        CollectionAssert.AreEqual(new[] { "elements", "styles BasedOn the replaced style" }, ran, "A step runs after a failed step.");
+        Assert.HasCount(1, failures);
+        Assert.AreSame(failure, failures[0]);
+    }
+
+    [TestMethod]
     public void TrackedHoldersMoveWhereverTheyAre()
     {
         object oldValue = new();

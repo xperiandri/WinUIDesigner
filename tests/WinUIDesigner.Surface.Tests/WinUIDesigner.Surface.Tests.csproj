@@ -21,6 +21,7 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DetachedKeyCounter.cs" Link="DetachedKeyCounter.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ReferenceMover.cs" Link="ReferenceMover.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/StyleReplacementRules.cs" Link="StyleReplacementRules.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/BestEffortSteps.cs" Link="BestEffortSteps.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>

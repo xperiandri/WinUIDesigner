@@ -49,6 +49,7 @@ internal sealed class StyleEditService
     private readonly Action _requestDiagnosticsConnection;
     private readonly ConditionalWeakTable<SetterBaseCollection, DependencyObject> _setterCollectionOwners = new();
     private readonly ReplacedValueTracker _replacedValues = new();
+    private readonly BestEffortSteps _moveSteps;
     private readonly ReferenceMover<FrameworkElement, Style> _elementStyles;
     private readonly ReferenceMover<Style, Style> _basedOnStyles;
     private readonly DetachedKeyCounter _keysRemovedThroughDiagnostics = new();
@@ -59,6 +60,7 @@ internal sealed class StyleEditService
     public StyleEditService(Action requestDiagnosticsConnection)
     {
         _requestDiagnosticsConnection = requestDiagnosticsConnection;
+        _moveSteps = new(ReportMoveFailure);
         _elementStyles = new(
             static element => element.ReadLocalValue(FrameworkElement.StyleProperty) as Style,
             static (element, style) => StyleReplacementRules.CanStyle(style.TargetType, element),
@@ -288,6 +290,8 @@ internal sealed class StyleEditService
     /// The edits of the batch are applied by then, so moving is best effort and does not fail the batch: a reference
     /// that WinUI does not let take the new style, such as an element of a type that the rebuilt style no longer
     /// targets, keeps the old one, as before the edit; a failure is logged once, and the other references still move.
+    /// Each step of a replacement is guarded on its own, so a failure in one step, such as a visual tree that cannot be
+    /// walked, does not keep the later steps or the other replacements of the batch from moving their references.
     /// </para>
     /// </remarks>
     public void CompleteBatch(IEnumerable<FrameworkElement> roots)
@@ -306,23 +310,19 @@ internal sealed class StyleEditService
                 continue;
             }
 
-            try
+            // The elements of every open document that use the replaced style.
+            foreach (FrameworkElement root in rootList)
             {
-                foreach (FrameworkElement root in rootList)
-                {
-                    ReplaceElementStyles(root, oldStyle, newStyle);
-                }
+                _moveSteps.Run(() => ReplaceElementStyles(root, oldStyle, newStyle));
+            }
 
-                var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-                ReplaceBasedOn((ResourceDictionary)dictionary, oldStyle, newStyle, visited);
-                ReplaceBasedOn(Application.Current.Resources, oldStyle, newStyle, visited);
-                _basedOnStyles.MoveTracked(oldStyle, newStyle);
-            }
-            catch (Exception ex)
-            {
-                // The references to the other replaced styles of the batch still move.
-                ReportMoveFailure(ex);
-            }
+            // The styles BasedOn it in its own dictionary and in the application resources.
+            var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
+            _moveSteps.Run(() => ReplaceBasedOn((ResourceDictionary)dictionary, oldStyle, newStyle, visited));
+            _moveSteps.Run(() => ReplaceBasedOn(Application.Current.Resources, oldStyle, newStyle, visited));
+
+            // The styles that actions based on it, wherever they are.
+            _moveSteps.Run(() => _basedOnStyles.MoveTracked(oldStyle, newStyle));
         }
     }
 
