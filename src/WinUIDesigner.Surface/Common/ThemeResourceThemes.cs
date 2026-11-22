@@ -109,6 +109,35 @@ internal static class ThemeResourceThemes
     }
 
     /// <summary>
+    /// The theme of the <c>ThemeDictionaries</c> entry that <paramref name="scope"/> is in <paramref name="parent"/>, the
+    /// next scope of the walk. Visual Studio's search path goes from a theme dictionary to the <c>ThemeDictionaries</c> map
+    /// and then to the dictionary that owns the map, so the parent is either. The map is probed with the known keys, never
+    /// enumerated (see <see cref="FromThemeDictionaries"/>).
+    /// </summary>
+    /// <typeparam name="TDictionary">The resource dictionary type of the framework.</typeparam>
+    /// <param name="scope">A scope of the walk.</param>
+    /// <param name="parent">The scope after it.</param>
+    /// <param name="themeDictionariesOf">The <c>ThemeDictionaries</c> map of a dictionary.</param>
+    public static string? FromParent<TDictionary>(object scope, object parent, Func<TDictionary, IDictionary<object, object>> themeDictionariesOf)
+        where TDictionary : class
+    {
+        // Not a dictionary: only a dictionary can be an entry of ThemeDictionaries.
+        if (scope is not TDictionary dictionary)
+        {
+            return null;
+        }
+
+        // The dictionary that owns the map.
+        if (parent is TDictionary owner && FromThemeDictionaries(dictionary, themeDictionariesOf(owner)) is { } theme)
+        {
+            return theme;
+        }
+
+        // The map itself. It can be a dictionary too, so a dictionary that did not match above is probed as a map.
+        return parent is IDictionary<object, object> map ? FromThemeDictionaries(dictionary, map) : null;
+    }
+
+    /// <summary>
     /// Describes the walk from the owner of a reference: for each scope, the theme of the <c>ThemeDictionaries</c> entry
     /// that it is in its next scope (<paramref name="dictionaryTheme"/> gets the scope and its parent) and the theme it
     /// requests.

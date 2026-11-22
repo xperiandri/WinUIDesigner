@@ -95,6 +95,76 @@ public sealed class ThemeResourceThemesTests
     }
 
     [TestMethod]
+    public void TheThemeOfADictionaryComesFromTheMapOrFromTheDictionaryThatOwnsIt()
+    {
+        // The search path of Visual Studio: a theme dictionary, then the ThemeDictionaries map, then the dictionary that owns it.
+        var owner = new FakeDictionary("Page.Resources");
+        FakeDictionary light = owner.Theme(_Light);
+        FakeDictionary fallback = owner.Theme(_Default);
+
+        Assert.AreEqual(_Light, FromParent(light, owner));
+        Assert.AreEqual(_Light, FromParent(light, owner.ThemeDictionaries));
+        Assert.AreEqual(_Dark, FromParent(fallback, owner));
+        Assert.AreEqual(_Dark, FromParent(fallback, owner.ThemeDictionaries));
+    }
+
+    [TestMethod]
+    public void ADictionaryThatIsNotInTheMapHasNoTheme()
+    {
+        // Entries are matched by identity: a dictionary of the same name, and the entry of another owner, are no theme dictionaries.
+        var owner = new FakeDictionary("Page.Resources");
+        FakeDictionary light = owner.Theme(_Light);
+        var otherOwner = new FakeDictionary("Other.Resources");
+
+        Assert.IsNull(FromParent(new FakeDictionary("Page.Resources[Light]"), owner));
+        Assert.IsNull(FromParent(new FakeDictionary("Page.Resources[Light]"), owner.ThemeDictionaries));
+        Assert.IsNull(FromParent(light, otherOwner));
+        Assert.IsNull(FromParent(light, otherOwner.ThemeDictionaries));
+    }
+
+    [TestMethod]
+    public void AParentThatIsNeitherTheOwnerNorTheMapGivesNoTheme()
+    {
+        var owner = new FakeDictionary("Page.Resources");
+        FakeDictionary light = owner.Theme(_Light);
+
+        Assert.IsNull(FromParent(light, new FakeElement("Page")));
+        Assert.IsNull(FromParent(light, new object()));
+    }
+
+    [TestMethod]
+    public void OnlyADictionaryCanBeAThemeDictionary()
+    {
+        // The scope is stored in the map, but it is an element: only a dictionary can be an entry of ThemeDictionaries.
+        var owner = new FakeDictionary("Page.Resources");
+        var element = new FakeElement("Page");
+        owner.ThemeDictionaries[_Light] = element;
+
+        Assert.IsNull(FromParent(element, owner));
+        Assert.IsNull(FromParent(element, owner.ThemeDictionaries));
+    }
+
+    [TestMethod]
+    public void AParentThatIsADictionaryAndTheMapAtOnceIsProbedAsAMap()
+    {
+        // A WinUI ResourceDictionary is a dictionary and a map at once; the ThemeDictionaries map can be one too. Its own
+        // ThemeDictionaries are empty, so the entry is found only by probing the parent itself as a map.
+        var theme = new MapDictionary();
+        var map = new MapDictionary { [_Light] = theme };
+
+        Assert.AreEqual(_Light, ThemeResourceThemes.FromParent<MapDictionary>(theme, map, owner => owner.ThemeDictionaries));
+    }
+
+    [TestMethod]
+    public void ADictionaryThatOwnsTheMapIsAskedForItsThemeDictionariesFirst()
+    {
+        var theme = new MapDictionary();
+        var owner = new MapDictionary { ThemeDictionaries = { [_Dark] = theme } };
+
+        Assert.AreEqual(_Dark, ThemeResourceThemes.FromParent<MapDictionary>(theme, owner, dictionary => dictionary.ThemeDictionaries));
+    }
+
+    [TestMethod]
     public void DescribePairsEachScopeWithItsParent()
     {
         // brush -> 'Light' dictionary -> ThemeDictionaries map -> page dictionary -> page, the search path of Visual Studio.
@@ -167,5 +237,16 @@ public sealed class ThemeResourceThemesTests
     public void RequestedThemeIsRecognizedWhateverItsDeclaringType(string? fullPropertyName, bool isRequestedTheme)
     {
         Assert.AreEqual(isRequestedTheme, ThemeResourceThemes.IsRequestedThemeProperty(fullPropertyName));
+    }
+
+    private static string? FromParent(object scope, object parent)
+    {
+        return ThemeResourceThemes.FromParent<FakeDictionary>(scope, parent, owner => owner.ThemeDictionaries);
+    }
+
+    /// <summary>A dictionary that is also a map, as WinUI's <c>ResourceDictionary</c> is, with <c>ThemeDictionaries</c> of its own.</summary>
+    private sealed class MapDictionary : Dictionary<object, object>
+    {
+        public Dictionary<object, object> ThemeDictionaries { get; } = [];
     }
 }

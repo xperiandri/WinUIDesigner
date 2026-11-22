@@ -242,26 +242,12 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
     }
 
     /// <summary>
-    /// The theme of the <c>ThemeDictionaries</c> entry that <paramref name="scope"/> is in <paramref name="parent"/>.
-    /// Visual Studio's search path goes from a theme dictionary to the <c>ThemeDictionaries</c> map and then to the
-    /// dictionary that owns the map, so the parent is either. The map is probed with the known keys, never enumerated.
+    /// The theme of the <see cref="ResourceDictionary.ThemeDictionaries"/> entry that <paramref name="scope"/> is in
+    /// <paramref name="parent"/>; see <see cref="ThemeResourceThemes.FromParent{TDictionary}"/>.
     /// </summary>
     private static string? GetDictionaryTheme(object scope, object parent)
     {
-        // Not a dictionary: only a dictionary can be an entry of ThemeDictionaries.
-        if (scope is not ResourceDictionary dictionary)
-        {
-            return null;
-        }
-
-        // The dictionary that owns the map.
-        if (parent is ResourceDictionary owner && ThemeResourceThemes.FromThemeDictionaries(dictionary, owner.ThemeDictionaries) is { } theme)
-        {
-            return theme;
-        }
-
-        // The map itself. It can be a ResourceDictionary too, so a dictionary that did not match above is probed as a map.
-        return parent is IDictionary<object, object> map ? ThemeResourceThemes.FromThemeDictionaries(dictionary, map) : null;
+        return ThemeResourceThemes.FromParent<ResourceDictionary>(scope, parent, owner => owner.ThemeDictionaries);
     }
 
     /// <summary>WinUI's resource dictionaries for <see cref="ThemeResourceLookup"/>.</summary>

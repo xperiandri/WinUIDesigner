@@ -21,13 +21,14 @@ internal sealed class FakeElement(string name, string? requestedTheme = null)
 /// </summary>
 internal static class FakeScopes
 {
-    /// <summary>As the surface does: the parent is the <c>ThemeDictionaries</c> map, or the dictionary that owns it.</summary>
-    public static string? DictionaryTheme(object scope, object parent) => parent switch
+    /// <summary>
+    /// As the surface does, with the same function: the parent is the <c>ThemeDictionaries</c> map, or the dictionary that
+    /// owns it.
+    /// </summary>
+    public static string? DictionaryTheme(object scope, object parent)
     {
-        FakeDictionary owner when ThemeResourceThemes.FromThemeDictionaries(scope, owner.ThemeDictionaries) is { } theme => theme,
-        IDictionary<object, object> map => ThemeResourceThemes.FromThemeDictionaries(scope, map),
-        _ => null,
-    };
+        return ThemeResourceThemes.FromParent<FakeDictionary>(scope, parent, owner => owner.ThemeDictionaries);
+    }
 
     public static string? RequestedTheme(object scope) => (scope as FakeElement)?.RequestedTheme;
 
