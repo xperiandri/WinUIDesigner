@@ -64,7 +64,7 @@ internal sealed partial class SurfaceService
                 // Nothing is shown, so nothing has to be drawn, or a surface is frozen, which suspends rendering on
                 // purpose: look again later.
                 int[] shownIds = [.. _surfaces.Where(pair => pair.Value.IsHostVisible).Select(pair => pair.Key)];
-                if (RenderStall.ShouldLookAgain(shownIds.Length, _surfaces.Values.Any(surface => surface.IsFrozen)))
+                if (RenderStall.ShouldLookAgain(shownIds.Length, AnySurfaceFrozen()))
                 {
                     ArmRenderWatch(exception);
                     return;
@@ -73,13 +73,15 @@ internal sealed partial class SurfaceService
                 // A render that the framework does not complete, even once its thread is free again: it has stopped
                 // drawing. The frames meanwhile only go into the log: a thread that is busy for a while draws none
                 // either, and they are counted only now, because counting them makes the framework draw.
+                int probedId = shownIds[0];
+                DesignerSurface probed = _surfaces[probedId];
                 FrameCounter frames = RenderFrames.Counter;
                 int framesAtStart = frames.Count;
                 bool counted = frames.StartWatching();
                 bool canDraw;
                 try
                 {
-                    canDraw = await _surfaces[shownIds[0]].CanDrawAsync(
+                    canDraw = await probed.CanDrawAsync(
                         TimeSpan.FromSeconds(_RenderProbeSeconds),
                         TimeSpan.FromMilliseconds(_RenderProbeGraceMilliseconds)
                     );
@@ -89,17 +91,28 @@ internal sealed partial class SurfaceService
                     frames.StopWatching();
                 }
 
-                _renderWatchArmed = false;
                 string framesWhileRendering = counted ? $"{frames.Count - framesAtStart} frames" : "frames not counted";
-                if (canDraw)
+
+                // The render took seconds: what it was asked of can have changed meanwhile.
+                switch (RenderStall.AfterProbe(canDraw, IsStillShown(probedId, probed), AnySurfaceFrozen()))
                 {
                     // The error left the framework drawing.
-                    WinUIDesignerLogger.LogInformation("Surface", $"The surface still draws after the error that the framework reported ({framesWhileRendering} while it rendered a pixel).");
-                }
-                else
-                {
+                    case RenderWatchStep.Draws:
+                        _renderWatchArmed = false;
+                        WinUIDesignerLogger.LogInformation("Surface", $"The surface still draws after the error that the framework reported ({framesWhileRendering} while it rendered a pixel).");
+                        break;
+
+                    // No render, but its document was closed, replaced or hidden meanwhile, or a surface was frozen.
+                    case RenderWatchStep.LookAgain:
+                        WinUIDesignerLogger.LogInformation("Surface", $"A render of one pixel did not complete ({framesWhileRendering} meanwhile), but its document was closed, replaced or hidden, or a surface was frozen, while it ran. The surface looks again later.");
+                        ArmRenderWatch(exception);
+                        break;
+
                     // The framework has stopped drawing.
-                    ReportRenderStall(exception, shownIds, framesWhileRendering);
+                    case RenderWatchStep.Stalled:
+                        _renderWatchArmed = false;
+                        ReportRenderStall(exception, shownIds, framesWhileRendering);
+                        break;
                 }
             }
             catch (Exception failure)
@@ -110,6 +123,16 @@ internal sealed partial class SurfaceService
         };
 
         timer.Start();
+    }
+
+    private bool AnySurfaceFrozen() => _surfaces.Values.Any(surface => surface.IsFrozen);
+
+    // Whether the surface that a render was asked of is still the one of its document, and its island is shown.
+    private bool IsStillShown(int documentId, DesignerSurface surface)
+    {
+        return _surfaces.TryGetValue(documentId, out DesignerSurface? current)
+            && ReferenceEquals(current, surface)
+            && current.IsHostVisible;
     }
 
     private void ReportRenderStall(Exception exception, int[] shownDocumentIds, string framesWhileRendering)

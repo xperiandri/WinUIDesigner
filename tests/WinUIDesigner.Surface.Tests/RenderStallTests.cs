@@ -30,6 +30,35 @@ public sealed class RenderStallTests
     }
 
     [TestMethod]
+    [DataRow(true, false)]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    public void ARenderThatCompletedMeansThatTheFrameworkDrawsWhateverHappenedMeanwhile(bool surfaceStillShown, bool anySurfaceFrozen)
+    {
+        Assert.AreEqual(RenderWatchStep.Draws, RenderStall.AfterProbe(completed: true, surfaceStillShown, anySurfaceFrozen));
+    }
+
+    [TestMethod]
+    public void ARenderThatDidNotCompleteWhileNothingExplainsItIsAStall()
+    {
+        Assert.AreEqual(RenderWatchStep.Stalled, RenderStall.AfterProbe(completed: false, surfaceStillShown: true, anySurfaceFrozen: false));
+    }
+
+    [TestMethod]
+    public void ARenderThatDidNotCompleteForASurfaceThatWasClosedReplacedOrHiddenSaysNothing()
+    {
+        // The render takes seconds: its document can be closed, replaced by a reload, or hidden before it is over.
+        Assert.AreEqual(RenderWatchStep.LookAgain, RenderStall.AfterProbe(completed: false, surfaceStillShown: false, anySurfaceFrozen: false));
+    }
+
+    [TestMethod]
+    public void ARenderThatDidNotCompleteWhileASurfaceWasFrozenSaysNothing()
+    {
+        // A freeze that began while the render was asked for suspends rendering on purpose.
+        Assert.AreEqual(RenderWatchStep.LookAgain, RenderStall.AfterProbe(completed: false, surfaceStillShown: true, anySurfaceFrozen: true));
+    }
+
+    [TestMethod]
     [DataRow(0)]
     [DataRow(1)]
     public void AFirstIslandThatDrewAtMostOneFrameStoppedAtTheFirstFrame(int frames)
