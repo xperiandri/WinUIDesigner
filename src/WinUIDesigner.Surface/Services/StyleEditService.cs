@@ -42,7 +42,7 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
 
     private readonly ConditionalWeakTable<SetterBaseCollection, DependencyObject> _setterCollectionOwners = new();
     private readonly ReplacedValueTracker _replacedValues = new();
-    private readonly HashSet<object> _keysRemovedThroughDiagnostics = [];
+    private readonly DetachedKeyCounter _keysRemovedThroughDiagnostics = new();
     private readonly HashSet<string> _loggedProblems = [];
     private bool _nativeUnavailable;
     private int _detachedBuilds;
@@ -174,18 +174,19 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
             return false;
         }
 
-        _keysRemovedThroughDiagnostics.Add(key);
+        _keysRemovedThroughDiagnostics.Removed(key);
         return true;
     }
 
     /// <summary>
-    /// Adds a Style under a key that was removed through XAML Diagnostics. Returns <see langword="false"/> when the
-    /// public API applies the edit.
+    /// Adds a Style under a key whose removal through XAML Diagnostics no addition has paired with yet. Returns
+    /// <see langword="false"/> when the public API applies the edit.
     /// </summary>
     /// <remarks>
     /// Only an addition through XAML Diagnostics resolves the references that a removal through it detached; after
-    /// a public removal it resolves nothing. Other keys keep the public API, because XAML Diagnostics keeps every
-    /// object it is given alive until the process exits.
+    /// a public removal it resolves nothing. Each such removal pairs with one addition, in this batch or a later one.
+    /// Other additions keep the public API, because XAML Diagnostics keeps every object it is given alive until the
+    /// process exits.
     /// </remarks>
     public bool TryAddDictionaryEntry(object dictionary, object? key, object? value)
     {
@@ -197,8 +198,8 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
         _replacedValues.Added(resources, key, style);
 
         // XAML Diagnostics adds new keys only; the public indexer replaces an existing value.
-        return _keysRemovedThroughDiagnostics.Contains(key)
-            && !resources.ContainsKey(key)
+        return !resources.ContainsKey(key)
+            && _keysRemovedThroughDiagnostics.TryPairAddition(key)
             && Invoke("add a style to its resource dictionary", DictionaryFallback, pointers => NativeMethods.WinUIDesignerDiagnostics_AddDictionaryItem(pointers[0], pointers[1], pointers[2]), resources, key, style);
     }
 

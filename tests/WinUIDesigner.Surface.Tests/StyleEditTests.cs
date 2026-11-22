@@ -145,6 +145,30 @@ public sealed class StyleEditTests
     }
 
     [TestMethod]
+    public void EachRemovalThroughXamlDiagnosticsPairsWithOneAddition()
+    {
+        var keys = new DetachedKeyCounter();
+        keys.Removed("Heading");
+
+        Assert.IsTrue(keys.TryPairAddition("Heading"), "The addition after the removal resolves the references it detached.");
+        Assert.IsFalse(keys.TryPairAddition("Heading"), "A later addition under the key, in any dictionary, keeps the public API.");
+        Assert.IsFalse(keys.TryPairAddition("Subheading"));
+    }
+
+    [TestMethod]
+    public void EveryRemovalOfAKeyPairsWithAnAdditionOfItsOwn()
+    {
+        var keys = new DetachedKeyCounter();
+        keys.Removed(typeof(Uri));
+        keys.Removed(typeof(Uri));
+
+        Assert.IsFalse(keys.TryPairAddition(typeof(string)), "Another type is another key.");
+        Assert.IsTrue(keys.TryPairAddition(typeof(Uri)));
+        Assert.IsTrue(keys.TryPairAddition(typeof(Uri)));
+        Assert.IsFalse(keys.TryPairAddition(typeof(Uri)));
+    }
+
+    [TestMethod]
     [DataRow("BasedOn:Microsoft.UI.Xaml.Style, Microsoft.WinUI, Version=3.0.0.0, Culture=neutral, PublicKeyToken=null", "Microsoft.UI.Xaml.Style.BasedOn")]
     [DataRow("Value:Microsoft.UI.Xaml.Setter", "Microsoft.UI.Xaml.Setter.Value")]
     [DataRow("Value", "Microsoft.UI.Xaml.Setter.Value")]

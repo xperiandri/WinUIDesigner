@@ -18,6 +18,7 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ReplacedValueTracker.cs" Link="ReplacedValueTracker.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/XamlDiagnosticsPropertyName.cs" Link="XamlDiagnosticsPropertyName.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/SetterEditRoute.cs" Link="SetterEditRoute.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/DetachedKeyCounter.cs" Link="DetachedKeyCounter.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>
