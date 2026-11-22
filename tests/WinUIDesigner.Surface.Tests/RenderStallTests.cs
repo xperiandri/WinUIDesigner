@@ -7,39 +7,49 @@ using WinUIDesigner.Surface.Runtime;
 [TestClass]
 public sealed class RenderStallTests
 {
+    private static readonly TimeSpan _Short = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan _Long = TimeSpan.FromSeconds(10);
+
     [TestMethod]
-    public void NoFramesIsAStall()
+    public void TheWatchLooksAgainWhenNothingIsShown()
     {
-        Assert.IsTrue(RenderStall.IsStalled(1000, 1000));
+        Assert.IsTrue(RenderStall.ShouldLookAgain(shownSurfaces: 0, anySurfaceFrozen: false));
     }
 
     [TestMethod]
-    public void FewerFramesThanTheMinimumIsAStall()
+    public void TheWatchLooksAgainWhileASurfaceIsFrozen()
     {
-        Assert.IsTrue(RenderStall.IsStalled(1000, 1000 + RenderStall.MinimumFrames - 1));
+        // A freeze suspends rendering on purpose, so a render that does not complete says nothing about the framework.
+        Assert.IsTrue(RenderStall.ShouldLookAgain(shownSurfaces: 2, anySurfaceFrozen: true));
     }
 
     [TestMethod]
-    public void TheMinimumNumberOfFramesIsNotAStall()
+    public void TheWatchDecidesWhenASurfaceIsShownAndNothingIsFrozen()
     {
-        Assert.IsFalse(RenderStall.IsStalled(1000, 1000 + RenderStall.MinimumFrames));
+        Assert.IsFalse(RenderStall.ShouldLookAgain(shownSurfaces: 1, anySurfaceFrozen: false));
     }
 
     [TestMethod]
-    public void ASurfaceThatDrawsAtSixtyFramesInASecondIsNotStalled()
+    public async Task ARenderThatCompletesDraws()
     {
-        Assert.IsFalse(RenderStall.IsStalled(2000, 2000 + 3 * 60));
+        Assert.IsTrue(await RenderStall.CompletesAsync(Task.CompletedTask, _Short, _Short));
     }
 
     [TestMethod]
-    public void TheCounterMayWrapAroundWhileTheSurfaceDraws()
+    public async Task ARenderThatNeverCompletesDoesNotDraw()
     {
-        Assert.IsFalse(RenderStall.IsStalled(int.MaxValue - 10, int.MinValue + 100));
+        var render = new TaskCompletionSource();
+
+        Assert.IsFalse(await RenderStall.CompletesAsync(render.Task, _Short, _Short));
     }
 
     [TestMethod]
-    public void TheCounterMayWrapAroundWhileTheSurfaceHasStopped()
+    public async Task ARenderThatCompletesAfterTheTimeoutWithinTheGraceDraws()
     {
-        Assert.IsTrue(RenderStall.IsStalled(int.MaxValue, int.MaxValue));
+        // The render waited for a thread that was busy for longer than the timeout.
+        var render = new TaskCompletionSource();
+        _ = Task.Delay(TimeSpan.FromMilliseconds(300)).ContinueWith(_ => render.TrySetResult(), TaskScheduler.Default);
+
+        Assert.IsTrue(await RenderStall.CompletesAsync(render.Task, TimeSpan.FromMilliseconds(20), _Long));
     }
 }

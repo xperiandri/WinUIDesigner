@@ -13,6 +13,7 @@ internal sealed partial class SurfaceService
 {
     private const int _RenderWatchSeconds = 3;
     private const int _RenderProbeSeconds = 2;
+    private const int _RenderProbeGraceMilliseconds = 500;
 
     private readonly Breadcrumbs _breadcrumbs = new(24);
     private bool _renderWatchArmed;
@@ -60,26 +61,30 @@ internal sealed partial class SurfaceService
             {
                 int frames = RenderFrames.Count;
 
+                // Nothing is shown, so nothing has to be drawn, or a surface is frozen, which suspends rendering on
+                // purpose: look again, counting from now.
                 int[] shownIds = [.. _surfaces.Where(pair => pair.Value.IsHostVisible).Select(pair => pair.Key)];
-                if (shownIds.Length == 0)
+                if (RenderStall.ShouldLookAgain(shownIds.Length, _surfaces.Values.Any(surface => surface.IsFrozen)))
                 {
-                    // Nothing is shown, so no frames are expected; look again, counting from now.
                     ArmRenderWatch(exception, frames);
                     return;
                 }
 
-                // Frames that stopped, or a render that the framework no longer completes: it has stopped drawing.
-                bool stalled = RenderStall.IsStalled(framesAtStart, frames)
-                    || !await _surfaces[shownIds[0]].CanDrawAsync(TimeSpan.FromSeconds(_RenderProbeSeconds));
+                // A render that the framework does not complete, even once its thread is free again: it has stopped
+                // drawing. The frames only go into the log: a thread that is busy for a while draws none either.
+                bool canDraw = await _surfaces[shownIds[0]].CanDrawAsync(
+                    TimeSpan.FromSeconds(_RenderProbeSeconds),
+                    TimeSpan.FromMilliseconds(_RenderProbeGraceMilliseconds)
+                );
                 _renderWatchArmed = false;
 
-                if (stalled)
+                if (canDraw)
                 {
-                    ReportRenderStall(exception, shownIds);
+                    WinUIDesignerLogger.LogInformation("Surface", $"The surface still draws after the error that the framework reported ({frames - framesAtStart} frames in {_RenderWatchSeconds} s).");
                 }
                 else
                 {
-                    WinUIDesignerLogger.LogInformation("Surface", $"The surface still draws after the error that the framework reported ({frames - framesAtStart} frames in {_RenderWatchSeconds} s).");
+                    ReportRenderStall(exception, shownIds);
                 }
             }
             catch (Exception failure)

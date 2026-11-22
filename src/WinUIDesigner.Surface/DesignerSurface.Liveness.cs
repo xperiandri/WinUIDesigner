@@ -12,10 +12,10 @@ internal sealed partial class DesignerSurface
 {
     /// <summary>
     /// Whether the framework still completes a render of this document: asks it to render one pixel of the island, and
-    /// waits for it. A framework that has stopped drawing never answers. An element that cannot be rendered for another
-    /// reason says nothing about the framework, so that it counts as drawing.
+    /// waits for it (<see cref="RenderStall.CompletesAsync"/>). A framework that has stopped drawing never answers. An
+    /// element that cannot be rendered for another reason says nothing about the framework, so that it counts as drawing.
     /// </summary>
-    public async Task<bool> CanDrawAsync(TimeSpan timeout)
+    public async Task<bool> CanDrawAsync(TimeSpan timeout, TimeSpan grace)
     {
         try
         {
@@ -24,7 +24,7 @@ internal sealed partial class DesignerSurface
             IAsyncAction render = bitmap.RenderAsync(_viewportRoot, 1, 1);
             render.Completed = (_, _) => completed.TrySetResult();
 
-            if (await Task.WhenAny(completed.Task, Task.Delay(timeout)).ConfigureAwait(true) == completed.Task)
+            if (await RenderStall.CompletesAsync(completed.Task, timeout, grace).ConfigureAwait(true))
             {
                 return true;
             }
