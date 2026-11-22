@@ -49,7 +49,7 @@ internal static class FreezeRecovery
         return renderingSuspended ? FreezeTimerStep.ResumeRendering : FreezeTimerStep.Nothing;
     }
 
-    /// <summary>Whether a resumption is tried again after it failed for the given time.</summary>
+    /// <summary>Whether a resumption is tried again after it has failed the given number of times.</summary>
     public static bool ShouldRetryResume(int failures) => failures < MaximumResumeRetries;
 
     /// <summary>
