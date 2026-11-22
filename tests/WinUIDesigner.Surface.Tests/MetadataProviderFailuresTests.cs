@@ -17,6 +17,38 @@ public sealed class MetadataProviderFailuresTests
         public string? GetXamlType(Type type) => throw failure;
     }
 
+    // A provider that works: it knows one type and answers null for any other, like a generated provider.
+    private sealed class KnowingProvider(Type known, string metadata)
+    {
+        public string? GetXamlType(Type type) => type == known ? metadata : null;
+    }
+
+    [TestMethod]
+    public void AnswerOfAProviderThatKnowsTheTypeIsReturned()
+    {
+        var failures = new MetadataProviderFailures((_, _) => Assert.Fail("A provider that answers has not failed."));
+        var knowing = new KnowingProvider(typeof(string), "from the provider");
+
+        string? found = XamlTypeLookup.Find<string>(
+            typeof(string),
+            [failures.Isolate<string>(knowing, knowing.GetXamlType)],
+            _ => throw new AssertFailedException("The name must not be asked for when a provider knows the type.")
+        );
+
+        Assert.AreEqual("from the provider", found);
+    }
+
+    [TestMethod]
+    public void ProviderThatDoesNotKnowTheTypeHasNotFailed()
+    {
+        var warnings = new List<string>();
+        var failures = new MetadataProviderFailures((message, _) => warnings.Add(message));
+        var knowing = new KnowingProvider(typeof(string), "from the provider");
+
+        Assert.IsNull(failures.Isolate<string>(knowing, knowing.GetXamlType)(typeof(int)));
+        Assert.IsEmpty(warnings);
+    }
+
     [TestMethod]
     public void ProviderThatThrowsIsSkipped()
     {
