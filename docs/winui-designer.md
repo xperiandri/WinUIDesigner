@@ -139,6 +139,14 @@ Viewport size, preview device size, and pan/zoom are separate values. The viewpo
 
 Implementation: [scene and window adapter](../src/WinUIDesigner.Vsix/Platform/WinUISceneView.cs), [overlay placement](../src/WinUIDesigner.Vsix/Platform/WinUIOverlayWindow.cs), and [WinUI island](../src/WinUIDesigner.Surface/Designer/Surface/DesignerSurface.cs).
 
+### Host visibility of the island
+
+The framework draws an island only while it thinks that the host of the island is shown (`XamlRoot.IsHostVisible`), and it learns that from the messages that the window of the island gets when Visual Studio hides or shows the holder window, for example when the tab of a document is left or opened again. After switches between the designers of two documents it has been seen to keep the host hidden while the window of the island and every parent of it were visible: the controls of the document were laid out and reachable through UI Automation, and nothing was drawn until the window was hidden and shown again. Why the message is lost is not known.
+
+While the framework says that the host is hidden, the surface therefore looks at the window of the island four times a second. When the window is visible and its top-level window is not minimized, the surface hides the window and shows it again, which tells the framework, and logs that at information level. A window that Visual Studio has hidden is left alone, because the message that shows it comes with the show. After three attempts that do not help, the surface logs a warning and only goes on looking: when Visual Studio hides and shows the window (another tab and back) or moves or resizes the surface, the attempts start again. Disposing the surface takes the handler away from the timer, which would otherwise keep the closed document in memory.
+
+Implementation: [host visibility](../src/WinUIDesigner.Surface/DesignerSurface.HostVisibility.cs), [timer and attempts](../src/WinUIDesigner.Surface/Common/HostVisibilityWatch.cs), and [decision](../src/WinUIDesigner.Surface/Common/HostVisibilityPolicy.cs).
+
 ## Handling designer operations
 
 The surface implements these operation groups:
