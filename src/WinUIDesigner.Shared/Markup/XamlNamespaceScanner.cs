@@ -156,6 +156,7 @@ internal static class XamlNamespaceScanner
     /// </returns>
     public static string? ReadAttributePrefix(string? attributeText)
     {
+        // There is no text to read.
         if (attributeText is null)
         {
             return null;

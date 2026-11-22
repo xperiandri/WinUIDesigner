@@ -331,6 +331,7 @@ internal static class XamlNamespaceRewriter
                 }
             }
 
+            // A document that declares no prefix has no policy namespace.
             if (declarations is null)
             {
                 return false;
@@ -521,6 +522,7 @@ internal static class XamlNamespaceRewriter
                 XAttribute? replacement = RewriteAttribute(element, elementPrefix, attribute);
                 if (rewritten is null)
                 {
+                    // The attribute stays as it is and nothing before it changed.
                     if (ReferenceEquals(replacement, attribute))
                     {
                         continue;
@@ -534,6 +536,7 @@ internal static class XamlNamespaceRewriter
                     }
                 }
 
+                // The attribute is dropped: it is not carried over.
                 if (replacement is null)
                 {
                     continue;
@@ -635,11 +638,13 @@ internal static class XamlNamespaceRewriter
 
         private string GetDefaultNamespace()
         {
+            // No default namespace is declared here.
             if (!_scope.TryGetValue(string.Empty, out Binding? binding))
             {
                 return string.Empty;
             }
 
+            // A kept default namespace is re-pointed at its bare namespace; any other stays as written.
             return Classify(binding) == XamlPrefixDisposition.Keep ? binding.NormalizedNamespace : binding.Uri.Original;
         }
 
