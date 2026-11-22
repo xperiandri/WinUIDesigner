@@ -168,7 +168,8 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
     }
 
-    // The first usable candidate of the staged PRI files, in their order.
+    // The first usable candidate of the staged PRI files, in their order. A PRI file that fails is left out, so that the
+    // other PRI files, the staged files and the placeholder still answer.
     private StagedCandidate? FindInStagedPris(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers, string request)
     {
         // A resource can have candidates for one theme or one scale only, so a miss belongs to the qualifier values of the
@@ -186,8 +187,8 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         {
             // The candidate for the qualifier values of the request (scale, theme, contrast), then the one for the
             // defaults of the PRI file.
-            TCandidate? candidate = qualifiers.Count > 0 ? GetUsable(host.LookUp(index, name, qualifiers)) : null;
-            candidate ??= GetUsable(host.LookUp(index, name, null));
+            TCandidate? candidate = qualifiers.Count > 0 ? Ask(index, name, qualifiers) : null;
+            candidate ??= Ask(index, name, null);
             if (candidate is not null)
             {
                 return new StagedCandidate(host.PriFiles[index], candidate);
@@ -200,6 +201,25 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
 
         return null;
+    }
+
+    // One lookup in the PRI file at the index: its candidate when it can be used. A PRI file that fails is reported once.
+    private TCandidate? Ask(int index, string name, IReadOnlyList<KeyValuePair<string, string>>? qualifiers)
+    {
+        try
+        {
+            return GetUsable(host.LookUp(index, name, qualifiers));
+        }
+        catch (Exception ex)
+        {
+            string priFile = host.PriFiles[index];
+            if (IsFirstReport($"failed-pri|{priFile}"))
+            {
+                host.Log(StagedResourceLogLevel.Warning, $"Looking up the resource '{name}' in the staged PRI '{priFile}' failed; the other PRI files and the staged files are still asked, and further failures of this PRI file are not logged.", ex);
+            }
+
+            return null;
+        }
     }
 
     // The candidate when it can be used: data, such as an XBF that the PRI file embeds, or a file that exists. The same

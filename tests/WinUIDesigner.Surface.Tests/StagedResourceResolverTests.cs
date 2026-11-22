@@ -297,6 +297,43 @@ public sealed class StagedResourceResolverTests
     }
 
     [TestMethod]
+    public void PriFileThatFailsIsLeftOutAndTheOthersAreAsked()
+    {
+        var embedded = new Candidate(null);
+        var exception = new InvalidOperationException("MRT said no.");
+        var host = new FakeHost("broken.pri", "resources.pri");
+        host.Fails(0, exception);
+        host.Knows(1, "Files/App.xbf", embedded);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreSame(embedded, resolver.Resolve("Files/App.xbf", [new("Theme", "dark")]));
+        Assert.AreSame(embedded, resolver.Resolve("Files/App.xbf", [new("Theme", "light")]));
+
+        // The PRI file failed for both lookups of both requests, and is reported once.
+        Line warning = Assert.ContainsSingle(line => line.Level == StagedResourceLogLevel.Warning, host.Lines);
+        Assert.AreSame(exception, warning.Exception);
+        Assert.Contains("'Files/App.xbf' in the staged PRI 'broken.pri' failed", warning.Message);
+    }
+
+    [TestMethod]
+    public void StagedFileAndPlaceholderStillAnswerWhenEveryPriFileFails()
+    {
+        var exception = new InvalidOperationException("MRT said no.");
+        string staged = Staged("Assets/Images/svg/theme-light/ecierge_waves_logo.svg");
+        var host = new FakeHost("a.pri", "b.pri");
+        host.Fails(0, exception);
+        host.Fails(1, exception);
+        host.Files.Add(staged);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreEqual(new Candidate(staged), resolver.Resolve("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", _NoQualifiers));
+        Assert.AreEqual(new Candidate(host.PlaceholderPath("missing-image.png")), resolver.Resolve("Files/Assets/Images/back.png", _NoQualifiers));
+
+        // Each PRI file is reported once, for the first name that it failed for.
+        Assert.HasCount(2, host.Lines.Where(line => line.Exception is not null));
+    }
+
+    [TestMethod]
     public void FailureIsReportedOncePerName()
     {
         var host = new FakeHost("resources.pri");
@@ -340,6 +377,9 @@ public sealed class StagedResourceResolverTests
         // Candidates by PRI file, name and the qualifier values they are for (null: the defaults of the PRI file).
         private readonly Dictionary<(int PriFile, string Name, string? Qualifiers), Candidate> _known = [];
 
+        // The PRI files whose lookups throw.
+        private readonly Dictionary<int, Exception> _failures = [];
+
         public IReadOnlyList<string> PriFiles { get; } = priFiles;
 
         // The files that exist.
@@ -363,6 +403,11 @@ public sealed class StagedResourceResolverTests
             _known[(priFile, name, qualifiers)] = candidate;
         }
 
+        public void Fails(int priFile, Exception exception)
+        {
+            _failures[priFile] = exception;
+        }
+
         public string PlaceholderPath(string fileName) => Path.Combine(_Root, "placeholders", fileName);
 
         public Candidate? LookUp(int priFile, string name, IReadOnlyList<KeyValuePair<string, string>>? qualifiers)
@@ -371,7 +416,7 @@ public sealed class StagedResourceResolverTests
             lock (_gate)
             {
                 Lookups.Add($"{priFile} {name} {request ?? "defaults"}");
-                return _known.GetValueOrDefault((priFile, name, request));
+                return _failures.TryGetValue(priFile, out Exception? failure) ? throw failure : _known.GetValueOrDefault((priFile, name, request));
             }
         }
 
