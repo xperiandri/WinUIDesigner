@@ -50,12 +50,14 @@ internal static class WinUIPlatformSupport
     /// </summary>
     public static bool IsHosted(PlatformIdentifier? platformIdentifier)
     {
+        // No identity, no hosted configuration yet, or an identity the configuration does not cover.
         PlatformSpecification? specification = Volatile.Read(ref _hostedSpecification);
         if (platformIdentifier is null || specification is null || !Matches(platformIdentifier, specification))
         {
             return false;
         }
 
+        // A covered identity, as long as the lookup Visual Studio performs still finds this extension's host.
         Func<PlatformIdentifier, bool>? probe = Volatile.Read(ref _hostBindingProbe);
 
         return probe is null || probe(platformIdentifier);

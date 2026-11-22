@@ -37,6 +37,7 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
     // WinUI host, and Visual Studio shows its own message pane without text for it.
     public override bool IsCompatibleRuntimePlatform(IHostProject hostProject, out string errorSummary, out string errorDetails)
     {
+        // The base host platform already rejects the project.
         if (!base.IsCompatibleRuntimePlatform(hostProject, out errorSummary, out errorDetails))
         {
             return false;
@@ -56,12 +57,14 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
             return true;
         }
 
+        // The project meets the requirements.
         if (reason is null)
         {
             return true;
         }
 
-        if (_ReportedProjects.TryAdd(hostProject.ProjectName + "|" + reason, 0))
+        // It does not: log that once per project and reason, and show the reason in the pane.
+        if (_ReportedProjects.TryAdd($"{hostProject.ProjectName}|{reason}", 0))
         {
             WinUIDesignerLogger.LogWarning("Host", $"Project '{hostProject.ProjectName}' is not supported: {reason}");
         }

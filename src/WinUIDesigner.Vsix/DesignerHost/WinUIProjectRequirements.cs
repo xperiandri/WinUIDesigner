@@ -69,16 +69,19 @@ internal static class WinUIProjectRequirements
     /// </param>
     public static string? GetUnsupportedReason(PlatformIdentifier? platformIdentifier, string? winUIRuntimeFileVersion)
     {
+        // The project does not target .NET (Core).
         if (!string.Equals(platformIdentifier?.TargetFrameworkIdentifier, ".NETCoreApp", StringComparison.Ordinal))
         {
             return "WinUI Designer currently supports .NETCoreApp projects only.";
         }
 
+        // The project is not a managed one.
         if (!string.Equals(platformIdentifier?.TargetRuntime, "Managed", StringComparison.OrdinalIgnoreCase))
         {
             return $"WinUI Designer requires a managed project. Runtime: {platformIdentifier?.TargetRuntime}.";
         }
 
+        // The project references another Microsoft.WinUI.dll than the one the surface bundles.
         if (winUIRuntimeFileVersion is not null
             && !string.Equals(VerifiedWinUIRuntimeFileVersion, winUIRuntimeFileVersion, StringComparison.Ordinal))
         {
@@ -147,19 +150,21 @@ internal static class WinUIProjectRequirements
     /// </summary>
     public static string? GetWinUIRuntimeFileVersion(IEnumerable<string?>? referencePaths)
     {
+        // The project has no Microsoft.WinUI.dll reference, or the file is not there: nothing to verify.
         string? path = FindWinUIRuntimePath(referencePaths);
         if (path is null || !File.Exists(path))
         {
             return null;
         }
 
-        // The designer pane repeats this question while the document is open; avoid re-reading an unchanged file.
+        // An unchanged file: the designer pane repeats this question while the document is open.
         long stamp = File.GetLastWriteTimeUtc(path).Ticks;
         if (_FileVersions.TryGetValue(path, out KeyValuePair<long, string> cached) && cached.Key == stamp)
         {
             return cached.Value;
         }
 
+        // A new or changed file: read its version once.
         string version = FileVersionInfo.GetVersionInfo(path).FileVersion ?? string.Empty;
         _FileVersions[path] = new KeyValuePair<long, string>(stamp, version);
 

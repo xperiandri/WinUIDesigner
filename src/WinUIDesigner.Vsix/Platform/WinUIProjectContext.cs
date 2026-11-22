@@ -86,6 +86,7 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
     // with a reason in the log and on the design surface instead of a NullReferenceException.
     SurfaceProcessInfo IProjectContext.CreateSurfaceProcessInfo(bool forcePlatformOnly)
     {
+        // The context lacks a part that Visual Studio's implementation needs.
         if (GetSurfaceLaunchBlocker(this) is { } blocker)
         {
             WinUIDesignerLogger.LogError("Platform", blocker);
@@ -93,6 +94,7 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
             throw new InvalidOperationException(blocker);
         }
 
+        // The context is complete: Visual Studio's implementation prepares the surface.
         return CreateSurfaceProcessInfo(forcePlatformOnly);
     }
 

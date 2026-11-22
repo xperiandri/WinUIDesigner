@@ -224,7 +224,8 @@ public sealed class WinUIDesignerPackage : AsyncPackage, IVsToolboxItemProvider
         return string.Equals(
             PlatformConfigurationService.GetProperty(platformIdentifier, "HostPlatformType"),
             typeof(WinUIHostPlatform).FullName,
-            StringComparison.Ordinal);
+            StringComparison.Ordinal
+        );
     }
 
     int IVsToolboxItemProvider.GetItemContent(string szItemID, ushort format, out IntPtr pGlobal)

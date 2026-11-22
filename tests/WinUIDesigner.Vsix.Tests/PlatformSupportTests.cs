@@ -11,7 +11,8 @@ public sealed class PlatformSupportTests
 {
     // The specification of Visual Studio's desktop WinUI configuration, which receives the host binding.
     private static readonly PlatformSpecification _DesktopWinUI = new(
-        "TargetPlatformIdentifier=Windows;TargetPlatformVersion=10.0-..;TargetRuntime=Managed,Native;TargetFrameworkIdentifier=.NETCoreApp;TargetFrameworkVersion=5.0-..;XamlRuntime=WinUI");
+        "TargetPlatformIdentifier=Windows;TargetPlatformVersion=10.0-..;TargetRuntime=Managed,Native;TargetFrameworkIdentifier=.NETCoreApp;TargetFrameworkVersion=5.0-..;XamlRuntime=WinUI"
+    );
 
     private static readonly FrameworkName _Net10 = new(".NETCoreApp", new Version(10, 0));
 
@@ -21,29 +22,25 @@ public sealed class PlatformSupportTests
         "Managed",
         _Net10,
         new SdkName("Windows", new Version(10, 0)),
-        XamlRuntimeNames.WinUI);
+        XamlRuntimeNames.WinUI
+    );
 
     // net10.0-android of an Uno project: Uno.Sdk sets DefaultXamlRuntime=WinUI for every target framework.
     private static PlatformIdentifier AndroidTarget => new(
         new PlatformName("Android", new Version(36, 0)),
         "Managed",
         _Net10,
-        XamlRuntimeNames.WinUI);
+        XamlRuntimeNames.WinUI
+    );
 
     // net10.0 of an Uno project: no target platform at all.
     private static PlatformIdentifier PlatformNeutralTarget => new(null, "Managed", _Net10, XamlRuntimeNames.WinUI);
 
     [TestCleanup]
-    public void Cleanup()
-    {
-        WinUIPlatformSupport.Reset();
-    }
+    public void Cleanup() => WinUIPlatformSupport.Reset();
 
     [TestMethod]
-    public void WindowsTargetOfWinUIProjectIsCovered()
-    {
-        Assert.IsTrue(WinUIPlatformSupport.Matches(WindowsTarget, _DesktopWinUI));
-    }
+    public void WindowsTargetOfWinUIProjectIsCovered() => Assert.IsTrue(WinUIPlatformSupport.Matches(WindowsTarget, _DesktopWinUI));
 
     [TestMethod]
     public void NonWindowsTargetsReportingWinUIRuntimeAreNotCovered()
@@ -109,11 +106,11 @@ public sealed class PlatformSupportTests
         string? reason = WinUIProjectRequirements.GetUnsupportedReason(WindowsTarget, "3.0.0.2508");
 
         Assert.IsNotNull(reason);
-        StringAssert.Contains(reason, WinUIProjectRequirements.VerifiedWindowsAppSdkVersion);
-        StringAssert.Contains(reason, "3.0.0.2508");
+        Assert.Contains(WinUIProjectRequirements.VerifiedWindowsAppSdkVersion, reason);
+        Assert.Contains("3.0.0.2508", reason);
 
         // A file without version information cannot be verified either.
-        StringAssert.Contains(WinUIProjectRequirements.GetUnsupportedReason(WindowsTarget, string.Empty), "unknown version");
+        AssertExplains("unknown version", WinUIProjectRequirements.GetUnsupportedReason(WindowsTarget, string.Empty));
     }
 
     [TestMethod]
@@ -124,11 +121,12 @@ public sealed class PlatformSupportTests
             new PlatformName("Windows", new Version(10, 0, 26100, 0)),
             "Managed",
             new FrameworkName(".NETFramework", new Version(4, 8)),
-            XamlRuntimeNames.WinUI);
+            XamlRuntimeNames.WinUI
+        );
 
-        StringAssert.Contains(WinUIProjectRequirements.GetUnsupportedReason(native, (string?)null), "managed");
-        StringAssert.Contains(WinUIProjectRequirements.GetUnsupportedReason(framework, (string?)null), ".NETCoreApp");
-        StringAssert.Contains(WinUIProjectRequirements.GetUnsupportedReason(null, (string?)null), ".NETCoreApp");
+        AssertExplains("managed", WinUIProjectRequirements.GetUnsupportedReason(native, (string?)null));
+        AssertExplains(".NETCoreApp", WinUIProjectRequirements.GetUnsupportedReason(framework, (string?)null));
+        AssertExplains(".NETCoreApp", WinUIProjectRequirements.GetUnsupportedReason(null, (string?)null));
     }
 
     [TestMethod]
