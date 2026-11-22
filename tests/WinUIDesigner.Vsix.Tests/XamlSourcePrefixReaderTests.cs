@@ -222,7 +222,10 @@ public sealed class XamlSourcePrefixReaderTests
 
     private static string Describe(ITextRange? range)
     {
-        return range is null ? "none" : $"[{range.Offset}, {range.Offset + range.Length}) {_Xaml.Substring(range.Offset, range.Length)}";
+        // The tests compare this text, so the numbers in it do not depend on the culture.
+        return range is null
+            ? "none"
+            : FormattableString.Invariant($"[{range.Offset}, {range.Offset + range.Length}) {_Xaml.Substring(range.Offset, range.Length)}");
     }
 
     /// <summary>
