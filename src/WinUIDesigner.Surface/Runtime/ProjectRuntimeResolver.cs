@@ -229,19 +229,29 @@ internal static class ProjectRuntimeResolver
 
         public bool FileExists(string path) => File.Exists(path);
 
+        public DateTime GetLastWriteTime(string path) => File.GetLastWriteTime(path);
+
         public string WritePlaceholder(string name) => MissingImagePlaceholder.Write(_PlaceholderDirectory, name);
 
         public void Log(StagedResourceLogLevel level, string message, Exception? exception)
         {
-            // Only with verbose logging.
-            if (level == StagedResourceLogLevel.Trace)
+            switch (level)
             {
-                WinUIDesignerLogger.LogTrace("Surface", message, exception);
-                return;
-            }
+                // Only with verbose logging.
+                case StagedResourceLogLevel.Trace:
+                    WinUIDesignerLogger.LogTrace("Surface", message, exception);
+                    break;
 
-            // Always, such as a missing image.
-            WinUIDesignerLogger.LogWarning("Surface", message, exception);
+                // Always, such as XAML that comes from the build output.
+                case StagedResourceLogLevel.Information:
+                    WinUIDesignerLogger.LogInformation("Surface", message, exception);
+                    break;
+
+                // Always, such as a missing image.
+                default:
+                    WinUIDesignerLogger.LogWarning("Surface", message, exception);
+                    break;
+            }
         }
     }
 

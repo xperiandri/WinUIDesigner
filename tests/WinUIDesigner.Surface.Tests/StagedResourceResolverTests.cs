@@ -1,6 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Globalization;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
@@ -121,13 +122,69 @@ public sealed class StagedResourceResolverTests
     public void NameThatNoUsableCandidateAnswersTakesTheStagedFileAtThePathOfItsUri()
     {
         // The only PRI file that knows the name names a file that is not staged.
+        string staged = Staged("Assets/Images/svg/theme-light/ecierge_waves_logo.svg");
         var host = new FakeHost("resources.pri");
-        host.Knows(0, "Files/Ecierge.Uno.Controls/Styles.xbf", new Candidate(Staged("AppX/Assets/missing.xbf")));
-        host.Files.Add(Staged("Ecierge.Uno.Controls/Styles.xbf"));
+        host.Knows(0, "Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", new Candidate(Staged("AppX/Assets/missing.svg")));
+        host.Files.Add(staged);
         var resolver = new StagedResourceResolver<Candidate>(_Root, host);
 
-        Assert.AreEqual(new Candidate(Staged("Ecierge.Uno.Controls/Styles.xbf")), resolver.Resolve("Files/Ecierge.Uno.Controls/Styles.xbf", _NoQualifiers));
-        Assert.Contains("the staged file", Assert.ContainsSingle(host.Lines).Message);
+        Assert.AreEqual(new Candidate(staged), resolver.Resolve("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", _NoQualifiers));
+
+        // Verbose logging only: the image is not XAML of a build output.
+        Line line = Assert.ContainsSingle(host.Lines);
+        Assert.AreEqual(StagedResourceLogLevel.Trace, line.Level);
+        Assert.AreEqual(
+            $"Resource 'Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg' is in none of the 1 staged PRI files; the staged file '{staged}' is used.",
+            line.Message
+        );
+    }
+
+    [TestMethod]
+    [DataRow("Files/Ecierge.Uno.Controls/Styles.xbf", "Ecierge.Uno.Controls/Styles.xbf")]
+    [DataRow("Files/Ecierge.Uno.Controls/Styles.xaml", "Ecierge.Uno.Controls/Styles.xaml")]
+    [DataRow("Files/Ecierge.Uno.Controls/themes/generic.xbf", "Ecierge.Uno.Controls/themes/generic.xbf")]
+    public void XamlFromAStagedFileIsReportedAsBuildOutputWithItsDate(string name, string relativePath)
+    {
+        string staged = Staged(relativePath);
+        var host = new FakeHost("resources.pri", "other.pri");
+        host.Files.Add(staged);
+        host.WrittenAt[staged] = new DateTime(2026, 11, 19, 5, 22, 50, DateTimeKind.Local);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreEqual(new Candidate(staged), resolver.Resolve(name, _NoQualifiers));
+        Assert.AreEqual(new Candidate(staged), resolver.Resolve(name, _NoQualifiers));
+
+        // Once per name, and without verbose logging: the designer shows the last build, not the text in the editor.
+        Line line = Assert.ContainsSingle(host.Lines);
+        Assert.AreEqual(StagedResourceLogLevel.Information, line.Level);
+        Assert.AreEqual(
+            $"Resource '{name}' comes from the build output '{staged}' of 2026-11-19 05:22:50 (local time); changes made after that build are not shown. It is in none of the 2 staged PRI files.",
+            line.Message
+        );
+    }
+
+    [TestMethod]
+    public void BuildOutputIsReportedWithTheSameDateInEveryCulture()
+    {
+        string staged = Staged("Ecierge.Uno.Controls/Styles.xbf");
+        var host = new FakeHost("resources.pri");
+        host.Files.Add(staged);
+        host.WrittenAt[staged] = new DateTime(2026, 11, 19, 5, 22, 50, DateTimeKind.Local);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+        CultureInfo culture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            // The Thai calendar counts the year 2569.
+            CultureInfo.CurrentCulture = new CultureInfo("th-TH");
+            resolver.Resolve("Files/Ecierge.Uno.Controls/Styles.xbf", _NoQualifiers);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+
+        Assert.Contains("of 2026-11-19 05:22:50 (local time)", Assert.ContainsSingle(host.Lines).Message);
     }
 
     [TestMethod]
@@ -274,6 +331,9 @@ public sealed class StagedResourceResolverTests
 
         public List<string> FileChecks { get; } = [];
 
+        // When a file was written, in local time.
+        public Dictionary<string, DateTime> WrittenAt { get; } = new(StringComparer.OrdinalIgnoreCase);
+
         // The names of the images that a placeholder was written for.
         public List<string> Placeholders { get; } = [];
 
@@ -310,6 +370,8 @@ public sealed class StagedResourceResolverTests
                 return Files.Contains(path);
             }
         }
+
+        public DateTime GetLastWriteTime(string path) => WrittenAt[path];
 
         public string WritePlaceholder(string name)
         {

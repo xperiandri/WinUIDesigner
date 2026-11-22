@@ -31,6 +31,22 @@ internal static class StagedResourceLookup
     public static bool IsFileResource(string name) => name.StartsWith(_FilesPrefix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Whether the file resource <paramref name="name"/> is XAML, compiled (<c>.xbf</c>) or not (<c>.xaml</c>), such as
+    /// the styles of a library: its staged file is the output of the last build, not the text in the editor.
+    /// </summary>
+    public static bool IsMarkup(string name)
+    {
+        // Only a file of the application can be a staged build output.
+        if (!IsFileResource(name))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> extension = Path.GetExtension(name.AsSpan());
+        return extension.Equals(".xbf", StringComparison.OrdinalIgnoreCase) || extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// The staged PRI files in the order in which they are asked. The files at the root of the content directory come
     /// first: a PRI file names its files by paths below its own folder, and only at the root are these the staged files.
     /// Among the files of one folder depth, the PRI file of the application comes first, because it answers nearly

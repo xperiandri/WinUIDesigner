@@ -135,6 +135,30 @@ public sealed class StagedResourceLookupTests
     }
 
     [TestMethod]
+    [DataRow("Files/Ecierge.Uno.Controls/Styles.xbf")]
+    [DataRow("Files/Ecierge.Uno.Controls/Styles.xaml")]
+    [DataRow("Files/Ecierge.Uno.Controls/themes/generic.XBF")]
+    [DataRow("files/Themes/Generic.Xaml")]
+    public void CompiledAndPlainXamlIsMarkup(string name)
+    {
+        Assert.IsTrue(StagedResourceLookup.IsMarkup(name));
+    }
+
+    [TestMethod]
+    [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]
+    [DataRow("Files/Strings/en-US/Resources.resw")]
+    [DataRow("Files/Ecierge.Uno.Controls/Styles.xbf.png")]
+    [DataRow("Files/Ecierge.Uno.Controls/xbf")]
+    [DataRow("Ecierge.Uno.Controls/Styles.xbf")]
+    [DataRow("Resources/Styles.xaml")]
+    public void OtherResourcesAreNoMarkup(string name)
+    {
+        // An image, a RESW file, an image whose name contains .xbf, a file without an extension, and names that are no
+        // file resources.
+        Assert.IsFalse(StagedResourceLookup.IsMarkup(name));
+    }
+
+    [TestMethod]
     [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", "ms-appx:///Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]
     [DataRow("Resources/AppDisplayName", "Resources/AppDisplayName")]
     public void FileResourceIsShownByItsUri(string name, string expected)

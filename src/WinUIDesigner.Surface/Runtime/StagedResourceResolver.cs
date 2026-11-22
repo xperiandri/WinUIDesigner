@@ -17,6 +17,11 @@ internal enum StagedResourceLogLevel
     Trace,
 
     /// <summary>
+    /// What the user should know although nothing failed, such as XAML of a library that comes from the build output.
+    /// </summary>
+    Information,
+
+    /// <summary>
     /// What the designer cannot show as it is, such as a missing image.
     /// </summary>
     Warning,
@@ -62,6 +67,11 @@ internal interface IStagedResourceHost<TCandidate>
     /// Whether the file <paramref name="path"/> exists.
     /// </summary>
     bool FileExists(string path);
+
+    /// <summary>
+    /// When the file <paramref name="path"/> was written last, in local time.
+    /// </summary>
+    DateTime GetLastWriteTime(string path);
 
     /// <summary>
     /// Writes the placeholder for the image <paramref name="name"/> and returns its path.
@@ -118,7 +128,7 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         {
             if (IsFirstReport(name))
             {
-                host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' is in none of the {host.PriFiles.Count} staged PRI files; the staged file '{path}' is used.");
+                ReportStagedFile(name, path);
             }
 
             return host.CreateFileCandidate(path);
@@ -206,6 +216,24 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
 
         // A file that is there.
         return host.FileExists(path) ? candidate : null;
+    }
+
+    // The staged file of a resource that no staged PRI file answers.
+    private void ReportStagedFile(string name, string path)
+    {
+        // XAML, such as the styles of a library: the output of its last build, not the text in the editor. An edit that is
+        // not built yet does not show in the designer, so the line is Information and shows without verbose logging.
+        if (StagedResourceLookup.IsMarkup(name))
+        {
+            host.Log(
+                StagedResourceLogLevel.Information,
+                FormattableString.Invariant($"Resource '{name}' comes from the build output '{path}' of {host.GetLastWriteTime(path):yyyy-MM-dd HH:mm:ss} (local time); changes made after that build are not shown. It is in none of the {host.PriFiles.Count} staged PRI files.")
+            );
+            return;
+        }
+
+        // Any other file, such as an image in a folder named after a qualifier.
+        host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' is in none of the {host.PriFiles.Count} staged PRI files; the staged file '{path}' is used.");
     }
 
     // The placeholder file for a missing image, written once.
