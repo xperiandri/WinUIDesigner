@@ -31,6 +31,7 @@ internal static class HostVisibilityPolicy
             return HostVisibilityAction.Nothing;
         }
 
+        // The window is visible and the framework does not know it: the window is shown again, until that was tried often enough.
         return attemptsSoFar >= maximumAttempts ? HostVisibilityAction.GiveUp : HostVisibilityAction.ShowAgain;
     }
 }
