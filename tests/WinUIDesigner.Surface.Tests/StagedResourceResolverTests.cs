@@ -123,18 +123,19 @@ public sealed class StagedResourceResolverTests
     {
         // The only PRI file that knows the name names a file that is not staged.
         string staged = Staged("Assets/Images/svg/theme-light/ecierge_waves_logo.svg");
+        string missing = Staged("ProjectResources/Ecierge.Console/Assets/Images/svg/ecierge_waves_logo.svg");
         var host = new FakeHost("resources.pri");
-        host.Knows(0, "Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", new Candidate(Staged("AppX/Assets/missing.svg")));
+        host.Knows(0, "Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", new Candidate(missing));
         host.Files.Add(staged);
         var resolver = new StagedResourceResolver<Candidate>(_Root, host);
 
         Assert.AreEqual(new Candidate(staged), resolver.Resolve("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", _NoQualifiers));
 
-        // Verbose logging only: the image is not XAML of a build output.
+        // Verbose logging only: the image is not XAML of a build output. The line says what the PRI file knew.
         Line line = Assert.ContainsSingle(host.Lines);
         Assert.AreEqual(StagedResourceLogLevel.Trace, line.Level);
         Assert.AreEqual(
-            $"Resource 'Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg' is in none of the 1 staged PRI files; the staged file '{staged}' is used.",
+            $"Resource 'Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg' is in 1 of the 1 staged PRI files, but none of them names a staged file outside the AppX folder (the first one names '{missing}'); the staged file '{staged}' is used.",
             line.Message
         );
     }
@@ -265,7 +266,7 @@ public sealed class StagedResourceResolverTests
         Line line = Assert.ContainsSingle(host.Lines);
         Assert.AreEqual(StagedResourceLogLevel.Warning, line.Level);
         Assert.AreEqual(
-            $"The image 'ms-appx:///Assets/Images/svg/theme-light/ecierge_waves_logo.svg' is in none of the 2 staged PRI files and is not a staged file in '{_Root}'; the designer shows it empty.",
+            $"The image 'ms-appx:///Assets/Images/svg/theme-light/ecierge_waves_logo.svg' is in none of the 2 staged PRI files, and it is not a staged file in '{_Root}'; the designer shows it empty.",
             line.Message
         );
     }
@@ -303,7 +304,7 @@ public sealed class StagedResourceResolverTests
         Assert.IsEmpty(host.Placeholders);
         Line line = Assert.ContainsSingle(host.Lines);
         Assert.AreEqual(StagedResourceLogLevel.Trace, line.Level);
-        Assert.AreEqual($"Resource '{name}' [Theme=dark] is in none of the 1 staged PRI files and is not a staged file; it stays unresolved.", line.Message);
+        Assert.AreEqual($"Resource '{name}' [Theme=dark] is in none of the 1 staged PRI files, and it is not a staged file; it stays unresolved.", line.Message);
     }
 
     [TestMethod]
@@ -373,6 +374,83 @@ public sealed class StagedResourceResolverTests
 
         // Each PRI file is reported once, for the first name that it failed for.
         Assert.HasCount(2, host.Lines.Where(line => line.Exception is not null));
+    }
+
+    [TestMethod]
+    public void ImageThatGotAPlaceholderIsReportedAgainWhenItsFileIsStagedLater()
+    {
+        // At cold start Visual Studio has not staged the assets yet.
+        string name = "Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg";
+        string staged = Staged("Assets/Images/svg/theme-light/ecierge_waves_logo.svg");
+        var host = new FakeHost("resources.pri");
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreEqual(new Candidate(host.PlaceholderPath("missing-image.svg")), resolver.Resolve(name, _NoQualifiers));
+        host.Files.Add(staged);
+        Assert.AreEqual(new Candidate(staged), resolver.Resolve(name, _NoQualifiers));
+        Assert.AreEqual(new Candidate(staged), resolver.Resolve(name, _NoQualifiers));
+
+        // The warning for the placeholder and the line for the staged file are two lines of their own, one each.
+        CollectionAssert.AreEqual(new[] { StagedResourceLogLevel.Warning, StagedResourceLogLevel.Trace }, host.Lines.Select(line => line.Level).ToList());
+        Assert.Contains($"the staged file '{staged}' is used", host.Lines[1].Message);
+    }
+
+    [TestMethod]
+    public void FoundResourceIsReportedOncePerSetOfQualifierValues()
+    {
+        var host = new FakeHost("resources.pri");
+        host.Knows(0, "Files/App.xbf", new Candidate(null));
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        resolver.Resolve("Files/App.xbf", [new("Theme", "dark")]);
+        resolver.Resolve("Files/App.xbf", [new("Theme", "dark")]);
+        resolver.Resolve("Files/App.xbf", [new("Theme", "light")]);
+
+        Assert.HasCount(2, host.Lines);
+        Assert.Contains("[Theme=dark] was found", host.Lines[0].Message);
+        Assert.Contains("[Theme=light] was found", host.Lines[1].Message);
+    }
+
+    [TestMethod]
+    public void ReportSaysHowManyPriFilesKnowTheNameWithoutAUsableFile()
+    {
+        // At cold start only the PRI files are staged, not the files that they name; the PRI file of AppX names a file that
+        // exists.
+        string name = "Files/Assets/Images/back.png";
+        string missing = Staged("ProjectResources/Ecierge.Console/Assets/Images/back.scale-150.png");
+        string stale = Staged("AppX/Assets/Images/back.scale-150.png");
+        var host = new FakeHost("resources.pri", "ProjectResources/Ecierge.Console/resources.pri", "other.pri", Staged("AppX/resources.pri"));
+        host.Knows(1, name, new Candidate(missing));
+        host.Knows(3, name, new Candidate(stale));
+        host.Files.Add(stale);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        resolver.Resolve(name, _NoQualifiers);
+
+        Line line = Assert.ContainsSingle(host.Lines);
+        Assert.AreEqual(
+            $"The image 'ms-appx:///Assets/Images/back.png' is in 2 of the 4 staged PRI files, but none of them names a staged file outside the AppX folder (the first one names '{missing}'), and it is not a staged file in '{_Root}'; the designer shows it empty.",
+            line.Message
+        );
+    }
+
+    [TestMethod]
+    public void ReportSaysHowManyPriFilesFailedToLookTheNameUp()
+    {
+        var exception = new InvalidOperationException("MRT said no.");
+        var host = new FakeHost("a.pri", "b.pri", "c.pri");
+        host.Fails(0, exception);
+        host.Fails(2, exception);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.IsNull(resolver.Resolve("Files/Strings/Resources.resw", _NoQualifiers));
+
+        // The failures are two warnings with the exception, the unresolved name one trace.
+        Line trace = Assert.ContainsSingle(line => line.Exception is null, host.Lines);
+        Assert.AreEqual(
+            "Resource 'Files/Strings/Resources.resw' [] is in none of the 3 staged PRI files (2 of them failed to look it up), and it is not a staged file; it stays unresolved.",
+            trace.Message
+        );
     }
 
     [TestMethod]

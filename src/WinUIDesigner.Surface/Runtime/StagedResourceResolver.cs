@@ -88,21 +88,22 @@ internal interface IStagedResourceHost<TCandidate>
 /// Answers a resource that the surface's own resource manager does not know, such as the file
 /// <c>ms-appx:///Assets/Images/logo.svg</c> of the project, which MRT asks for as <c>Files/Assets/Images/logo.svg</c>
 /// and which a packaged application would find in its package. The answer is, in this order, the candidate of a staged
-/// PRI file, the staged file at the path of the URI, an empty image for an image, or nothing. Each outcome is written to
-/// the log once per name. The members can be called from any thread.
+/// PRI file, the staged file at the path of the URI, an empty image for an image, or nothing. What was done is written to
+/// the log once per name (what answered a request once per name and qualifier values), because WinUI asks for the same
+/// resource again and again. The members can be called from any thread.
 /// </summary>
 /// <typeparam name="TCandidate">What a resource resolves to; <c>ResourceCandidate</c> in the surface.</typeparam>
 internal sealed class StagedResourceResolver<TCandidate>(string? contentDirectory, IStagedResourceHost<TCandidate> host)
     where TCandidate : class
 {
-    // The requests that no staged PRI file answers, neither for their qualifier values nor for the defaults, by the name
-    // and the qualifier values. The PRI files are loaded once, when the surface starts.
-    private readonly HashSet<string> _misses = new(StringComparer.OrdinalIgnoreCase);
+    // What the staged PRI files said about the requests that none of them answers, neither for their qualifier values nor
+    // for the defaults, by the name and the qualifier values. The PRI files are loaded once, when the surface starts.
+    private readonly Dictionary<string, PriAnswer> _misses = new(StringComparer.OrdinalIgnoreCase);
 
     // The placeholder files by file name, each written once.
     private readonly Dictionary<string, string> _placeholders = new(StringComparer.OrdinalIgnoreCase);
 
-    // Names whose resolution is already in the log: WinUI asks for the same resources again and again.
+    // The lines that are already in the log.
     private readonly HashSet<string> _reported = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -112,27 +113,24 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
     public TCandidate? Resolve(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers)
     {
         string request = StagedResourceLookup.DescribeQualifiers(qualifiers);
+        PriAnswer answer = AskStagedPris(name, qualifiers, request);
 
-        // 1. A staged PRI file knows the resource.
-        if (FindInStagedPris(name, qualifiers, request) is { } found)
+        // 1. A staged PRI file answers it.
+        if (answer.Candidate is { } candidate)
         {
-            if (IsFirstReport(name))
+            if (IsFirstReport($"found|{name}|{request}"))
             {
-                host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] was found in the staged PRI '{found.PriFile}' as {host.Describe(found.Candidate)}.");
+                host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] was found in the staged PRI '{answer.PriFile}' as {host.Describe(candidate)}.");
             }
 
-            return found.Candidate;
+            return candidate;
         }
 
         // 2. The staged file at the exact path of the URI, such as an image in a folder named after a qualifier
         // (theme-dark/logo.svg), which no PRI file lists under that name, or the XBF of a library.
         if (contentDirectory is { } root && StagedResourceLookup.FindStagedFile(root, name, host.FileExists) is { } path)
         {
-            if (IsFirstReport(name))
-            {
-                ReportStagedFile(name, path);
-            }
-
+            ReportStagedFile(name, path, answer);
             return host.CreateFileCandidate(path);
         }
 
@@ -140,18 +138,18 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         if (MissingImagePlaceholder.IsImage(name))
         {
             string placeholder = GetPlaceholder(name);
-            if (IsFirstReport(name))
+            if (IsFirstReport($"placeholder|{name}"))
             {
-                host.Log(StagedResourceLogLevel.Warning, $"The image '{StagedResourceLookup.ToAppUri(name)}' is in none of the {host.PriFiles.Count} staged PRI files and is not a staged file in '{contentDirectory}'; the designer shows it empty.");
+                host.Log(StagedResourceLogLevel.Warning, $"The image '{StagedResourceLookup.ToAppUri(name)}' {DescribeMiss(answer)}, and it is not a staged file in '{contentDirectory}'; the designer shows it empty.");
             }
 
             return host.CreateFileCandidate(placeholder);
         }
 
         // 4. Anything else stays unresolved, as before; the line shows what the framework asked for.
-        if (IsFirstReport(name))
+        if (IsFirstReport($"unresolved|{name}"))
         {
-            host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] is in none of the {host.PriFiles.Count} staged PRI files and is not a staged file; it stays unresolved.");
+            host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] {DescribeMiss(answer)}, and it is not a staged file; it stays unresolved.");
         }
 
         return null;
@@ -168,50 +166,75 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
     }
 
-    // The first usable candidate of the staged PRI files, in their order. A PRI file that fails is left out, so that the
-    // other PRI files, the staged files and the placeholder still answer.
-    private StagedCandidate? FindInStagedPris(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers, string request)
+    // The first usable candidate of the staged PRI files, in their order, or, for a request that none of them answers,
+    // what they said about it. A PRI file that fails is left out, so that the other PRI files, the staged files and the
+    // placeholder still answer.
+    private PriAnswer AskStagedPris(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers, string request)
     {
         // A resource can have candidates for one theme or one scale only, so a miss belongs to the qualifier values of the
         // request: the same name is asked again for others.
         string key = $"{name}|{request}";
         lock (_misses)
         {
-            if (_misses.Contains(key))
+            if (_misses.TryGetValue(key, out PriAnswer? known))
             {
-                return null;
+                return known;
             }
         }
 
+        int knownBy = 0;
+        int failed = 0;
+        string? firstUnusableFile = null;
         for (int index = 0; index < host.PriFiles.Count; index++)
         {
             // The candidate for the qualifier values of the request (scale, theme, contrast), then the one for the
             // defaults of the PRI file.
-            TCandidate? candidate = qualifiers.Count > 0 ? Ask(index, name, qualifiers) : null;
-            candidate ??= Ask(index, name, null);
+            PriOutcome outcome = default;
+            TCandidate? candidate = qualifiers.Count > 0 ? Ask(index, name, qualifiers, ref outcome) : null;
+            candidate ??= Ask(index, name, null, ref outcome);
             if (candidate is not null)
             {
-                return new StagedCandidate(host.PriFiles[index], candidate);
+                return new PriAnswer(candidate, host.PriFiles[index], 0, 0, null);
             }
+
+            knownBy += outcome.UnusableFile is null ? 0 : 1;
+            failed += outcome.Failed ? 1 : 0;
+            firstUnusableFile ??= outcome.UnusableFile;
         }
 
+        var miss = new PriAnswer(null, null, knownBy, failed, firstUnusableFile);
         lock (_misses)
         {
-            _misses.Add(key);
+            _misses.TryAdd(key, miss);
         }
 
-        return null;
+        return miss;
     }
 
     // One lookup in the PRI file at the index: its candidate when it can be used. A PRI file that fails is reported once.
-    private TCandidate? Ask(int index, string name, IReadOnlyList<KeyValuePair<string, string>>? qualifiers)
+    private TCandidate? Ask(int index, string name, IReadOnlyList<KeyValuePair<string, string>>? qualifiers, ref PriOutcome outcome)
     {
         try
         {
-            return GetUsable(host.LookUp(index, name, qualifiers));
+            // A PRI file that does not know the name.
+            if (host.LookUp(index, name, qualifiers) is not { } candidate)
+            {
+                return null;
+            }
+
+            // Data, such as an XBF that the PRI file embeds, or a file that can be used.
+            if (host.GetFilePath(candidate) is not { } path || IsUsableFile(path))
+            {
+                return candidate;
+            }
+
+            // A file that is not staged, or one of the stale AppX layout.
+            outcome.UnusableFile ??= path;
+            return null;
         }
         catch (Exception ex)
         {
+            outcome.Failed = true;
             string priFile = host.PriFiles[index];
             if (IsFirstReport($"failed-pri|{priFile}"))
             {
@@ -222,50 +245,50 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
     }
 
-    // The candidate when it can be used: data, such as an XBF that the PRI file embeds, or a file that exists outside the
-    // AppX folder. The same PRI file is staged in several folders (the root, AppX and one folder per package below
-    // ProjectResources), and each copy names files next to itself: nothing but PRI files is staged below
-    // ProjectResources, and the files in AppX are older than the ones at the root.
-    private TCandidate? GetUsable(TCandidate? candidate)
+    // Whether a file that a staged PRI file names can be used: it exists outside the AppX folder. The same PRI file is
+    // staged in several folders (the root, AppX and one folder per package below ProjectResources), and each copy names
+    // files next to itself: nothing but PRI files is staged below ProjectResources, and the files in AppX are older than
+    // the ones at the root.
+    private bool IsUsableFile(string path)
     {
-        // A PRI file that does not know the name.
-        if (candidate is null)
-        {
-            return null;
-        }
-
-        // Data.
-        if (host.GetFilePath(candidate) is not { } path)
-        {
-            return candidate;
-        }
-
-        // A file of the stale AppX layout.
-        if (contentDirectory is not null && StagedResourceLookup.IsInAppXLayout(contentDirectory, path))
-        {
-            return null;
-        }
-
-        // A file that is there.
-        return host.FileExists(path) ? candidate : null;
+        return (contentDirectory is null || !StagedResourceLookup.IsInAppXLayout(contentDirectory, path)) && host.FileExists(path);
     }
 
     // The staged file of a resource that no staged PRI file answers.
-    private void ReportStagedFile(string name, string path)
+    private void ReportStagedFile(string name, string path, PriAnswer miss)
     {
         // XAML, such as the styles of a library: the output of its last build, not the text in the editor. An edit that is
         // not built yet does not show in the designer, so the line is Information and shows without verbose logging.
         if (StagedResourceLookup.IsMarkup(name))
         {
-            host.Log(
-                StagedResourceLogLevel.Information,
-                FormattableString.Invariant($"Resource '{name}' comes from the build output '{path}' of {host.GetLastWriteTime(path):yyyy-MM-dd HH:mm:ss} (local time); changes made after that build are not shown. It is in none of the {host.PriFiles.Count} staged PRI files.")
-            );
+            if (IsFirstReport($"build-output|{name}"))
+            {
+                host.Log(
+                    StagedResourceLogLevel.Information,
+                    FormattableString.Invariant($"Resource '{name}' comes from the build output '{path}' of {host.GetLastWriteTime(path):yyyy-MM-dd HH:mm:ss} (local time); changes made after that build are not shown. It {DescribeMiss(miss)}.")
+                );
+            }
+
             return;
         }
 
         // Any other file, such as an image in a folder named after a qualifier.
-        host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' is in none of the {host.PriFiles.Count} staged PRI files; the staged file '{path}' is used.");
+        if (IsFirstReport($"staged-file|{name}"))
+        {
+            host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' {DescribeMiss(miss)}; the staged file '{path}' is used.");
+        }
+    }
+
+    // For the log: "is in none of the 419 staged PRI files", or "is in 2 of the 419 staged PRI files, but none of them
+    // names a staged file outside the AppX folder (the first one names '...')", and how many of them failed.
+    private string DescribeMiss(PriAnswer miss)
+    {
+        int count = host.PriFiles.Count;
+        string known = miss.KnownBy == 0
+            ? $"is in none of the {count} staged PRI files"
+            : $"is in {miss.KnownBy} of the {count} staged PRI files, but none of them names a staged file outside the AppX folder (the first one names '{miss.FirstUnusableFile}')";
+
+        return miss.Failed == 0 ? known : $"{known} ({miss.Failed} of them failed to look it up)";
     }
 
     // The placeholder file for a missing image, written once.
@@ -293,6 +316,16 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
     }
 
-    // A candidate of a staged PRI file.
-    private sealed record StagedCandidate(string PriFile, TCandidate Candidate);
+    // What the staged PRI files answered: a usable candidate and the PRI file that has it, or, when none has one, how many
+    // of them know the name (with files that are not staged or only in the AppX folder), how many failed, and the first
+    // file that one of them named.
+    private sealed record PriAnswer(TCandidate? Candidate, string? PriFile, int KnownBy, int Failed, string? FirstUnusableFile);
+
+    // What one PRI file said about a request that it did not answer.
+    private struct PriOutcome
+    {
+        public bool Failed;
+
+        public string? UnusableFile;
+    }
 }
