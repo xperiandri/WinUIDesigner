@@ -85,4 +85,19 @@ public sealed class BreadcrumbsTests
 
         Assert.AreEqual(100, breadcrumbs.Snapshot().Count);
     }
+
+    [TestMethod]
+    public void EveryEntryAddedFromManyThreadsIsKeptOnce()
+    {
+        // As many entries as the journal holds: writers that raced on the same slot would lose one.
+        const int Count = 10_000;
+        var breadcrumbs = new Breadcrumbs(Count);
+
+        Parallel.For(0, Count, index => breadcrumbs.Add(FormattableString.Invariant($"entry {index}")));
+
+        CollectionAssert.AreEquivalent(
+            Enumerable.Range(0, Count).Select(index => FormattableString.Invariant($"entry {index}")).ToArray(),
+            breadcrumbs.Snapshot().Select(Text).ToArray()
+        );
+    }
 }
