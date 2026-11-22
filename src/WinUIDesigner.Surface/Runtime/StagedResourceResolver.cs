@@ -95,9 +95,9 @@ internal interface IStagedResourceHost<TCandidate>
 internal sealed class StagedResourceResolver<TCandidate>(string? contentDirectory, IStagedResourceHost<TCandidate> host)
     where TCandidate : class
 {
-    // Names that no staged PRI file answers, neither for the qualifier values of a request nor for the defaults. The PRI
-    // files are loaded once, when the surface starts.
-    private readonly HashSet<string> _unknownNames = new(StringComparer.OrdinalIgnoreCase);
+    // The requests that no staged PRI file answers, neither for their qualifier values nor for the defaults, by the name
+    // and the qualifier values. The PRI files are loaded once, when the surface starts.
+    private readonly HashSet<string> _misses = new(StringComparer.OrdinalIgnoreCase);
 
     // The placeholder files by file name, each written once.
     private readonly Dictionary<string, string> _placeholders = new(StringComparer.OrdinalIgnoreCase);
@@ -111,12 +111,14 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
     /// </summary>
     public TCandidate? Resolve(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers)
     {
+        string request = StagedResourceLookup.DescribeQualifiers(qualifiers);
+
         // 1. A staged PRI file knows the resource.
-        if (FindInStagedPris(name, qualifiers) is { } found)
+        if (FindInStagedPris(name, qualifiers, request) is { } found)
         {
             if (IsFirstReport(name))
             {
-                host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{StagedResourceLookup.DescribeQualifiers(qualifiers)}] was found in the staged PRI '{found.PriFile}' as {host.Describe(found.Candidate)}.");
+                host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] was found in the staged PRI '{found.PriFile}' as {host.Describe(found.Candidate)}.");
             }
 
             return found.Candidate;
@@ -149,7 +151,7 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         // 4. Anything else stays unresolved, as before; the line shows what the framework asked for.
         if (IsFirstReport(name))
         {
-            host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{StagedResourceLookup.DescribeQualifiers(qualifiers)}] is in none of the {host.PriFiles.Count} staged PRI files and is not a staged file; it stays unresolved.");
+            host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] is in none of the {host.PriFiles.Count} staged PRI files and is not a staged file; it stays unresolved.");
         }
 
         return null;
@@ -167,11 +169,14 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
     }
 
     // The first usable candidate of the staged PRI files, in their order.
-    private StagedCandidate? FindInStagedPris(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers)
+    private StagedCandidate? FindInStagedPris(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers, string request)
     {
-        lock (_unknownNames)
+        // A resource can have candidates for one theme or one scale only, so a miss belongs to the qualifier values of the
+        // request: the same name is asked again for others.
+        string key = $"{name}|{request}";
+        lock (_misses)
         {
-            if (_unknownNames.Contains(name))
+            if (_misses.Contains(key))
             {
                 return null;
             }
@@ -189,9 +194,9 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
             }
         }
 
-        lock (_unknownNames)
+        lock (_misses)
         {
-            _unknownNames.Add(name);
+            _misses.Add(key);
         }
 
         return null;

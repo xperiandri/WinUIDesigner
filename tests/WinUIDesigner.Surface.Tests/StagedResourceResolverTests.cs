@@ -278,6 +278,25 @@ public sealed class StagedResourceResolverTests
     }
 
     [TestMethod]
+    public void MissIsRememberedPerSetOfQualifierValues()
+    {
+        // A resource with a candidate for the dark theme only.
+        var dark = new Candidate(null);
+        var host = new FakeHost("resources.pri");
+        host.Knows(0, "Files/Strings/Resources.resw", dark, "Theme=dark");
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        // The first request is for the light theme: no candidate, and not asked for again with the same values.
+        Assert.IsNull(resolver.Resolve("Files/Strings/Resources.resw", [new("Theme", "light")]));
+        int lookups = host.Lookups.Count;
+        Assert.IsNull(resolver.Resolve("Files/Strings/Resources.resw", [new("Theme", "light")]));
+        Assert.HasCount(lookups, host.Lookups);
+
+        // The dark theme is another request, and the candidate answers it.
+        Assert.AreSame(dark, resolver.Resolve("Files/Strings/Resources.resw", [new("Theme", "dark")]));
+    }
+
+    [TestMethod]
     public void FailureIsReportedOncePerName()
     {
         var host = new FakeHost("resources.pri");
