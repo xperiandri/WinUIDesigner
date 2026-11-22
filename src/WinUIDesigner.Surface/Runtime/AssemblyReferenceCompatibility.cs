@@ -205,12 +205,15 @@ internal static class AssemblyReferenceCompatibility
     /// </summary>
     public static IReadOnlyList<string> Describe(IEnumerable<UnsatisfiedAssemblyReference> findings)
     {
+        // Names are compared without case, as the lookup of the surface's copy does: holders can spell a reference differently.
         return findings
-            .GroupBy(finding => (finding.Reference, finding.Required, finding.Available))
+            .GroupBy(finding => (Reference: finding.Reference.ToUpperInvariant(), finding.Required, finding.Available))
             .OrderBy(group => group.Key.Reference, StringComparer.OrdinalIgnoreCase)
             .ThenBy(group => group.Key.Required)
             .Select(group =>
             {
+                // The reference is spelled as its first holder spells it.
+                string reference = group.First().Reference;
                 string[] holders = group.Select(finding => finding.Assembly).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
 
                 // A long list of assemblies is shortened to the first five.
@@ -219,10 +222,10 @@ internal static class AssemblyReferenceCompatibility
                     : $"{string.Join(", ", holders.Take(5))} and {holders.Length - 5} more";
 
                 // The surface's copy serves the reference to a projection; no copy serves one to any other assembly.
-                string consequence = IsServedBySurfaceCopy(group.Key.Reference)
+                string consequence = IsServedBySurfaceCopy(reference)
                     ? "the runtime does not bind a reference to an older copy, so the surface serves it with its own copy: only code that uses a type or member that the newer version adds fails, and so does the XAML metadata provider of an assembly whose type table names such a type."
                     : "the runtime does not bind a reference to an older copy, so the code of these assemblies that needs it fails, and so does the XAML metadata provider of an assembly whose type table names one of its types.";
-                return $"{group.Key.Reference} {group.Key.Required} is referenced by {shownHolders}, but the design surface carries {group.Key.Available}; {consequence}";
+                return $"{reference} {group.Key.Required} is referenced by {shownHolders}, but the design surface carries {group.Key.Available}; {consequence}";
             })
             .ToArray();
     }

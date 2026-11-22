@@ -177,6 +177,21 @@ public sealed class AssemblyReferenceCompatibilityTests
     }
 
     [TestMethod]
+    public void AReferenceThatItsHoldersSpellInAnotherCaseIsDescribedOnce()
+    {
+        var findings = new[]
+        {
+            new UnsatisfiedAssemblyReference("Ecierge.Uno.Navigation", "Microsoft.Windows.SDK.NET", new Version(10, 0, 28000, 87), new Version(10, 0, 19041, 38)),
+            new UnsatisfiedAssemblyReference("Ecierge.Uno.App", "microsoft.windows.sdk.net", new Version(10, 0, 28000, 87), new Version(10, 0, 19041, 38)),
+        };
+
+        string line = Assert.ContainsSingle(AssemblyReferenceCompatibility.Describe(findings));
+
+        Assert.StartsWith("Microsoft.Windows.SDK.NET 10.0.28000.87 is referenced by Ecierge.Uno.App, Ecierge.Uno.Navigation, but the design surface carries 10.0.19041.38", line);
+        Assert.Contains("the surface serves it with its own copy", line);
+    }
+
+    [TestMethod]
     public void ALongListOfAssembliesIsShortened()
     {
         UnsatisfiedAssemblyReference[] findings = Enumerable.Range(1, 8)
