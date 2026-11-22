@@ -172,10 +172,7 @@ public sealed class AssemblyReferenceCompatibilityTests
     }
 
     [TestMethod]
-    public void NoFindingsAreDescribedAsNothing()
-    {
-        Assert.IsEmpty(AssemblyReferenceCompatibility.Describe([]));
-    }
+    public void NoFindingsAreDescribedAsNothing() => Assert.IsEmpty(AssemblyReferenceCompatibility.Describe([]));
 
     [TestMethod]
     public void ANewerProjectionIsDescribedAsServedByTheSurfaceCopy()

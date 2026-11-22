@@ -78,10 +78,12 @@ internal static class AssemblyLoadFailures
     /// </summary>
     public static string Describe(Exception exception)
     {
+        // An exception that names the assembly or the type, and one that does not.
         string description = GetSubject(exception) is { } subject
             ? $"{exception.GetType().Name} 0x{exception.HResult:X8} while loading '{subject}'"
             : $"{exception.GetType().Name} 0x{exception.HResult:X8}";
 
+        // The message follows when there is one; in the single-file surface it is often empty.
         return string.IsNullOrEmpty(exception.Message) ? description : $"{description}: {exception.Message}";
     }
 
@@ -135,10 +137,15 @@ internal static class AssemblyLoadFailures
     {
         return exception switch
         {
+            // An assembly that is not there: its display name or its path.
             FileNotFoundException { FileName: { Length: > 0 } fileName } => fileName,
+            // An assembly that is there but cannot be loaded, for example a second copy beside the carried one.
             FileLoadException { FileName: { Length: > 0 } fileName } => fileName,
+            // A file that is not a valid assembly, or that was built for another platform.
             BadImageFormatException { FileName: { Length: > 0 } fileName } => fileName,
+            // A type that cannot be loaded: its name.
             TypeLoadException { TypeName: { Length: > 0 } typeName } => typeName,
+            // Any other failure, and a failure that does not say what it could not load.
             _ => null,
         };
     }

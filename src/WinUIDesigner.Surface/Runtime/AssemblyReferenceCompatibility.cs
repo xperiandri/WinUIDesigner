@@ -192,9 +192,13 @@ internal static class AssemblyReferenceCompatibility
             .Select(group =>
             {
                 string[] holders = group.Select(finding => finding.Assembly).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+
+                // A long list of assemblies is shortened to the first five.
                 string shownHolders = holders.Length <= 5
                     ? string.Join(", ", holders)
                     : $"{string.Join(", ", holders.Take(5))} and {holders.Length - 5} more";
+
+                // The surface's copy serves the reference to a projection; no copy serves one to any other assembly.
                 string consequence = IsServedBySurfaceCopy(group.Key.Reference)
                     ? "the runtime does not bind a reference to an older copy, so the surface serves it with its own copy: only code that uses a type or member that the newer version adds fails, and so does the XAML metadata provider of an assembly whose type table names such a type."
                     : "the runtime does not bind a reference to an older copy, so the code of these assemblies that needs it fails, and so does the XAML metadata provider of an assembly whose type table names one of its types.";
