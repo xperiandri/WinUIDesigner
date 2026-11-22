@@ -265,215 +265,129 @@ internal sealed partial class DesignerSurface
     /// <summary>
     /// A style that takes a brush from the resources of the application takes the one of the theme of the application,
     /// whatever the theme of the element is, and the theme of the application of this process is not the theme of the
-    /// preview. For each brush that the dialog has, the key that it has in the theme dictionary that it comes from is
-    /// found (the same object, or the same colour in the dictionary of another theme), and the brush of the theme of the
-    /// preview under that key is taken instead.
+    /// preview. Each brush of the dialog is replaced by the one that <see cref="ContentDialogThemePolicy"/> chooses for the
+    /// theme of the preview from the theme dictionaries of the resources of the application.
     /// </summary>
     private static void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme)
     {
-        string themeKey = theme == ElementTheme.Dark ? "Dark" : "Light";
-        ResourceDictionary resources = Application.Current.Resources;
+        string previewTheme = theme == ElementTheme.Dark ? ContentDialogThemePolicy.Dark : ContentDialogThemePolicy.Light;
+        string applicationTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark ? ContentDialogThemePolicy.Dark : ContentDialogThemePolicy.Light;
 
-        if (RetargetedBrush(resources, dialog.Background, themeKey) is { } background)
+        try
         {
-            dialog.Background = background;
+            List<ThemeDictionarySet> dictionaries = CollectThemeDictionaries(Application.Current.Resources, [], 0);
+
+            if (RetargetedBrush(dialog.Background, previewTheme, applicationTheme, dictionaries) is { } background)
+            {
+                dialog.Background = background;
+            }
+
+            if (RetargetedBrush(dialog.BorderBrush, previewTheme, applicationTheme, dictionaries) is { } border)
+            {
+                dialog.BorderBrush = border;
+            }
+
+            if (RetargetedBrush(dialog.Foreground, previewTheme, applicationTheme, dictionaries) is { } foreground)
+            {
+                dialog.Foreground = foreground;
+            }
         }
-
-        if (RetargetedBrush(resources, dialog.BorderBrush, themeKey) is { } border)
+        catch (Exception exception)
         {
-            dialog.BorderBrush = border;
-        }
-
-        if (RetargetedBrush(resources, dialog.Foreground, themeKey) is { } foreground)
-        {
-            dialog.Foreground = foreground;
+            WinUIDesignerLogger.LogTrace("Surface", $"The brushes of the ContentDialog could not be matched with a theme: {exception.Message}");
         }
     }
 
-    private static Brush? RetargetedBrush(ResourceDictionary resources, Brush? current, string themeKey)
+    private static Brush? RetargetedBrush(Brush? current, string previewTheme, string applicationTheme, IReadOnlyList<ThemeDictionarySet> dictionaries)
     {
         if (current is null)
         {
             return null;
         }
 
-        try
+        BrushChoice choice = ContentDialogThemePolicy.Choose(DescribeThemeBrush(current), setByDocument: false, previewTheme, applicationTheme, dictionaries);
+        if (choice.Brush is { Brush: Brush target })
         {
-            Brush? target = FindThemedBrush(resources, current, themeKey, 0);
-            string how = "the same object";
-
-            // The object of the dictionary of the theme itself says nothing: the brush that it is is the brush of the dialog.
-            if (ReferenceEquals(target, current))
-            {
-                target = null;
-            }
-
-            if (target is null && current is SolidColorBrush solid)
-            {
-                // Not the object of any dictionary (the style took a copy, or a brush that code made): the key is the one
-                // that has this colour in the dictionaries of the other themes and another colour in the one of this theme.
-                target = FindThemedBrushByColor(resources, solid, themeKey, out string key);
-                how = $"its colour, key '{key}'";
-            }
-
-            if (target is not null && !ReferenceEquals(target, current))
-            {
-                WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is replaced by the one of the {themeKey} theme, {DescribeBrush(target)}, found by {how}.");
-                return target;
-            }
-
-            WinUIDesignerLogger.LogTrace("Surface", $"No brush of the {themeKey} theme was found for a brush of the ContentDialog, {DescribeBrush(current)}.");
-        }
-        catch (Exception exception)
-        {
-            WinUIDesignerLogger.LogTrace("Surface", "The brushes of the ContentDialog could not be matched with a theme: " + exception.Message);
+            WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is replaced by the one of the {previewTheme} theme, {DescribeBrush(target)}, found by {choice.Reason}.");
+            return target;
         }
 
+        WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is kept: {choice.Reason}.");
         return null;
     }
 
-    /// <summary>The entries of a dictionary and of the dictionaries that it merges: a theme dictionary often only merges the files that have the brushes.</summary>
-    private static IEnumerable<KeyValuePair<object, object>> EnumerateEntries(ResourceDictionary dictionary, int depth)
+    /// <summary>
+    /// The theme dictionaries of <paramref name="dictionary"/> and of the dictionaries that it merges, each with its brushes,
+    /// as <see cref="ContentDialogThemePolicy"/> takes them.
+    /// </summary>
+    private static List<ThemeDictionarySet> CollectThemeDictionaries(ResourceDictionary dictionary, List<ThemeDictionarySet> sets, int depth)
     {
-        foreach (KeyValuePair<object, object> entry in dictionary)
-        {
-            yield return entry;
-        }
-
         if (depth > 12)
         {
-            yield break;
+            return sets;
+        }
+
+        if (dictionary.ThemeDictionaries.Count > 0)
+        {
+            Dictionary<string, IReadOnlyDictionary<string, ThemeBrush>> themes = new(StringComparer.Ordinal);
+            foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
+            {
+                // The keys are objects: they are not tested for being strings, but written as the strings that they are.
+                if (themed.Key?.ToString() is { } name && themed.Value is ResourceDictionary themeDictionary)
+                {
+                    Dictionary<string, ThemeBrush> brushes = new(StringComparer.Ordinal);
+                    CollectBrushes(themeDictionary, brushes, 0);
+                    themes[name] = brushes;
+                }
+            }
+
+            sets.Add(new ThemeDictionarySet(themes));
         }
 
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
-            foreach (KeyValuePair<object, object> entry in EnumerateEntries(merged, depth + 1))
-            {
-                yield return entry;
-            }
+            CollectThemeDictionaries(merged, sets, depth + 1);
         }
+
+        return sets;
     }
 
     /// <summary>
-    /// The keys that a theme has in <c>ThemeDictionaries</c>: the dark theme of Windows is <c>Default</c> (there is
-    /// no <c>Dark</c> in the dictionaries of WinUI, nor in those of Uno Material), and the palette of an app may
-    /// say <c>Dark</c>.
+    /// The brushes of a dictionary by key, where a key is there more than once the one that a lookup finds: the entries of the
+    /// dictionary itself, then those of the dictionaries that it merges, the last one first (a theme dictionary often only
+    /// merges the files that have the brushes).
     /// </summary>
-    private static string[] ThemeKeys(string themeKey) => themeKey == "Dark" ? ["Dark", "Default"] : [themeKey];
-
-    private static ResourceDictionary? FindThemeDictionary(ResourceDictionary dictionary, string themeKey)
+    private static void CollectBrushes(ResourceDictionary dictionary, Dictionary<string, ThemeBrush> brushes, int depth)
     {
-        foreach (string key in ThemeKeys(themeKey))
+        foreach (KeyValuePair<object, object> entry in dictionary)
         {
-            if (dictionary.ThemeDictionaries.TryGetValue(key, out object? themed) && themed is ResourceDictionary themeDictionary)
+            if (entry.Key?.ToString() is { } key && entry.Value is Brush brush)
             {
-                return themeDictionary;
+                brushes.TryAdd(key, DescribeThemeBrush(brush));
             }
         }
 
-        return null;
-    }
-
-    private static Brush? FindThemedBrushByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, out string key)
-    {
-        List<(string Key, SolidColorBrush Brush)> candidates = [];
-        CollectBrushesByColor(dictionary, current, themeKey, 0, candidates);
-
-        // The name that a surface has in the Material palette first, then any other name of a surface, then the shortest
-        // name, which is the least specific: the brushes of WinUI, which many are white, come first in the resources.
-        (string Key, SolidColorBrush Brush)? best = candidates
-            .OrderBy(candidate => candidate.Key.Equals("SurfaceBrush", StringComparison.Ordinal) ? 0 : candidate.Key.StartsWith("Surface", StringComparison.Ordinal) ? 1 : 2)
-            .ThenBy(candidate => candidate.Key.Length)
-            .Select(candidate => ((string Key, SolidColorBrush Brush)?)candidate)
-            .FirstOrDefault();
-
-        key = best?.Key ?? string.Empty;
-        return best?.Brush;
-    }
-
-    /// <summary>
-    /// The brushes of the theme that has the key of a brush of the colour of <paramref name="current"/> in another theme
-    /// and another colour in this one, in this dictionary and in the dictionaries that it merges.
-    /// </summary>
-    private static void CollectBrushesByColor(ResourceDictionary dictionary, SolidColorBrush current, string themeKey, int depth, List<(string Key, SolidColorBrush Brush)> candidates)
-    {
         if (depth > 12)
         {
             return;
         }
 
-        if (FindThemeDictionary(dictionary, themeKey) is { } targetDictionary)
+        IList<ResourceDictionary> merged = dictionary.MergedDictionaries;
+        for (int index = merged.Count - 1; index >= 0; index--)
         {
-            foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
-            {
-                // The keys are objects: they are not tested for being strings, but written as the strings that they are.
-                string? name = themed.Key?.ToString();
-                if (name is null || ThemeKeys(themeKey).Contains(name) || themed.Value is not ResourceDictionary source)
-                {
-                    continue;
-                }
-
-                foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
-                {
-                    if (entry.Key?.ToString() is not { } entryKey
-                        || entry.Value is not SolidColorBrush brush
-                        || brush.Color != current.Color
-                        || Math.Abs(brush.Opacity - current.Opacity) >= 0.001
-                        || !targetDictionary.TryGetValue(entry.Key, out object? other)
-                        || other is not SolidColorBrush otherBrush)
-                    {
-                        continue;
-                    }
-
-                    if (otherBrush.Color != brush.Color || otherBrush.Opacity != brush.Opacity)
-                    {
-                        candidates.Add((entryKey, otherBrush));
-                    }
-                }
-            }
-        }
-
-        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
-        {
-            CollectBrushesByColor(merged, current, themeKey, depth + 1, candidates);
+            CollectBrushes(merged[index], brushes, depth + 1);
         }
     }
 
-    private static Brush? FindThemedBrush(ResourceDictionary dictionary, Brush current, string themeKey, int depth)
+    private static ThemeBrush DescribeThemeBrush(Brush brush)
     {
-        if (depth > 12)
+        if (brush is not SolidColorBrush solid)
         {
-            return null;
+            return new ThemeBrush(brush, null, brush.Opacity);
         }
 
-        foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
-        {
-            if (themed.Value is not ResourceDictionary source)
-            {
-                continue;
-            }
-
-            foreach (KeyValuePair<object, object> entry in EnumerateEntries(source, 0))
-            {
-                if (ReferenceEquals(entry.Value, current)
-                    && FindThemeDictionary(dictionary, themeKey) is { } targetDictionary
-                    && targetDictionary.TryGetValue(entry.Key, out object? brush)
-                    && brush is Brush found)
-                {
-                    return found;
-                }
-            }
-        }
-
-        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
-        {
-            if (FindThemedBrush(merged, current, themeKey, depth + 1) is { } result)
-            {
-                return result;
-            }
-        }
-
-        return null;
+        Windows.UI.Color color = solid.Color;
+        return new ThemeBrush(brush, ((uint)color.A << 24) | ((uint)color.R << 16) | ((uint)color.G << 8) | color.B, solid.Opacity);
     }
 
     /// <summary>
