@@ -42,7 +42,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _DesignerInstanceManager,
             "ShouldIgnoreProperty",
-            "IInstanceBuilderContext", "DocumentCompositeNode", "DocumentNode", "IProperty", "Boolean&");
+            "IInstanceBuilderContext", "DocumentCompositeNode", "DocumentNode", "IProperty", "Boolean&"
+        );
 
         AssertOverridable(method);
         Assert.IsTrue(method.Parameters[4].IsOut, $"The last parameter must be an out parameter: {Describe(method)}");
@@ -57,7 +58,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _UwpDesignerInstanceBuilderPlatform,
             "GetInstanceBuilder",
-            "IInstanceBuilderContext", "DocumentNode");
+            "IInstanceBuilderContext", "DocumentNode"
+        );
 
         AssertOverridable(method);
     }
@@ -68,7 +70,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _UwpDesignerInstanceBuilderPlatform,
             "GetFallbackTypeInfo",
-            "IType", "Boolean");
+            "IType", "Boolean"
+        );
 
         AssertOverridable(method);
     }
@@ -85,7 +88,8 @@ public sealed class VsDesignerApiShapeTests
             method.IsConstructor && !method.IsStatic && HasParameters(method, "IProjectContext"));
         Assert.IsNotNull(
             constructor,
-            $"{type.FullName} needs a constructor (IProjectContext). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}");
+            $"{type.FullName} needs a constructor (IProjectContext). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}"
+        );
         Assert.IsTrue(IsVisibleToDerivedClasses(constructor), $"The constructor must be public or protected: {Describe(constructor)}");
     }
 
@@ -96,7 +100,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _SurfaceProcessMarkupProvider,
             "SetCleaningResult",
-            "SurfaceProcessDocument", "XamlResult");
+            "SurfaceProcessDocument", "XamlResult"
+        );
 
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
         Assert.IsTrue(IsVisibleToDerivedClasses(method), $"Expected a public or protected method: {Describe(method)}");
@@ -108,7 +113,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _SurfaceProcessMarkupProvider,
             "GetXamlCleanerContext",
-            "IProjectContext");
+            "IProjectContext"
+        );
 
         Assert.IsTrue(method.IsPublic, $"Expected a public method: {Describe(method)}");
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
@@ -120,7 +126,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _XamlCleaner,
             "Clean",
-            "String", "IXamlCleanerContext", "IDocumentContext");
+            "String", "IXamlCleanerContext", "IDocumentContext"
+        );
 
         Assert.IsTrue(method.IsPublic && method.IsStatic, $"Expected a public static method: {Describe(method)}");
         Assert.IsTrue(RequireType(_XamlCleaner).IsPublic, $"{_XamlCleaner} must be public.");
@@ -144,9 +151,11 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
         Assert.AreEqual("XmlNamespace", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
-        Assert.IsTrue(
-            RequireType(_XmlElementReference).Interfaces.Any(@interface => @interface.InterfaceType.FullName == _XmlNamespaceResolver),
-            $"{_XmlElementReference} must implement {_XmlNamespaceResolver}.");
+        Assert.Contains(
+            @interface => @interface.InterfaceType.FullName == _XmlNamespaceResolver,
+            RequireType(_XmlElementReference).Interfaces,
+            $"{_XmlElementReference} must implement {_XmlNamespaceResolver}."
+        );
 
         MethodDefinition isIgnorable = RequireMethod(_XmlElementReference, "IsIgnorable", "XmlNamespace");
         Assert.IsTrue(isIgnorable.IsPublic && !isIgnorable.IsStatic, $"Expected a public instance method: {Describe(isIgnorable)}");
@@ -176,9 +185,11 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.IsTrue(type.IsPublic, $"{type.FullName} must be public.");
         Assert.IsFalse(type.IsSealed, $"{type.FullName} must not be sealed.");
-        Assert.IsTrue(
-            type.Methods.Any(method => method.IsConstructor && !method.IsStatic && !method.HasParameters && IsVisibleToDerivedClasses(method)),
-            $"{type.FullName} needs an accessible parameterless constructor.");
+        Assert.Contains(
+            method => method.IsConstructor && !method.IsStatic && !method.HasParameters && IsVisibleToDerivedClasses(method),
+            type.Methods,
+            $"{type.FullName} needs an accessible parameterless constructor."
+        );
     }
 
     private static TypeDefinition RequireType(string fullName)
@@ -212,7 +223,8 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.Fail(
             $"{typeName}.{methodName}({string.Join(", ", parameterTypes)}) was not found in the designer assemblies of {assemblies.InstallRoot}. " +
-            $"Methods named {methodName}: {DescribeAll(candidates)}");
+            $"Methods named {methodName}: {DescribeAll(candidates)}"
+        );
         return null!;
     }
 
@@ -318,7 +330,8 @@ public sealed class VsDesignerApiShapeTests
             {
                 throw new FileNotFoundException(
                     $"No designer assemblies (Microsoft.VisualStudio.DesignTools.*.dll) were found under '{installRoot}'. " +
-                    $"Set {_InstallRootVariable} to the root of a Visual Studio installation.");
+                    $"Set {_InstallRootVariable} to the root of a Visual Studio installation."
+                );
             }
 
             return assemblies;
@@ -375,7 +388,8 @@ public sealed class VsDesignerApiShapeTests
 
             throw new DirectoryNotFoundException(
                 $"The Visual Studio installation is unknown: the tests were built without VsInstallRoot. " +
-                $"Build them with Visual Studio's MSBuild or set {_InstallRootVariable}.");
+                $"Build them with Visual Studio's MSBuild or set {_InstallRootVariable}."
+            );
         }
     }
 }

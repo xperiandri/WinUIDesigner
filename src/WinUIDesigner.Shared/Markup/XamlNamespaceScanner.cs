@@ -85,7 +85,8 @@ internal static class XamlNamespaceScanner
                             uri,
                             depth,
                             hasLineInfo ? lineInfo!.LineNumber : 0,
-                            hasLineInfo ? lineInfo!.LinePosition : 0));
+                            hasLineInfo ? lineInfo!.LinePosition : 0
+                        ));
 
                         hasConditionalNamespaces |= uri.IsConditional;
                         hasPlatformNamespaces |= UnoPlatformPrefixes.IsPlatformUri(uri.BaseUri);
@@ -113,7 +114,8 @@ internal static class XamlNamespaceScanner
             hasConditionalNamespaces,
             hasPlatformNamespaces,
             hasPlatformPrefixedObjectElements,
-            isComplete);
+            isComplete
+        );
     }
 
     /// <summary>
@@ -158,6 +160,7 @@ internal static class XamlNamespaceScanner
 
     private static string? ReadNamePrefix(string text, int start)
     {
+        // The text does not start with a name.
         if (start >= text.Length || !IsNameStart(text[start]))
         {
             return null;
@@ -185,6 +188,7 @@ internal static class XamlNamespaceScanner
             }
         }
 
+        // A name without a colon has no prefix.
         if (colon < 0)
         {
             return string.Empty;
@@ -199,10 +203,7 @@ internal static class XamlNamespaceScanner
         return text.Substring(start, colon - start);
     }
 
-    private static bool IsNameStart(char character)
-    {
-        return char.IsLetter(character) || character == '_';
-    }
+    private static bool IsNameStart(char character) => char.IsLetter(character) || character == '_';
 
     private static int SkipWhitespace(string text, int index)
     {

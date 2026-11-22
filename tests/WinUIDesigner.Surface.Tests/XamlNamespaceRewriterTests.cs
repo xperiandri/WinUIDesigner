@@ -37,9 +37,9 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(0, result.DroppedAttributes);
         Assert.AreEqual(0, result.NormalizedMembers);
-        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "Border"));
+        Assert.DoesNotContain(element => element.Name.LocalName == "Border", document.Descendants());
         CollectionAssert.AreEqual(new[] { "outside" }, document.Descendants(_P + "TextBlock").Select(element => (string?)element.Attribute("Text")).ToArray());
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("android:Border", StringComparison.Ordinal) && message.Contains("line 3", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("android:Border", StringComparison.Ordinal) && message.Contains("line 3", StringComparison.Ordinal), result.Diagnostics);
     }
 
     [TestMethod]
@@ -78,7 +78,7 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual(0, result.DroppedAttributes);
 
         string rewritten = document.ToString(SaveOptions.DisableFormatting);
-        Assert.IsFalse(rewritten.Contains('?'), rewritten);
+        Assert.DoesNotContain("?", rewritten, rewritten);
     }
 
     [TestMethod]
@@ -113,12 +113,13 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         XElement border = document.Root!.Elements().Single();
         CollectionAssert.AreEqual(new[] { _P + "Border.Background" }, border.Elements().Select(element => element.Name).ToArray());
         Assert.AreEqual("Red", border.Elements().Single().Value);
-        Assert.IsFalse(document.Descendants(_P + "Grid").Any());
+        Assert.IsEmpty(document.Descendants(_P + "Grid"));
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(1, result.NormalizedMembers);
     }
@@ -142,7 +143,7 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual(1, result.RepointedDeclarations);
 
         // The declaration that was re-pointed is the one the element is written with again.
-        StringAssert.Contains(document.ToString(SaveOptions.DisableFormatting), "<droid:NativeView Tag=\"x\" />");
+        Assert.Contains("<droid:NativeView Tag=\"x\" />", document.ToString(SaveOptions.DisableFormatting));
     }
 
     [TestMethod]
@@ -178,7 +179,8 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         Assert.IsTrue(result.Changed);
         Assert.AreEqual(1, result.RepointedDeclarations);
@@ -200,13 +202,13 @@ public sealed class XamlNamespaceRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("android", XamlPrefixDisposition.Drop), out XDocument document);
 
         Assert.AreEqual(XNamespace.Get(TestXamlNamespaces.Android) + "Page", document.Root!.Name);
-        Assert.AreEqual(1, document.Root.Elements(_P + "Grid").Count());
+        Assert.HasCount(1, document.Root.Elements(_P + "Grid"));
         Assert.AreEqual(0, result.DroppedElements);
 
         // Its attribute under the same prefix is an ordinary member and goes.
         Assert.AreEqual(1, result.DroppedAttributes);
-        Assert.AreEqual(0, PlainAttributes(document.Root).Length);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("root", StringComparison.OrdinalIgnoreCase)));
+        Assert.IsEmpty(PlainAttributes(document.Root));
+        Assert.Contains(message => message.Contains("root", StringComparison.OrdinalIgnoreCase), result.Diagnostics);
     }
 
     [TestMethod]
@@ -247,7 +249,8 @@ public sealed class XamlNamespaceRewriterTests
             xaml,
             prefix => prefix is "win" or "android" ? XamlPrefixDisposition.Drop : XamlPrefixDisposition.Leave,
             out XDocument document,
-            options => options.SourceXaml = null);
+            options => options.SourceXaml = null
+        );
 
         // Nothing tells <win:Border> from <Border>, or win:Tag from not_android:Tag, any more, so they stay.
         // "android" is the only prefix of its namespace and is still recognized.
@@ -256,7 +259,7 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual("w", (string?)border.Attribute(_P + "Tag"));
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(0, result.DroppedAttributes);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("unknown", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("unknown", StringComparison.Ordinal), result.Diagnostics);
     }
 
     [TestMethod]
@@ -284,7 +287,8 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         Assert.IsTrue(result.Changed);
         CollectionAssert.AreEqual(new[] { ("Page", 1, 2), ("Grid", 3, 4), ("TextBlock", 4, 6) }, expected);
@@ -306,7 +310,7 @@ public sealed class XamlNamespaceRewriterTests
 
         Assert.IsFalse(result.Changed);
         Assert.AreSame(XamlNamespaceRewriteResult.Unchanged, result);
-        Assert.AreEqual(0, result.Diagnostics.Count);
+        Assert.IsEmpty(result.Diagnostics);
         Assert.AreEqual(before, document.ToString(SaveOptions.DisableFormatting));
     }
 
@@ -346,13 +350,15 @@ public sealed class XamlNamespaceRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(
             xaml,
             (_, uri, _) => uri.BaseUri == TestXamlNamespaces.Android ? XamlPrefixDisposition.Drop : XamlPrefixDisposition.Leave,
-            out XDocument document);
+            out XDocument document
+        );
 
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "Border"));
+        Assert.DoesNotContain(element => element.Name.LocalName == "Border", document.Descendants());
         CollectionAssert.AreEqual(
             new[] { "before", "after" },
-            document.Descendants(XNamespace.Get("using:My.App") + "Card").Select(element => (string?)element.Attribute("Title")).ToArray());
+            document.Descendants(XNamespace.Get("using:My.App") + "Card").Select(element => (string?)element.Attribute("Title")).ToArray()
+        );
     }
 
     [TestMethod]
@@ -372,11 +378,13 @@ public sealed class XamlNamespaceRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(
             xaml,
             (_, _, isIgnorable) => isIgnorable ? XamlPrefixDisposition.Drop : XamlPrefixDisposition.Leave,
-            out XDocument document);
+            out XDocument document
+        );
 
         CollectionAssert.AreEqual(
             new[] { "outside", "after" },
-            document.Descendants().Where(element => element.Name.LocalName == "Border").Select(element => (string?)element.Attribute("Tag")).ToArray());
+            document.Descendants().Where(element => element.Name.LocalName == "Border").Select(element => (string?)element.Attribute("Tag")).ToArray()
+        );
         Assert.AreEqual(2, result.DroppedElements);
     }
 
@@ -394,7 +402,8 @@ public sealed class XamlNamespaceRewriterTests
             {
                 seen.Add($"{element.Name.LocalName}.{name}={value}");
                 return name == "Click";
-            });
+            }
+        );
 
         // Only attributes that were normalized are offered to the filter, under their plain names.
         CollectionAssert.AreEqual(new[] { "Button.Click=OnClick", "Button.Content=Go" }, seen);
@@ -416,12 +425,14 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         CollectionAssert.AreEqual(new[] { "A=1", "B=2", "C=3", "D=4", "E=5" }, PlainAttributes(document.Root!));
         CollectionAssert.AreEqual(
             new[] { "xmlns", "win", "android" },
-            document.Root!.Attributes().Where(attribute => attribute.IsNamespaceDeclaration).Select(attribute => attribute.Name.LocalName).ToArray());
+            document.Root!.Attributes().Where(attribute => attribute.IsNamespaceDeclaration).Select(attribute => attribute.Name.LocalName).ToArray()
+        );
     }
 
     [TestMethod]
@@ -433,7 +444,7 @@ public sealed class XamlNamespaceRewriterTests
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("c7", XamlPrefixDisposition.Keep), out XDocument document);
 
-        CollectionAssert.AreEqual(new[] { "Text=" + expected }, PlainAttributes(document.Root!));
+        CollectionAssert.AreEqual(new[] { $"Text={expected}" }, PlainAttributes(document.Root!));
         Assert.AreEqual(1, result.DroppedAttributes);
     }
 
@@ -448,7 +459,7 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual("1", (string?)document.Root!.Attribute(_P + "Grid.Row"));
         Assert.AreEqual("0.5", (string?)document.Root.Attribute("Opacity"));
         Assert.AreEqual(2, result.NormalizedMembers);
-        StringAssert.Contains(document.ToString(SaveOptions.DisableFormatting), $"xmlns:c7=\"{XamlNamespaces.Presentation}\" c7:Grid.Row=\"1\" Opacity=\"0.5\"");
+        Assert.Contains($"xmlns:c7=\"{XamlNamespaces.Presentation}\" c7:Grid.Row=\"1\" Opacity=\"0.5\"", document.ToString(SaveOptions.DisableFormatting));
     }
 
     [TestMethod]
@@ -479,13 +490,15 @@ public sealed class XamlNamespaceRewriterTests
                 _ => XamlPrefixDisposition.Leave,
             },
             out XDocument document,
-            options => options.Report = reported.Add);
+            options => options.Report = reported.Add
+        );
 
         CollectionAssert.AreEqual(
             new[] { XNamespace.Get(TestXamlNamespaces.Android) + "Border" },
-            document.Root!.Elements().Select(element => element.Name).ToArray());
+            document.Root!.Elements().Select(element => element.Name).ToArray()
+        );
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("'android'", StringComparison.Ordinal) && message.Contains("no verdict", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("'android'", StringComparison.Ordinal) && message.Contains("no verdict", StringComparison.Ordinal), result.Diagnostics);
         CollectionAssert.AreEqual(result.Diagnostics.ToArray(), reported);
     }
 
@@ -507,13 +520,14 @@ public sealed class XamlNamespaceRewriterTests
             {
                 options.ShouldDropNormalizedAttribute = (_, _, _) => throw new InvalidOperationException("filter failed");
                 options.Report = _ => throw new InvalidOperationException("report failed");
-            });
+            }
+        );
 
         // The attribute the filter could not judge is kept, and the walk goes on.
         CollectionAssert.AreEqual(new[] { "Content=Go" }, PlainAttributes(document.Root!));
         Assert.IsFalse(document.Root!.HasElements);
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("filter failed", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("filter failed", StringComparison.Ordinal), result.Diagnostics);
     }
 
     [TestMethod]
@@ -536,11 +550,12 @@ public sealed class XamlNamespaceRewriterTests
             xaml,
             Only("win", XamlPrefixDisposition.Drop),
             out XDocument document,
-            options => options.SourceXaml = "<Other />");
+            options => options.SourceXaml = "<Other />"
+        );
 
         Assert.IsFalse(result.Changed);
         Assert.IsTrue(document.Root!.HasElements);
-        Assert.AreEqual(1, result.Diagnostics.Count);
+        Assert.HasCount(1, result.Diagnostics);
     }
 
     [TestMethod]
@@ -565,7 +580,7 @@ public sealed class XamlNamespaceRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(xaml.ToString(), Only("android", XamlPrefixDisposition.Drop), out XDocument document);
 
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.AreEqual(1, document.Descendants().Count(element => element.Name.LocalName == "Border"));
+        Assert.HasCount(1, document.Descendants().Where(element => element.Name.LocalName == "Border"));
     }
 
     private static Func<string, XamlPrefixDisposition> Only(string prefix, XamlPrefixDisposition disposition)

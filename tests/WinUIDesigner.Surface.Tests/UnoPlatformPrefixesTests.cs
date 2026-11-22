@@ -48,7 +48,8 @@ public sealed class UnoPlatformPrefixesTests
             Assert.AreEqual(
                 XamlPrefixDisposition.Leave,
                 UnoPlatformPrefixes.Classify(prefix, XamlNamespaceUri.Parse(uri), isIgnorable, platform),
-                $"Prefix '{prefix}' on platform '{platform}'.");
+                $"Prefix '{prefix}' on platform '{platform}'."
+            );
         }
     }
 

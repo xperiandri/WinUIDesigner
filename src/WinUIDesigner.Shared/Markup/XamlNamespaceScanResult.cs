@@ -83,7 +83,8 @@ internal sealed class XamlNamespaceScanResult
         hasConditionalNamespaces: false,
         hasPlatformNamespaces: false,
         hasPlatformPrefixedObjectElements: false,
-        isComplete: false);
+        isComplete: false
+    );
 
     /// <summary>
     /// Gets every <c>xmlns</c> declaration in document order, including those on nested elements.
@@ -120,10 +121,7 @@ internal sealed class XamlNamespaceScanResult
     /// <summary>
     /// Returns whether <paramref name="prefix"/> is listed in any <c>mc:Ignorable</c> attribute of the text.
     /// </summary>
-    public bool IsIgnorable(string prefix)
-    {
-        return _ignorablePrefixes.Contains(prefix);
-    }
+    public bool IsIgnorable(string prefix) => _ignorablePrefixes.Contains(prefix);
 
     /// <summary>
     /// Returns the namespace of the first declaration of <paramref name="prefix"/>, or <see langword="null"/>.

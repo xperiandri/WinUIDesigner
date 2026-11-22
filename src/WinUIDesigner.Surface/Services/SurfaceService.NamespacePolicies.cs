@@ -28,7 +28,8 @@ internal sealed partial class SurfaceService
         {
             XamlNamespaceRewriteResult result = XamlNamespaceRewriter.Rewrite(
                 document,
-                CreateNamespaceRewriteOptions(xaml, $"document {documentId}"));
+                CreateNamespaceRewriteOptions(xaml, $"document {documentId}")
+            );
             if (result.Changed)
             {
                 WinUIDesignerLogger.LogTrace("Surface", $"Namespace policies rewrote document {documentId}: dropped {result.DroppedElements} element(s) and {result.DroppedAttributes} attribute(s), normalized {result.NormalizedMembers} member(s).");

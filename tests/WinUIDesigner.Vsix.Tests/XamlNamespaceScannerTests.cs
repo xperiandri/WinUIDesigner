@@ -82,7 +82,7 @@ public sealed class XamlNamespaceScannerTests
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
-        Assert.AreEqual(0, result.IgnorablePrefixes.Count);
+        Assert.IsEmpty(result.IgnorablePrefixes);
     }
 
     [TestMethod]
@@ -206,7 +206,7 @@ public sealed class XamlNamespaceScannerTests
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
         Assert.IsFalse(result.IsComplete);
-        Assert.AreEqual(3, result.Declarations.Count);
+        Assert.HasCount(3, result.Declarations);
         Assert.IsTrue(result.HasPlatformNamespaces);
         Assert.IsTrue(result.HasPlatformPrefixedObjectElements);
         Assert.IsTrue(result.IsIgnorable("android"));

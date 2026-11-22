@@ -41,15 +41,16 @@ internal static class PreparedXamlNames
     /// </remarks>
     public static bool IsMarkupOf(XName name, Type runtimeType)
     {
+        // A using: namespace names the CLR namespace of the type.
         string namespaceName = name.NamespaceName;
         if (namespaceName.StartsWith("using:", StringComparison.Ordinal))
         {
             return string.Equals($"{namespaceName.AsSpan(6)}.{name.LocalName}", runtimeType.FullName, StringComparison.Ordinal);
         }
 
+        // So does a clr-namespace: namespace, which may name an assembly after it as well.
         if (namespaceName.StartsWith("clr-namespace:", StringComparison.Ordinal))
         {
-            // An assembly may follow the CLR namespace; it is not part of the type name.
             ReadOnlySpan<char> clrNamespace = namespaceName.AsSpan(14);
             int assemblySeparator = clrNamespace.IndexOf(';');
             if (assemblySeparator >= 0)
@@ -60,6 +61,7 @@ internal static class PreparedXamlNames
             return string.Equals($"{clrNamespace}.{name.LocalName}", runtimeType.FullName, StringComparison.Ordinal);
         }
 
+        // Any other namespace, the presentation namespace above all, is matched by the name of a WinUI type.
         return name.LocalName == runtimeType.Name && runtimeType.Namespace?.StartsWith("Microsoft.UI.Xaml", StringComparison.Ordinal) == true;
     }
 }

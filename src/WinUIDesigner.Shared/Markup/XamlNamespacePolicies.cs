@@ -53,11 +53,13 @@ internal static class XamlNamespacePolicies
         XamlPrefixDisposition conditional,
         bool isConditionalNamespace)
     {
+        // A member excluded from the previewed platform goes, whatever its condition says.
         if (platform == XamlPrefixDisposition.Drop)
         {
             return XamlPrefixDisposition.Drop;
         }
 
+        // A condition that was evaluated decides.
         if (conditional != XamlPrefixDisposition.Leave)
         {
             return conditional;

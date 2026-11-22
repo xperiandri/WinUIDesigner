@@ -47,7 +47,8 @@ public sealed class ConditionalNamespacePolicyTests
 
         XamlNamespaceRewriteResult result = XamlNamespaceRewriter.Rewrite(
             document,
-            new XamlNamespaceRewriteOptions { SourceXaml = xaml, EvaluateCondition = (_, _) => true });
+            new XamlNamespaceRewriteOptions { SourceXaml = xaml, EvaluateCondition = (_, _) => true }
+        );
 
         Assert.IsFalse(result.Changed);
         Assert.AreEqual(before, document.ToString(SaveOptions.DisableFormatting));

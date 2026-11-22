@@ -66,10 +66,7 @@ internal sealed class XamlMemberDispositionService
     /// <summary>
     /// Discards the cached verdicts, for example after the outcome of a condition changed.
     /// </summary>
-    public void Invalidate()
-    {
-        Interlocked.Increment(ref _generation);
-    }
+    public void Invalidate() => Interlocked.Increment(ref _generation);
 
     /// <summary>
     /// Returns the namespace facts of the current text of <paramref name="document"/>. They are scanned once
@@ -197,7 +194,8 @@ internal sealed class XamlMemberDispositionService
                 textLength,
                 generation,
                 namespaces,
-                hasPolicyNamespaces ? new ConcurrentDictionary<object, XamlPrefixDisposition>(ReferenceComparer.Instance) : null);
+                hasPolicyNamespaces ? new ConcurrentDictionary<object, XamlPrefixDisposition>(ReferenceComparer.Instance) : null
+            );
             Volatile.Write(ref cache.State, state);
         }
 
@@ -221,6 +219,7 @@ internal sealed class XamlMemberDispositionService
 
     private XamlPrefixDisposition Classify(XamlSourcePrefix source)
     {
+        // A member whose prefix could not be read, or is not declared, is left alone.
         if (!source.IsKnown || source.Namespace is null)
         {
             return XamlPrefixDisposition.Leave;
