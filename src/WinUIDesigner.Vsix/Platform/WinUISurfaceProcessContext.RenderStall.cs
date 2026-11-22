@@ -2,7 +2,6 @@
 // Licensed under MIT License.
 
 using System;
-using System.Threading;
 using System.Windows.Threading;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.Networking;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.TapOM;
@@ -21,25 +20,26 @@ internal sealed partial class WinUISurfaceProcessContext
     private const int _MaximumRenderStallRestarts = 3;
     private static readonly TimeSpan _RenderStallRestartWindow = TimeSpan.FromMinutes(2);
 
-    private readonly RestartLimiter _renderStallRestarts = new(_MaximumRenderStallRestarts, _RenderStallRestartWindow);
     private readonly Dispatcher _renderStallDispatcher = Dispatcher.CurrentDispatcher;
     private bool _isDisposedWhileWatchingRenderStalls;
 
     // Called for the protocol of every surface process that Visual Studio starts: the observers go away with the process.
     private void ObserveRenderStalls(IProtocolHandler protocolHandler)
     {
-        // The surface reports a stall once for every document that it shows; the process is restarted once.
-        int reported = 0;
+        // The surface reports a stall for every document that it shows, also after its first report; the process is
+        // restarted once.
+        var reports = new RenderStallProcessReports();
 
         try
         {
             // Visual Studio observes the same message to show the error on the view; this observer only listens.
             _ = protocolHandler.RegisterMessageObserver<UnhandledExceptionResponse>((int)DesignerMessageId.UnhandledException, response =>
             {
-                if (RenderStallReport.IsReport(response?.Message) && Interlocked.Exchange(ref reported, 1) == 0)
+                string? message = response?.Message;
+                if (RenderStallReport.IsReport(message))
                 {
                     // On the thread of the protocol: the restart is Visual Studio's business on its own thread.
-                    _ = _renderStallDispatcher.InvokeAsync(RestartAfterRenderStall);
+                    _ = _renderStallDispatcher.InvokeAsync(() => RestartAfterRenderStall(reports, message));
                 }
             });
         }
@@ -61,24 +61,28 @@ internal sealed partial class WinUISurfaceProcessContext
         base.Dispose(disposing);
     }
 
-    private void RestartAfterRenderStall()
+    private void RestartAfterRenderStall(RenderStallProcessReports reports, string? message)
     {
-        if (_isDisposedWhileWatchingRenderStalls)
-        {
-            return;
-        }
-
+        // Visual Studio makes a new context for the project when its designers are opened again; the policy outlives it.
+        RenderStallRestartPolicy policy = RenderStallRestartPolicy.ForProject(ProjectContext?.ProjectPath, _MaximumRenderStallRestarts, _RenderStallRestartWindow);
         string project = ProjectContext?.ProjectName ?? "a project";
-        if (!_renderStallRestarts.TryAcquire(DateTime.UtcNow))
+        switch (reports.Decide(policy, message, DateTime.UtcNow, _isDisposedWhileWatchingRenderStalls))
         {
-            WinUIDesignerLogger.LogWarning(
-                "Platform",
-                $"The surface of '{project}' has stopped drawing {_MaximumRenderStallRestarts + 1} times in {_RenderStallRestartWindow.TotalMinutes:0} minutes. "
-                    + "It is not restarted again; reload the designer when the cause is gone.");
-            return;
-        }
+            // The first report of the process that the policy allows.
+            case RenderStallRestart.Restart:
+                WinUIDesignerLogger.LogWarning("Platform", $"The surface of '{project}' has stopped drawing; its process is restarted.");
+                RestartAfter(MediumDelay);
+                break;
 
-        WinUIDesignerLogger.LogWarning("Platform", $"The surface of '{project}' has stopped drawing; its process is restarted.");
-        RestartAfter(MediumDelay);
+            // Restarted too often: the process stays, and the stall that it reports for a document loaded later is
+            // decided again.
+            case RenderStallRestart.LimitReached:
+                WinUIDesignerLogger.LogWarning("Platform", $"The surface of '{project}' has stopped drawing again after {_MaximumRenderStallRestarts} restarts in {_RenderStallRestartWindow.TotalMinutes:0} minutes, and is not restarted now. Reloading the designer restarts it once those restarts are {_RenderStallRestartWindow.TotalMinutes:0} minutes old, and so does a rebuild of the project.");
+                break;
+
+            // Nothing to do, or nothing new to say: the process is restarted already, or the refusal was logged.
+            default:
+                break;
+        }
     }
 }
