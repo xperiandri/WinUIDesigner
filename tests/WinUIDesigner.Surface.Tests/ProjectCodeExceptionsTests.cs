@@ -45,17 +45,54 @@ public sealed class ProjectCodeExceptionsTests
     }
 
     [TestMethod]
-    public void ExceptionThrownByTheFrameworkIsNotProjectCode()
+    public void ExceptionThatTheFrameworkThrowsForProjectCodeIsProjectCode()
     {
-        if (ProjectCodeExceptions.IsUnder(typeof(int).Assembly.Location, _ProjectDirectory))
-        {
-            Assert.Inconclusive("The framework sits next to the test assembly.");
-        }
+        AssumeTheFrameworkIsNotInTheProjectDirectory();
 
         // The caller is project code, the method that throws is in the framework.
         Exception thrown = Capture(() => _ = int.Parse("not a number"));
 
-        Assert.IsFalse(ProjectCodeExceptions.IsThrownByProjectCode(thrown, _ProjectDirectory));
+        Assert.IsTrue(ProjectCodeExceptions.IsThrownByProjectCode(thrown, _ProjectDirectory));
+    }
+
+    [TestMethod]
+    public void ExceptionThatAThrowHelperThrowsForProjectCodeIsProjectCode()
+    {
+        AssumeTheFrameworkIsNotInTheProjectDirectory();
+
+        Exception thrown = Capture(() => ArgumentNullException.ThrowIfNull((object?)null, "service"));
+
+        Assert.IsTrue(ProjectCodeExceptions.IsThrownByProjectCode(thrown, _ProjectDirectory));
+    }
+
+    [TestMethod]
+    public void ExceptionThatLinqThrowsForProjectCodeIsProjectCode()
+    {
+        AssumeTheFrameworkIsNotInTheProjectDirectory();
+
+        Exception thrown = Capture(() => _ = Array.Empty<int>().First());
+
+        Assert.IsTrue(ProjectCodeExceptions.IsThrownByProjectCode(thrown, _ProjectDirectory));
+    }
+
+    [TestMethod]
+    public void CodeOfTheSurfaceBetweenTheFrameworkAndTheProjectMakesTheExceptionTheSurfaces()
+    {
+        AssumeTheFrameworkIsNotInTheProjectDirectory();
+
+        // LINQ stands for the surface here: the method that throws is called by it, and project code calls it.
+        Exception thrown = Capture(() => _ = Array.Empty<int>().First());
+
+        Assert.IsFalse(ProjectCodeExceptions.IsThrownByProjectCode(thrown, _ProjectDirectory, surface: typeof(Enumerable).Assembly));
+    }
+
+    private static void AssumeTheFrameworkIsNotInTheProjectDirectory()
+    {
+        if (ProjectCodeExceptions.IsUnder(typeof(int).Assembly.Location, _ProjectDirectory)
+            || ProjectCodeExceptions.IsUnder(typeof(Enumerable).Assembly.Location, _ProjectDirectory))
+        {
+            Assert.Inconclusive("The framework sits next to the test assembly.");
+        }
     }
 
     [TestMethod]

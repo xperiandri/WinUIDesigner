@@ -15,16 +15,41 @@ namespace WinUIDesigner.Surface.Runtime;
 internal static class ProjectCodeExceptions
 {
     /// <summary>
-    /// Whether the method that threw the exception sits in an assembly that was loaded from the staged files of the
-    /// project, and not in one of the assemblies that the surface carries or in the framework. An exception that only
-    /// carries another one, such as <see cref="TargetInvocationException"/>, is looked through.
+    /// Whether the exception is a failure of code of the project: the first method on its stack that is not the
+    /// runtime's or the framework's sits in an assembly that was loaded from the staged files of the project. A method of
+    /// the framework that project code called, such as a guard or a parser that throws, counts as the project's; a method
+    /// of the surface (<paramref name="surface"/>, the assembly of the surface by default) makes the failure the
+    /// surface's. An exception that only carries another one, such as <see cref="TargetInvocationException"/>, is looked
+    /// through.
     /// </summary>
-    public static bool IsThrownByProjectCode(Exception exception, string projectDirectory)
+    public static bool IsThrownByProjectCode(Exception exception, string projectDirectory, Assembly? surface = null)
     {
-        Exception thrown = Unwrap(exception);
-        MethodBase? method = new StackTrace(thrown, fNeedFileInfo: false).GetFrame(0)?.GetMethod();
+        surface ??= typeof(ProjectCodeExceptions).Assembly;
+        foreach (StackFrame frame in new StackTrace(Unwrap(exception), fNeedFileInfo: false).GetFrames())
+        {
+            // A method that was made at run time has no file that tells where it comes from.
+            Assembly? assembly = frame.GetMethod()?.DeclaringType?.Assembly;
+            if (assembly is null || assembly.IsDynamic)
+            {
+                continue;
+            }
 
-        return IsUnder(method?.DeclaringType?.Assembly.Location, projectDirectory);
+            // Code of the project, or of a library that it staged.
+            if (IsUnder(assembly.Location, projectDirectory))
+            {
+                return true;
+            }
+
+            // Code of the surface: the failure is the surface's, whoever called it.
+            if (assembly == surface)
+            {
+                return false;
+            }
+
+            // The runtime, the framework, a projection or Visual Studio: the method that called it decides.
+        }
+
+        return false;
     }
 
     /// <summary>
