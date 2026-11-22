@@ -199,6 +199,25 @@ public sealed class GuardedClipboardTests
         Assert.AreSame(failure, reports[2]);
     }
 
+    [TestMethod]
+    public void CopyingEndsAnOutage()
+    {
+        var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure() };
+        var reports = new List<Exception?>();
+        var guarded = new GuardedClipboard(clipboard, reports.Add, () => TimeSpan.Zero);
+        guarded.GetDataObject();
+
+        // Writing opens the clipboard too, so what the user has just copied can be pasted straight away.
+        var data = new DataObject();
+        clipboard.Failure = null;
+        clipboard.DataObject = data;
+        guarded.SetDataObject("element", true);
+
+        Assert.AreSame(data, guarded.GetDataObject());
+        Assert.HasCount(2, reports);
+        Assert.IsNull(reports[1]);
+    }
+
     private static COMException CreateCannotOpenFailure()
     {
         return new COMException("OpenClipboard Failed", _ClipboardCannotBeOpened);

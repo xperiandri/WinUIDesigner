@@ -28,7 +28,8 @@ namespace WinUIDesigner.Platform;
 /// not show that the clipboard can be opened again.
 /// </para>
 /// <para>
-/// Writing is passed through unchanged, because Visual Studio reports a failed copy to the user itself.
+/// Writing is passed through unchanged, because Visual Studio reports a failed copy to the user itself. A write that
+/// succeeds ends an outage, because it has opened the clipboard.
 /// </para>
 /// </remarks>
 internal sealed class GuardedClipboard : IClipboard
@@ -151,14 +152,18 @@ internal sealed class GuardedClipboard : IClipboard
         }
     }
 
+    // A write that succeeds has opened the clipboard, so it ends an outage and its retry delay: what the user has
+    // just copied can be pasted straight away.
     public void SetDataObject(object data)
     {
         _clipboard.SetDataObject(data);
+        MarkAvailable();
     }
 
     public void SetDataObject(object data, bool copy)
     {
         _clipboard.SetDataObject(data, copy);
+        MarkAvailable();
     }
 
     // The failures Visual Studio's own guarded read (SafeDataObject.FromClipboard) takes for an unreadable
