@@ -2,6 +2,7 @@
 // Licensed under MIT License.
 
 using System.Reflection;
+using System.Reflection.Emit;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
@@ -103,6 +104,41 @@ public sealed class ProjectCodeExceptionsTests
 
         Assert.IsInstanceOfType<TargetInvocationException>(wrapper);
         Assert.IsTrue(ProjectCodeExceptions.IsThrownByProjectCode(wrapper, _ProjectDirectory));
+    }
+
+    private static void EmitThrow(ILGenerator il)
+    {
+        il.Emit(OpCodes.Ldstr, "thrown by a method that was made at run time");
+        il.Emit(OpCodes.Newobj, typeof(InvalidOperationException).GetConstructor([typeof(string)])!);
+        il.Emit(OpCodes.Throw);
+    }
+
+    [TestMethod]
+    public void MethodMadeAtRunTimeIsLookedThrough()
+    {
+        // It has no declaring type, so no assembly: the walk goes on to its caller, which is project code.
+        var method = new DynamicMethod("ThrowFromDynamicMethod", typeof(void), Type.EmptyTypes);
+        EmitThrow(method.GetILGenerator());
+        var throwing = (Action)method.CreateDelegate(typeof(Action));
+
+        Exception thrown = Capture(throwing);
+
+        Assert.IsTrue(ProjectCodeExceptions.IsThrownByProjectCode(thrown, _ProjectDirectory));
+    }
+
+    [TestMethod]
+    public void MethodOfADynamicAssemblyIsLookedThrough()
+    {
+        // A dynamic assembly has no file: it tells nothing about where the code comes from, and its caller decides.
+        AssemblyBuilder assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("DynamicThrower"), AssemblyBuilderAccess.Run);
+        TypeBuilder type = assembly.DefineDynamicModule("DynamicThrower").DefineType("Thrower", TypeAttributes.Public);
+        MethodBuilder method = type.DefineMethod("Throw", MethodAttributes.Public | MethodAttributes.Static, typeof(void), Type.EmptyTypes);
+        EmitThrow(method.GetILGenerator());
+        var throwing = (Action)Delegate.CreateDelegate(typeof(Action), type.CreateType().GetMethod("Throw")!);
+
+        Exception thrown = Capture(throwing);
+
+        Assert.IsTrue(ProjectCodeExceptions.IsThrownByProjectCode(thrown, _ProjectDirectory));
     }
 
     [TestMethod]
