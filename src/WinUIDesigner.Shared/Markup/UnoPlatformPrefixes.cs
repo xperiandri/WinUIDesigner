@@ -112,15 +112,16 @@ internal static class UnoPlatformPrefixes
 
         // Any other prefix names a platform of the table, with or without the negation.
         bool hasNegation = prefix.StartsWith(_NegationPrefix, StringComparison.Ordinal);
-        string name = hasNegation ? prefix.Substring(_NegationPrefix.Length) : prefix;
+        int index = IndexOfPlatform(prefix.AsSpan(hasNegation ? _NegationPrefix.Length : 0));
 
         // The table does not know the platform: the prefix is an ordinary one.
-        if (FindTargets(name) is null)
+        if (index < 0)
         {
             return false;
         }
 
-        platform = name;
+        // The table has the name already, so no string is made for it.
+        platform = _Platforms[index].Key;
         isNegated = hasNegation;
         return true;
     }
@@ -316,21 +317,21 @@ internal static class UnoPlatformPrefixes
 
     private static bool IsIncluded(string platform, bool isNegated, string? targetPlatform)
     {
-        string[]? targets = FindTargets(platform);
-        return targets is not null && (Array.IndexOf(targets, NormalizeTarget(targetPlatform)) >= 0) != isNegated;
+        int index = IndexOfPlatform(platform.AsSpan());
+        return index >= 0 && (Array.IndexOf(_Platforms[index].Value, NormalizeTarget(targetPlatform)) >= 0) != isNegated;
     }
 
-    private static string[]? FindTargets(string platform)
+    private static int IndexOfPlatform(ReadOnlySpan<char> platform)
     {
         for (int index = 0; index < _Platforms.Length; index++)
         {
-            if (string.Equals(_Platforms[index].Key, platform, StringComparison.Ordinal))
+            if (platform.SequenceEqual(_Platforms[index].Key.AsSpan()))
             {
-                return _Platforms[index].Value;
+                return index;
             }
         }
 
-        return null;
+        return -1;
     }
 
     private static string NormalizeTarget(string? targetPlatform)

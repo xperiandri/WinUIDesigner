@@ -81,6 +81,8 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("ANDROID")]
     [DataRow("android2")]
     [DataRow("androidNamespace1")]
+    [DataRow("andro")]
+    [DataRow("not_andro")]
     [DataRow("windows")]
     [DataRow("not_")]
     [DataRow("not_used")]
