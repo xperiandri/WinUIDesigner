@@ -3,6 +3,7 @@
 
 // SimpleTextBuffer is only known to exist in Visual Studio 18; the Visual Studio 17.14 build leaves these tests out.
 #if !VS2022
+using System.Collections.Concurrent;
 using System.Runtime.Remoting.Messaging;
 using System.Runtime.Remoting.Proxies;
 using Microsoft.VisualStudio.DesignTools.Markup.DocumentModel;
@@ -60,6 +61,96 @@ public sealed class XamlMemberDispositionServiceTests
 
         Assert.AreNotSame(first, second);
         Assert.AreNotSame(second, third);
+    }
+
+    [TestMethod]
+    public void NewAnswersDoNotReplaceTheVerdictsOfADocumentThatMayBeBeingBuilt()
+    {
+        IDocumentRoot document = TextOnlyDocumentRoot.Create(new SimpleTextBuffer(_Xaml));
+        var service = new XamlMemberDispositionService();
+        XamlNamespaceScanResult before = service.GetNamespaces(document);
+
+        // A document is judged with one set of answers, also if the surface answers while it is built.
+        service.AnswersChanged();
+        XamlNamespaceScanResult after = service.GetNamespaces(document);
+
+        Assert.AreSame(before, after);
+    }
+
+    [TestMethod]
+    public void RefreshJudgesADocumentWithTheAnswersThatChangedSinceItWasLookedAt()
+    {
+        IDocumentRoot document = TextOnlyDocumentRoot.Create(new SimpleTextBuffer(_Xaml));
+        var service = new XamlMemberDispositionService();
+        XamlNamespaceScanResult first = service.GetNamespaces(document);
+
+        // No answer changed, so there is nothing to look at again.
+        service.Refresh(document);
+        XamlNamespaceScanResult unchanged = service.GetNamespaces(document);
+
+        service.AnswersChanged();
+        service.Refresh(document);
+        XamlNamespaceScanResult refreshed = service.GetNamespaces(document);
+
+        // A state made with the answers of now stays.
+        service.Refresh(document);
+        XamlNamespaceScanResult kept = service.GetNamespaces(document);
+
+        Assert.AreSame(first, unchanged);
+        Assert.AreNotSame(first, refreshed);
+        Assert.AreSame(refreshed, kept);
+    }
+
+    [TestMethod]
+    public void RefreshHasNothingToDiscardForADocumentThatWasNeverLookedAt()
+    {
+        var service = new XamlMemberDispositionService();
+        service.AnswersChanged();
+        IDocumentRoot document = TextOnlyDocumentRoot.Create(new SimpleTextBuffer(_Xaml));
+
+        service.Refresh(null);
+        service.Refresh(document);
+        service.Refresh(TextOnlyDocumentRoot.Create(null));
+
+        Assert.HasCount(1, service.GetNamespaces(document).Declarations);
+    }
+
+    [TestMethod]
+    public void ConditionHasOneAnswerWhileItsVerdictsAreKept()
+    {
+        var outcomes = new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal);
+        bool? answer = null;
+        int calls = 0;
+        XamlConditionEvaluator? pinned = XamlMemberDispositionService.Pin(
+            (_, _) =>
+            {
+                calls++;
+                return answer;
+            },
+            outcomes
+        );
+        Func<string, string?> declared = prefix => prefix == "cond" ? "using:My.App" : null;
+        const string condition = "cond:FeatureFlagCondition(NewExperience)";
+
+        // The element is judged before the surface answers, its attributes after: the same answer for all.
+        bool? first = pinned!(condition, declared);
+        answer = true;
+        bool? second = pinned(condition, declared);
+
+        Assert.IsNull(first);
+        Assert.IsNull(second);
+        Assert.AreEqual(1, calls);
+
+        // Another condition, and the same text where its prefix is bound to another namespace, are other questions.
+        Assert.AreEqual(true, pinned("cond:OtherCondition(NewExperience)", declared));
+        Assert.AreEqual(true, pinned(condition, prefix => prefix == "cond" ? "using:Other.App" : null));
+        Assert.AreEqual(3, calls);
+    }
+
+    [TestMethod]
+    public void ConditionIsNotPinnedWithoutAnEvaluator()
+    {
+        Assert.IsNull(XamlMemberDispositionService.Pin(null, new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal)));
     }
 
     [TestMethod]

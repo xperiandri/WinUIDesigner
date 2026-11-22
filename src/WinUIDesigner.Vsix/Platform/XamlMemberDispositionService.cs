@@ -18,9 +18,18 @@ namespace WinUIDesigner.Platform;
 /// judged by the prefix it was written with.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Construction actions carry CLR names only, so on that path the policies have to be applied here, on
 /// the document model. A document without policy namespaces is recognized from one scan of its text per
 /// text version and never has the source of its nodes read. Instances are safe to use from any thread.
+/// </para>
+/// <para>
+/// A document is judged with one set of answers to its conditions for as long as its verdicts are kept: until
+/// its text changes, the policy inputs change (<see cref="TargetPlatform"/>, <see cref="EvaluateCondition"/>),
+/// or <see cref="Refresh"/> is called for it. A condition has one answer within that time, whenever it is
+/// asked and whichever node asks. New answers (<see cref="AnswersChanged"/>) do not replace the verdicts of a
+/// document that may be being built, on another thread, in the middle of its construction.
+/// </para>
 /// </remarks>
 internal sealed class XamlMemberDispositionService
 {
@@ -28,6 +37,7 @@ internal sealed class XamlMemberDispositionService
     private volatile string _targetPlatform = UnoPlatformPrefixes.DefaultTargetPlatform;
     private volatile XamlConditionEvaluator? _evaluateCondition;
     private int _generation;
+    private int _answersVersion;
 
     /// <summary>
     /// Gets or sets the platform whose members are kept. Changing it discards the cached verdicts.
@@ -64,9 +74,35 @@ internal sealed class XamlMemberDispositionService
     }
 
     /// <summary>
-    /// Discards the cached verdicts, for example after the outcome of a condition changed.
+    /// Discards the cached verdicts of every document: the next question about a document looks at its text again.
     /// </summary>
     public void Invalidate() => Interlocked.Increment(ref _generation);
+
+    /// <summary>
+    /// Notes that the answers to conditions changed. A document keeps the verdicts it has until
+    /// <see cref="Refresh"/> is called for it or its text changes.
+    /// </summary>
+    public void AnswersChanged() => Interlocked.Increment(ref _answersVersion);
+
+    /// <summary>
+    /// Makes the next question about <paramref name="document"/> look at its text again when answers changed
+    /// since it was last looked at. Call it for a document that is about to be built, not for one that is being built.
+    /// </summary>
+    public void Refresh(IDocumentRoot? document)
+    {
+        // A document that was never asked about has nothing to discard.
+        if (document is null || !_documents.TryGetValue(document, out DocumentCache? cache))
+        {
+            return;
+        }
+
+        // A state that was made with the answers of now stays.
+        DocumentState? state = Volatile.Read(ref cache.State);
+        if (state is not null && state.AnswersVersion != Volatile.Read(ref _answersVersion))
+        {
+            Interlocked.CompareExchange(ref cache.State, null, state);
+        }
+    }
 
     /// <summary>
     /// Returns the namespace facts of the current text of <paramref name="document"/>. They are scanned once
@@ -99,11 +135,12 @@ internal sealed class XamlMemberDispositionService
 
         try
         {
-            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = GetState(node.DocumentRoot)?.Verdicts;
+            DocumentState? state = GetState(node.DocumentRoot);
+            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = state?.Verdicts;
             object? site = verdicts is null ? null : node.SourceContext;
 
             // A document without policy namespaces, or a node without source, is left alone.
-            if (verdicts is null || site is null)
+            if (state is null || verdicts is null || site is null)
             {
                 return XamlPrefixDisposition.Leave;
             }
@@ -111,7 +148,7 @@ internal sealed class XamlMemberDispositionService
             // The source of a place is read once; the verdict is kept for the next question about it.
             if (!verdicts.TryGetValue(site, out XamlPrefixDisposition verdict))
             {
-                verdict = Classify(XamlSourcePrefixReader.ReadElementPrefix(node));
+                verdict = Classify(XamlSourcePrefixReader.ReadElementPrefix(node), state);
                 verdicts[site] = verdict;
             }
 
@@ -140,11 +177,12 @@ internal sealed class XamlMemberDispositionService
         try
         {
             // The source reference of the attribute or property element identifies this place in the text.
-            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = GetState(parentNode.DocumentRoot)?.Verdicts;
+            DocumentState? state = GetState(parentNode.DocumentRoot);
+            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = state?.Verdicts;
             object? site = verdicts is null ? null : parentNode.GetContainerContext(property);
 
             // A document without policy namespaces, or a property without source, is left alone.
-            if (verdicts is null || site is null)
+            if (state is null || verdicts is null || site is null)
             {
                 return XamlPrefixDisposition.Leave;
             }
@@ -152,7 +190,7 @@ internal sealed class XamlMemberDispositionService
             // The source of a place is read once; the verdict is kept for the next question about it.
             if (!verdicts.TryGetValue(site, out XamlPrefixDisposition verdict))
             {
-                verdict = Classify(XamlSourcePrefixReader.ReadPropertyPrefix(parentNode, property));
+                verdict = Classify(XamlSourcePrefixReader.ReadPropertyPrefix(parentNode, property), state);
                 verdicts[site] = verdict;
             }
 
@@ -190,25 +228,62 @@ internal sealed class XamlMemberDispositionService
         int textLength = buffer.Length;
         int generation = Volatile.Read(ref _generation);
 
+        // New answers alone do not replace a state: the document may be being built with it right now.
         DocumentState? state = Volatile.Read(ref cache.State);
         if (state is null || state.TextVersion != textVersion || state.TextLength != textLength || state.Generation != generation)
         {
             // One pass over the text each time it changes: the namespaces of a document are declared in its
             // text. Not every buffer counts versions (SimpleTextBuffer always reports 0), so the length
             // takes part in telling one text from the next.
+            int answersVersion = Volatile.Read(ref _answersVersion);
+            var outcomes = new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal);
             XamlNamespaceScanResult namespaces = XamlNamespaceScanner.Scan(ReadText(buffer, textLength));
-            bool hasPolicyNamespaces = XamlNamespacePolicies.MayAffect(namespaces, _targetPlatform, _evaluateCondition);
+            bool hasPolicyNamespaces = XamlNamespacePolicies.MayAffect(namespaces, _targetPlatform, Pin(_evaluateCondition, outcomes));
             state = new DocumentState(
                 textVersion,
                 textLength,
                 generation,
+                answersVersion,
                 namespaces,
+                outcomes,
                 hasPolicyNamespaces ? new ConcurrentDictionary<object, XamlPrefixDisposition>(ReferenceComparer.Instance) : null
             );
             Volatile.Write(ref cache.State, state);
         }
 
         return state;
+    }
+
+    /// <summary>
+    /// Returns an evaluator that answers a condition once and gives the same answer afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The answer to a condition may change while a document is being built, when the surface answers. The
+    /// element and the attributes written under one prefix are judged at different moments, and judging one
+    /// of them differently from the others builds an element without a property it needs.
+    /// </remarks>
+    internal static XamlConditionEvaluator? Pin(XamlConditionEvaluator? evaluator, ConcurrentDictionary<string, bool?> outcomes)
+    {
+        if (evaluator is null)
+        {
+            return null;
+        }
+
+        return (condition, resolveNamespace) =>
+        {
+            // The same text can name another condition type where the prefix is bound differently.
+            string? predicateNamespace;
+            try
+            {
+                predicateNamespace = resolveNamespace(XamlCondition.Parse(condition).Prefix);
+            }
+            catch (Exception)
+            {
+                predicateNamespace = null;
+            }
+
+            return outcomes.GetOrAdd($"{condition}\u0001{predicateNamespace}", _ => evaluator(condition, resolveNamespace));
+        };
     }
 
     private static string? ReadText(IMarkupTextBuffer buffer, int length)
@@ -230,7 +305,11 @@ internal sealed class XamlMemberDispositionService
     /// Returns the verdict for members written under <paramref name="source"/>. A prefix that is unknown
     /// or not bound to a namespace yields <see cref="XamlPrefixDisposition.Leave"/>.
     /// </summary>
-    public XamlPrefixDisposition Classify(XamlSourcePrefix source)
+    public XamlPrefixDisposition Classify(XamlSourcePrefix source) => Classify(source, _evaluateCondition);
+
+    private XamlPrefixDisposition Classify(XamlSourcePrefix source, DocumentState state) => Classify(source, Pin(_evaluateCondition, state.Outcomes));
+
+    private XamlPrefixDisposition Classify(XamlSourcePrefix source, XamlConditionEvaluator? evaluator)
     {
         // A member whose prefix could not be read, or is not declared, is left alone.
         if (!source.IsKnown || source.Namespace is null)
@@ -240,7 +319,6 @@ internal sealed class XamlMemberDispositionService
 
         XamlNamespaceUri uri = source.Uri;
         Func<string, bool?>? evaluate = null;
-        XamlConditionEvaluator? evaluator = _evaluateCondition;
         if (evaluator is not null && uri.IsConditional)
         {
             evaluate = condition => evaluator(condition, source.ResolveNamespace);
@@ -264,7 +342,9 @@ internal sealed class XamlMemberDispositionService
         int textVersion,
         int textLength,
         int generation,
+        int answersVersion,
         XamlNamespaceScanResult namespaces,
+        ConcurrentDictionary<string, bool?> outcomes,
         ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts)
     {
         public int TextVersion { get; } = textVersion;
@@ -273,7 +353,13 @@ internal sealed class XamlMemberDispositionService
 
         public int Generation { get; } = generation;
 
+        // The answers the verdicts of this state were reached with; see Refresh.
+        public int AnswersVersion { get; } = answersVersion;
+
         public XamlNamespaceScanResult Namespaces { get; } = namespaces;
+
+        // The answer of each condition that was asked while this state was current; see Pin.
+        public ConcurrentDictionary<string, bool?> Outcomes { get; } = outcomes;
 
         // Keyed by source reference, of which there is one per element and per attribute in the text.
         // Null when no namespace of the document is subject to a policy: nothing needs to be looked up then.

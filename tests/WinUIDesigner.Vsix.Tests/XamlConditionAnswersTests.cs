@@ -1,6 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Markup;
@@ -486,6 +487,63 @@ public sealed class XamlConditionAnswersTests
         Assert.IsNull(probes.EvaluateCustom);
     }
 
+    [TestMethod]
+    public async Task AnswersAreAppliedOneCallerAtATime()
+    {
+        var surface = new FakeSurface();
+        using var entered = new ManualResetEventSlim();
+        using var proceed = new ManualResetEventSlim();
+        var answers = new XamlConditionAnswers(
+            request => Task.FromResult(surface.Answer(request)),
+            CancellationToken.None,
+            () =>
+            {
+                entered.Set();
+                proceed.Wait(_Long);
+            },
+            new XamlConditionProbeSet(),
+            (_, _) => { });
+        await answers.AskAsync([], _Long);
+        await WaitFor(() => !answers.IsRequestInFlight);
+
+        // The first caller takes the reply and is in the middle of putting it into effect.
+        Task first = Task.Run(() => answers.AskAsync([], _Long));
+        Assert.IsTrue(entered.Wait(_Long), "The first caller did not start to apply the reply.");
+
+        // A second caller must not go on, and build, while the answers are half applied.
+        Task second = Task.Run(() => answers.AskAsync([], _Long));
+        await Task.Delay(300);
+        Assert.IsFalse(second.IsCompleted, "A second caller went on while the first was still applying the reply.");
+
+        proceed.Set();
+        await Task.WhenAll(first, second);
+        Assert.IsTrue(answers.SurfaceAnswers);
+    }
+
+    [TestMethod]
+    public async Task AnswersTakeEffectOnTheContextOfTheCallerAfterAWait()
+    {
+        var surface = new FakeSurface { Hold = true };
+        int appliedOn = -1;
+        var answers = new XamlConditionAnswers(
+            request => surface.Ask(request),
+            CancellationToken.None,
+            () => appliedOn = Environment.CurrentManagedThreadId,
+            new XamlConditionProbeSet(),
+            (_, _) => { });
+        using var context = new SingleThreadContext();
+
+        // The document is built on the thread of its caller next; the answers must not take effect on another one.
+        Task ask = context.RunAsync(() => answers.AskAsync(Queries(_NewExperience), _Long, _Long));
+        await WaitFor(() => surface.RequestCount == 1);
+        surface.Hold = false;
+        surface.Release();
+        await ask;
+
+        Assert.IsTrue(answers.SurfaceAnswers);
+        Assert.AreEqual(context.ThreadId, appliedOn, "The answers took effect on a thread that is not the caller's.");
+    }
+
     private static string? Namespaces(string prefix)
     {
         return prefix switch
@@ -521,6 +579,62 @@ public sealed class XamlConditionAnswersTests
         {
             Assert.IsTrue(elapsed.Elapsed < _Long, "The expected state was not reached in time.");
             await Task.Delay(10);
+        }
+    }
+
+    /// <summary>
+    /// A synchronization context that runs everything on one thread, like the user interface thread of Visual Studio.
+    /// </summary>
+    private sealed class SingleThreadContext : SynchronizationContext, IDisposable
+    {
+        private readonly BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = [];
+        private readonly Thread _thread;
+
+        public SingleThreadContext()
+        {
+            _thread = new Thread(Run) { IsBackground = true };
+            _thread.Start();
+        }
+
+        public int ThreadId => _thread.ManagedThreadId;
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
+
+        public Task RunAsync(Func<Task> action)
+        {
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Post(
+                async _ =>
+                {
+                    try
+                    {
+                        await action();
+                        completion.SetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        completion.SetException(ex);
+                    }
+                },
+                null
+            );
+            return completion.Task;
+        }
+
+        public void Dispose()
+        {
+            _queue.CompleteAdding();
+            _thread.Join(_Long);
+            _queue.Dispose();
+        }
+
+        private void Run()
+        {
+            SetSynchronizationContext(this);
+            foreach ((SendOrPostCallback callback, object? state) in _queue.GetConsumingEnumerable())
+            {
+                callback(state);
+            }
         }
     }
 
@@ -633,7 +747,7 @@ public sealed class XamlConditionAnswersTests
             }
         }
 
-        private Task<EvaluateXamlConditionsResponse> Ask(EvaluateXamlConditionsRequest request)
+        public Task<EvaluateXamlConditionsResponse> Ask(EvaluateXamlConditionsRequest request)
         {
             bool hold;
             var completion = new TaskCompletionSource<EvaluateXamlConditionsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);

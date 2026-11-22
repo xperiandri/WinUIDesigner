@@ -68,10 +68,25 @@ internal sealed partial class WinUIDesignerInstanceManager
 
         // The answers that arrived take effect here, before anything of this request is built.
         await answers.AskAsync(new List<XamlConditionQuery>(queries.Values), _ConditionAnswerTimeout, _FirstConditionAnswerTimeout).ConfigureAwait(false);
+
+        // The documents that are about to be built are judged with the answers that took effect. A document
+        // that is being built, such as another page that loads at the same time, keeps the answers it has.
+        RefreshVerdicts(targetDocument, preparedDocuments);
         if (queries.Count > 0)
         {
             WinUIDesignerLogger.LogTrace("Platform", $"Conditional XAML: the documents of this request contain {queries.Count} condition(s); the surface {(answers.SurfaceAnswers ? "answers" : "has not answered yet")}.");
         }
+    }
+
+    private void RefreshVerdicts(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
+    {
+        _memberDispositions.Refresh(targetDocument.Document);
+        foreach (ISurfaceProcessDocument document in preparedDocuments)
+        {
+            _memberDispositions.Refresh(document.Document);
+        }
+
+        _memberDispositions.Refresh(MarkupProvider.AppXaml?.Document);
     }
 
     /// <summary>
@@ -144,7 +159,7 @@ internal sealed partial class WinUIDesignerInstanceManager
         var answers = new XamlConditionAnswers(
             request => ProtocolHandler.SendMessageAsync<EvaluateXamlConditionsResponse>((int)DesignerMessageId.EvaluateXamlConditions, request),
             ProtocolHandler.CancellationToken,
-            _memberDispositions.Invalidate,
+            _memberDispositions.AnswersChanged,
             XamlConditionAnswers.CreateLocalProbes(),
             (message, exception) => WinUIDesignerLogger.LogWarning("Platform", message, exception));
 
