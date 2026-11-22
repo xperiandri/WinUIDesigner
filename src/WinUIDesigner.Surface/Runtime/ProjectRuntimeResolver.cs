@@ -55,18 +55,9 @@ internal static class ProjectRuntimeResolver
     /// </remarks>
     public static void ServeNewerProjectionReferences()
     {
+        // A newer reference to a projection that the surface carries is served by its own copy and logged once.
         AssemblyLoadContext.Default.Resolving += (context, name) =>
-        {
-            Assembly? surfaceCopy = AssemblyReferenceCompatibility.ServeFromSurfaceCopy(context, name, _SurfaceAssemblies);
-
-            // A newer reference to a projection that the surface carries, served by its own copy.
-            if (surfaceCopy is not null)
-            {
-                ReportServedOnce(name, surfaceCopy);
-            }
-
-            return surfaceCopy;
-        };
+            AssemblyReferenceCompatibility.ServeFromSurfaceCopy(context, name, _SurfaceAssemblies, ReportServedOnce);
     }
 
     public static void Initialize(string directory)

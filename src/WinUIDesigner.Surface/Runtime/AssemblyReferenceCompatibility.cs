@@ -137,13 +137,23 @@ internal static class AssemblyReferenceCompatibility
     /// <param name="context">The context that could not bind the reference.</param>
     /// <param name="reference">The referenced assembly, with the version that was referenced.</param>
     /// <param name="surface">The assemblies the surface carries.</param>
+    /// <param name="served">
+    /// Called with the reference and the surface's copy that serves it, for the log, after the copy was loaded. It
+    /// cannot fail the handler: an exception that it throws is ignored, and the copy still serves the reference.
+    /// </param>
     /// <returns>
     /// The surface's copy, which the runtime binds by the simple name alone, or <see langword="null"/> when the other
     /// handlers are to decide: the reference is not one that <see cref="Resolve"/> leaves to the surface's copy, or the
-    /// copy cannot be read or loaded.
+    /// copy cannot be loaded.
     /// </returns>
-    public static Assembly? ServeFromSurfaceCopy(AssemblyLoadContext context, AssemblyName reference, SurfaceAssemblies surface)
+    public static Assembly? ServeFromSurfaceCopy(
+        AssemblyLoadContext context,
+        AssemblyName reference,
+        SurfaceAssemblies surface,
+        Action<AssemblyName, Assembly>? served = null)
     {
+        Assembly surfaceCopy;
+
         // A handler that throws fails the code that needed the reference, which can be a callback of the XAML framework.
         try
         {
@@ -155,14 +165,24 @@ internal static class AssemblyReferenceCompatibility
             }
 
             // A newer reference to a projection the surface carries: its own copy is bound by the simple name alone.
-            return context.LoadFromAssemblyName(new AssemblyName(reference.Name!));
+            surfaceCopy = context.LoadFromAssemblyName(new AssemblyName(reference.Name!));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // The version of the surface's copy cannot be read, or the copy cannot be loaded either; the reference
-            // fails as it would without this handler.
+            // The copy cannot be loaded either; the reference fails as it would without this handler.
             return null;
         }
+
+        try
+        {
+            served?.Invoke(reference, surfaceCopy);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The copy serves the reference whatever the log does: only the line of the log is lost.
+        }
+
+        return surfaceCopy;
     }
 
     /// <summary>

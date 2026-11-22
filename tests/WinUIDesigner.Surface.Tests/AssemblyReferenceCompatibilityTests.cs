@@ -2,6 +2,9 @@
 // Licensed under MIT License.
 
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
@@ -45,9 +48,23 @@ public sealed class AssemblyReferenceCompatibilityTests
         return AssemblyReferenceCompatibility.Resolve(new AssemblyName(reference), _CarriedBySurface, _Staged.Contains);
     }
 
-    private static Assembly? ServeFromSurfaceCopy(string reference, SurfaceAssemblies surface)
+    private static Assembly? ServeFromSurfaceCopy(string reference, SurfaceAssemblies surface, Action<AssemblyName, Assembly>? served = null)
     {
-        return AssemblyReferenceCompatibility.ServeFromSurfaceCopy(AssemblyLoadContext.Default, new AssemblyName(reference), surface);
+        return AssemblyReferenceCompatibility.ServeFromSurfaceCopy(AssemblyLoadContext.Default, new AssemblyName(reference), surface, served);
+    }
+
+    // An assembly of version 1.0.0.0 without a type, loaded into the default context, in the place of a projection that
+    // the surface carries and this test host does not: the context binds a reference to it by its simple name.
+    private static Assembly LoadStandInProjection(string name)
+    {
+        var metadata = new MetadataBuilder();
+        metadata.AddAssembly(metadata.GetOrAddString(name), new Version(1, 0, 0, 0), default, default, default, AssemblyHashAlgorithm.None);
+        metadata.AddModule(0, metadata.GetOrAddString($"{name}.dll"), metadata.GetOrAddGuid(Guid.NewGuid()), default, default);
+        metadata.AddTypeDefinition(default, default, metadata.GetOrAddString("<Module>"), default, MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
+
+        var image = new BlobBuilder();
+        new ManagedPEBuilder(PEHeaderBuilder.CreateLibraryHeader(), new MetadataRootBuilder(metadata), new BlobBuilder()).Serialize(image);
+        return AssemblyLoadContext.Default.LoadFromStream(new MemoryStream(image.ToArray()));
     }
 
     [TestMethod]
@@ -269,6 +286,56 @@ public sealed class AssemblyReferenceCompatibilityTests
     {
         // This test host does carry System.Text.Json: only the decision of Resolve keeps the handler from serving it.
         Assert.IsNull(ServeFromSurfaceCopy("System.Text.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51", _CarriedBySurface));
+    }
+
+    [TestMethod]
+    public void ANewerReferenceToACarriedProjectionIsServedWithTheSurfaceCopyAndReported()
+    {
+        Assembly projection = LoadStandInProjection("Contoso.Reported.Projection");
+        var surface = new SurfaceAssemblies(@"C:\Surface\Contoso.Reported.Projection.dll", _ => new Version(1, 0, 0, 0));
+        var reported = new List<(AssemblyName Reference, Assembly Copy)>();
+
+        Assembly? served = ServeFromSurfaceCopy(
+            "Contoso.Reported.Projection, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null",
+            surface,
+            (reference, copy) => reported.Add((reference, copy))
+        );
+
+        Assert.AreSame(projection, served);
+        (AssemblyName Reference, Assembly Copy) report = Assert.ContainsSingle(reported);
+        Assert.AreEqual(new Version(2, 0, 0, 0), report.Reference.Version);
+        Assert.AreSame(projection, report.Copy);
+    }
+
+    [TestMethod]
+    public void AFailingLogDoesNotKeepTheHandlerFromServingTheReference()
+    {
+        Assembly projection = LoadStandInProjection("Contoso.Unlogged.Projection");
+        var surface = new SurfaceAssemblies(@"C:\Surface\Contoso.Unlogged.Projection.dll", _ => new Version(1, 0, 0, 0));
+
+        Assembly? served = ServeFromSurfaceCopy(
+            "Contoso.Unlogged.Projection, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null",
+            surface,
+            (_, _) => throw new InvalidOperationException()
+        );
+
+        Assert.AreSame(projection, served);
+    }
+
+    [TestMethod]
+    public void AReferenceThatCouldNotBeServedIsNotReported()
+    {
+        bool reported = false;
+
+        // This test host has no Microsoft.Windows.SDK.NET to bind, so the surface's copy cannot serve the reference.
+        Assembly? served = ServeFromSurfaceCopy(
+            "Microsoft.Windows.SDK.NET, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null",
+            _CarriedBySurface,
+            (_, _) => reported = true
+        );
+
+        Assert.IsNull(served);
+        Assert.IsFalse(reported);
     }
 
     [TestMethod]
