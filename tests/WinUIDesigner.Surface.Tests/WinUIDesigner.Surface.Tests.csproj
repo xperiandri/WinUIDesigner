@@ -12,6 +12,7 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/RenderStall.cs" Link="RenderStall.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/Breadcrumbs.cs" Link="Breadcrumbs.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/FrameCounter.cs" Link="FrameCounter.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/FreezeRecovery.cs" Link="FreezeRecovery.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/RenderStallReports.cs" Link="RenderStallReports.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/SurfaceContext.cs" Link="SurfaceContext.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DispatcherOperation.cs" Link="DispatcherOperation.cs" Visible="false" />

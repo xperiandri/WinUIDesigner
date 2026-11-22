@@ -73,10 +73,8 @@ internal sealed partial class DesignerSurface : IDisposable
     // Suspending rendering is a switch of the whole process: layout goes on, and nothing is drawn or animated in any
     // island until it is resumed. Visual Studio unfreezes a surface in a frame of its own window, which a window that is
     // not drawn does not produce, and the resumption can fail, so a suspension that nothing resumed is resumed here:
-    // after a while, and again until it succeeds. A timer that nothing refers to is collected, and does not fire.
-    private static readonly TimeSpan _FreezeTimeout = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan _ResumeRetryInterval = TimeSpan.FromMilliseconds(500);
-    private const int _MaximumResumeRetries = 20;
+    // after a while, and again until it succeeds (FreezeRecovery). A timer that nothing refers to is collected, and does
+    // not fire.
     private DispatcherQueueTimer? _freezeTimer;
     private int _resumeRetries;
 
@@ -92,7 +90,7 @@ internal sealed partial class DesignerSurface : IDisposable
         }
 
         IsFrozen = true;
-        ArmFreezeTimer(_FreezeTimeout);
+        ArmFreezeTimer(FreezeRecovery.Timeout);
         WinUIDesignerLogger.LogTrace("Surface", $"The surface was frozen (rendering suspended: {_renderingSuspended}).");
     }
 
@@ -107,7 +105,7 @@ internal sealed partial class DesignerSurface : IDisposable
         _resumeRetries = 0;
         if (!TryResumeRendering())
         {
-            ArmFreezeTimer(_ResumeRetryInterval);
+            ArmFreezeTimer(FreezeRecovery.ResumeRetryInterval);
         }
 
         WinUIDesignerLogger.LogTrace("Surface", $"The surface was unfrozen (rendering suspended: {_renderingSuspended}).");
@@ -172,19 +170,22 @@ internal sealed partial class DesignerSurface : IDisposable
     {
         sender.Stop();
 
-        if (_disposed)
+        switch (FreezeRecovery.OnTimer(_disposed, IsFrozen, _renderingSuspended))
         {
-            return;
-        }
+            // Visual Studio did not unfreeze the surface in time.
+            case FreezeTimerStep.Unfreeze:
+                WinUIDesignerLogger.LogWarning("Surface", $"Visual Studio did not unfreeze the surface within {FreezeRecovery.Timeout.TotalSeconds:0} s; it is unfrozen.");
+                Unfreeze();
+                break;
 
-        if (IsFrozen)
-        {
-            WinUIDesignerLogger.LogWarning("Surface", $"Visual Studio did not unfreeze the surface within {_FreezeTimeout.TotalSeconds:0} s; it is unfrozen.");
-            Unfreeze();
-        }
-        else if (_renderingSuspended && !TryResumeRendering() && ++_resumeRetries < _MaximumResumeRetries)
-        {
-            ArmFreezeTimer(_ResumeRetryInterval);
+            // The surface was unfrozen, but its rendering could not be resumed: try again, a limited number of times.
+            case FreezeTimerStep.ResumeRendering:
+                if (!TryResumeRendering() && FreezeRecovery.ShouldRetryResume(++_resumeRetries))
+                {
+                    ArmFreezeTimer(FreezeRecovery.ResumeRetryInterval);
+                }
+
+                break;
         }
     }
 

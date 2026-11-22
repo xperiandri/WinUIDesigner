@@ -472,7 +472,7 @@ internal sealed partial class SurfaceService
 
                 // Visual Studio shows or moves a surface when it comes back to it. Nothing that is frozen is shown, so
                 // when nothing is frozen, rendering that a freeze left suspended is resumed here.
-                if (!_surfaces.Values.Any(other => other.IsFrozen))
+                if (FreezeRecovery.MayResumeRendering(_surfaces.Values.Select(other => other.IsFrozen)))
                 {
                     DesignerSurface.EnsureRenderingResumed();
                 }
