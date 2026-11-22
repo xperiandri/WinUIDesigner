@@ -189,14 +189,17 @@ public sealed class StagedResourceResolverTests
     }
 
     [TestMethod]
-    public void StagedFileOfTheAppXFolderIsNeverUsed()
+    [DataRow("Files/Ecierge.Console.UI/Styles.xbf")]
+    [DataRow("Files/AppX./Ecierge.Console.UI/Styles.xbf")]
+    public void StagedFileOfTheAppXFolderIsNeverUsed(string name)
     {
-        // AppX\Ecierge.Console.UI\Styles.xbf was built weeks before the files at the root.
+        // AppX\Ecierge.Console.UI\Styles.xbf was built weeks before the files at the root. The first name is the one
+        // of the root; the second names the stale file, with a trailing dot that Windows drops from the segment.
         var host = new FakeHost("resources.pri");
         host.Files.Add(Staged("AppX/Ecierge.Console.UI/Styles.xbf"));
         var resolver = new StagedResourceResolver<Candidate>(_Root, host);
 
-        Assert.IsNull(resolver.Resolve("Files/Ecierge.Console.UI/Styles.xbf", _NoQualifiers));
+        Assert.IsNull(resolver.Resolve(name, _NoQualifiers));
     }
 
     [TestMethod]

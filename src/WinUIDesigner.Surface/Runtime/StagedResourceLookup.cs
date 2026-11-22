@@ -122,8 +122,9 @@ internal static class StagedResourceLookup
         string prefix = GetRootPrefix(root);
         string path = Path.GetFullPath(Path.Combine([prefix, .. segments.AsSpan(1)]));
 
-        // Whatever the segments are, the file is below the root.
-        return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? path : null;
+        // Whatever the segments are, the file is below the root and not in its AppX folder. The check is on the full path,
+        // because Windows spells the segment "AppX." as "AppX", which the check of the segment above does not see.
+        return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && !IsInAppXLayout(root, path) ? path : null;
     }
 
     /// <summary>

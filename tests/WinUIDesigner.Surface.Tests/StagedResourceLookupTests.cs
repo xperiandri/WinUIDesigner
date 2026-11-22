@@ -20,10 +20,13 @@ public sealed class StagedResourceLookupTests
     [DataRow("Files/Assets/Images/back.png", "Assets/Images/back.png")]
     [DataRow("files/Assets/logo.png", "Assets/logo.png")]
     [DataRow("Files/Assets/My%20Logo.png", "Assets/My Logo.png")]
+    [DataRow("Files/Assets/AppX/logo.png", "Assets/AppX/logo.png")]
+    [DataRow("Files/AppXtra/logo.png", "AppXtra/logo.png")]
     public void FileResourceNamesTheStagedFileAtThePathOfItsUri(string name, string relativePath)
     {
         // An image in a folder named after a qualifier (which no PRI file lists under that name), the XBF of a library
-        // and the default styles of its controls, a plain image, a prefix in other case and an escaped name.
+        // and the default styles of its controls, a plain image, a prefix in other case and an escaped name, and folders
+        // that are not the AppX folder of the root: one below another folder, and one that only starts with its name.
         Assert.AreEqual(Staged(relativePath), StagedResourceLookup.GetStagedPath(_Root, name));
     }
 
@@ -61,10 +64,14 @@ public sealed class StagedResourceLookupTests
         Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
     }
 
+    // The AppX folder in other case, with an escaped letter, and with a trailing dot that Windows drops from the segment.
     [TestMethod]
     [DataRow("Files/AppX/Assets/logo.png")]
     [DataRow("Files/appx/Ecierge.Console.UI/Styles.xbf")]
     [DataRow("Files/App%58/Assets/logo.png")]
+    [DataRow("Files/AppX./Assets/logo.png")]
+    [DataRow("Files/appx%2E/Assets/logo.png")]
+    [DataRow("Files/AppX%2e/Ecierge.Console.UI/Styles.xbf")]
     public void TheStaleAppXLayoutIsNeverUsed(string name) => Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
 
     [TestMethod]
