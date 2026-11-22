@@ -25,10 +25,7 @@ internal sealed class DeferredInsertionQueue<TEntry>(Func<TEntry, object> getTar
 
     public int Count => _entries.Count;
 
-    public void Add(TEntry entry)
-    {
-        _entries.Add(entry);
-    }
+    public void Add(TEntry entry) => _entries.Add(entry);
 
     /// <summary>
     /// Removes and returns the pending insertions into <paramref name="target"/>, oldest first.

@@ -186,7 +186,9 @@ internal static class XamlRuntimeUtilities
     /// Returns the value a custom markup extension provides, or the value itself.
     /// </summary>
     /// <remarks>
-    /// The native UWP SetPropertyAction evaluates custom extensions before it assigns their result.
+    /// The native UWP
+    /// <see cref="Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Shared.SetPropertyAction"/> evaluates
+    /// custom extensions before it assigns their result.
     /// </remarks>
     public static object? ProvideMarkupExtensionValue(object? value)
     {

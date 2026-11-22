@@ -14,11 +14,14 @@ namespace WinUIDesigner.Surface.Services;
 /// <remarks>
 /// WinUI seals a Style, its Setters collection and its Setters as soon as an element uses the style, including a
 /// detached element and a style that Visual Studio has only just created: its instance builders assign a new style
-/// before they add the setters. The public API then rejects insertions (E_FAIL), Setter.Value and Setter.Property
-/// changes (E_ACCESSDENIED) and BasedOn changes, and accepts removals without updating the elements.
+/// before they add the setters. The public API then rejects insertions (E_FAIL), <see cref="Setter.Value"/> and
+/// <see cref="Setter.Property"/> changes (E_ACCESSDENIED) and BasedOn changes, and accepts removals without updating
+/// the elements.
 /// <para>
-/// Visual Studio's UWP designer meets the same sealing and does not avoid it: its StyleBuilder and SetterBuilder send
-/// AddChild and RemoveChild for the setter collection of a style in use, and a changed setter is replaced by a new one.
+/// Visual Studio's UWP designer meets the same sealing and does not avoid it: its
+/// <see cref="Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp.StyleBuilder"/> and
+/// <see cref="Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp.SetterBuilder"/> send AddChild and
+/// RemoveChild for the setter collection of a style in use, and a changed setter is replaced by a new one.
 /// Its TAP applies them through the framework's XAML Diagnostics, which unseals the objects for the edit, rebuilds
 /// the merged setters of styles BasedOn the edited one, re-applies implicit styles and refreshes every element that
 /// uses the style. Dictionary edits through XAML Diagnostics also re-resolve the <c>{StaticResource}</c> references
@@ -28,9 +31,10 @@ namespace WinUIDesigner.Surface.Services;
 /// addition that pairs with it. Other edits keep the public API.
 /// </para>
 /// <para>
-/// The framework records the elements that use a style only while it stores source information, so Program enables
-/// that before the first style is applied; otherwise these calls succeed without updating anything. XAML Diagnostics
-/// also keeps every object it is given alive until the process exits, so only edits that need it take this path.
+/// The framework records the elements that use a style only while it stores source information, so
+/// <see cref="Program"/> enables that before the first style is applied; otherwise these calls succeed without
+/// updating anything. XAML Diagnostics also keeps every object it is given alive until the process exits, so only
+/// edits that need it take this path.
 /// </para>
 /// </remarks>
 internal sealed class StyleEditService
@@ -147,12 +151,12 @@ internal sealed class StyleEditService
     }
 
     /// <summary>
-    /// Sets a property of a sealed Setter or Style, such as Style.BasedOn. Returns <see langword="false"/> when the
-    /// public API applies the edit.
+    /// Sets a property of a sealed Setter or Style, such as <see cref="Style.BasedOn"/>. Returns
+    /// <see langword="false"/> when the public API applies the edit.
     /// </summary>
     /// <remarks>
-    /// A null value also stands in for clearing the property: clearing Style.BasedOn through XAML Diagnostics leaves
-    /// the elements unchanged, while setting it to null updates them.
+    /// A null value also stands in for clearing the property: clearing <see cref="Style.BasedOn"/> through
+    /// XAML Diagnostics leaves the elements unchanged, while setting it to null updates them.
     /// </remarks>
     public bool TrySetProperty(object target, string fullPropertyName, object? value)
     {
@@ -330,18 +334,22 @@ internal sealed class StyleEditService
         [NotNullWhen(true)] out string? collectionPropertyName)
     {
         collectionPropertyName = null;
+
+        // No GetProperty action named the owner of the collection.
         if (!_setterCollectionOwners.TryGetValue(collection, out owner))
         {
             if (collection.IsSealed)
             {
                 throw Report(
                     "unknown-owner",
-                    $"The setters belong to a style in use, which WinUI does not allow to change, and the surface does not know the style. {RefreshAdvice}");
+                    $"The setters belong to a style in use, which WinUI does not allow to change, and the surface does not know the style. {RefreshAdvice}"
+                );
             }
 
             return false;
         }
 
+        // The setters of a known Style or VisualState.
         bool ownerIsVisualState = owner is VisualState;
         collectionPropertyName = ownerIsVisualState ? VisualStateSettersPropertyName : StyleSettersPropertyName;
         return SetterEditRoute.UsesXamlDiagnostics(collection.IsSealed, ownerIsVisualState, buildsDetachedObjects: _detachedBuilds > 0);
@@ -363,12 +371,14 @@ internal sealed class StyleEditService
             hr = NativeMethods.E_PENDING;
         }
 
+        // Applied.
         if (hr == NativeMethods.S_OK)
         {
             WinUIDesignerLogger.LogTrace("Surface", $"Applied through XAML Diagnostics: {operation}.");
             return true;
         }
 
+        // Not connected (yet): ask for the connection again.
         if (hr == NativeMethods.E_PENDING)
         {
             _requestDiagnosticsConnection();
@@ -380,16 +390,19 @@ internal sealed class StyleEditService
 
             throw Report(
                 "unavailable",
-                $"Could not {operation}: WinUI does not allow changing a style that is in use, and the XAML Diagnostics connection that applies such edits is not available. {RefreshAdvice}");
+                $"Could not {operation}: WinUI does not allow changing a style that is in use, and the XAML Diagnostics connection that applies such edits is not available. {RefreshAdvice}"
+            );
         }
 
+        // Rejected, and the public API applies the edit instead.
         if (fallback is not null)
         {
-            LogOnce($"failed:{operation}:{hr}", $"Could not {operation} through XAML Diagnostics (0x{hr:X8}): {fallback}");
+            LogOnce($"failed:{operation}:{hr:X8}", $"Could not {operation} through XAML Diagnostics (0x{hr:X8}): {fallback}");
             return false;
         }
 
-        throw Report($"failed:{operation}:{hr}", $"Could not {operation}: XAML Diagnostics returned 0x{hr:X8}. {RefreshAdvice}");
+        // Rejected, and nothing else can apply the edit.
+        throw Report($"failed:{operation}:{hr:X8}", $"Could not {operation}: XAML Diagnostics returned 0x{hr:X8}. {RefreshAdvice}");
     }
 
     private static int CallWithAbiPointers(Func<IntPtr[], int> call, object?[] objects)

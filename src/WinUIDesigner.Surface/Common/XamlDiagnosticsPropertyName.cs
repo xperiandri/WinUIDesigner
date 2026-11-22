@@ -10,9 +10,10 @@ namespace WinUIDesigner.Surface.Common;
 /// </summary>
 /// <remarks>
 /// An action names a property as <c>Name:DeclaringType</c> with an assembly-qualified declaring type
-/// (Visual Studio's <c>TypeAndPropertySerializer.FormatFullMemberName</c>). XAML Diagnostics resolves a property by
-/// its full metadata name, <c>Namespace.Type.Name</c>, and rejects a property whose declaring type does not match
-/// the object.
+/// (Visual Studio's
+/// <see cref="Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.TypeAndPropertySerializer.FormatFullMemberName(string, string)"/>).
+/// XAML Diagnostics resolves a property by its full metadata name, <c>Namespace.Type.Name</c>, and rejects a property
+/// whose declaring type does not match the object.
 /// </remarks>
 internal static class XamlDiagnosticsPropertyName
 {
@@ -23,24 +24,27 @@ internal static class XamlDiagnosticsPropertyName
     /// <param name="defaultDeclaringType">The full name of the type to use when the action does not name one.</param>
     public static string FromActionProperty(string actionPropertyName, string defaultDeclaringType)
     {
-        int separator = actionPropertyName.IndexOf(':');
-        string name = (separator < 0 ? actionPropertyName : actionPropertyName[..separator]).Trim();
-        string declaringType = separator < 0 ? string.Empty : RemoveAssemblyName(actionPropertyName[(separator + 1)..]);
-        if (declaringType.Length == 0)
+        ReadOnlySpan<char> actionProperty = actionPropertyName.AsSpan();
+        int separator = actionProperty.IndexOf(':');
+        ReadOnlySpan<char> name = (separator < 0 ? actionProperty : actionProperty[..separator]).Trim();
+        ReadOnlySpan<char> declaringType = separator < 0 ? ReadOnlySpan<char>.Empty : RemoveAssemblyName(actionProperty[(separator + 1)..]);
+
+        // An action that names no declaring type sets a property of the target's own type.
+        if (declaringType.IsEmpty)
         {
-            declaringType = defaultDeclaringType;
+            declaringType = defaultDeclaringType.AsSpan();
         }
 
         // Shared Visual Studio contracts can spell framework types with the UWP namespace.
         if (declaringType.StartsWith(UwpNamespacePrefix, StringComparison.Ordinal))
         {
-            declaringType = WinUINamespacePrefix + declaringType[UwpNamespacePrefix.Length..];
+            return $"{WinUINamespacePrefix}{declaringType[UwpNamespacePrefix.Length..]}.{name}";
         }
 
-        return declaringType + "." + name;
+        return $"{declaringType}.{name}";
     }
 
-    private static string RemoveAssemblyName(string assemblyQualifiedName)
+    private static ReadOnlySpan<char> RemoveAssemblyName(ReadOnlySpan<char> assemblyQualifiedName)
     {
         // A comma inside brackets separates generic arguments, not the assembly name.
         int depth = 0;

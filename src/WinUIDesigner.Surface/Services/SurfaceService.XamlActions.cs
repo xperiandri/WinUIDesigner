@@ -102,6 +102,7 @@ internal sealed partial class SurfaceService
             }
             else
             {
+                // Any other failure is unexpected.
                 WinUIDesignerLogger.LogError("Surface", $"ExecuteXamlActions ({(int)DesignerMessageId.ExecuteXamlActions}) failed during '{failedAction?.Action}'.", ex);
             }
 

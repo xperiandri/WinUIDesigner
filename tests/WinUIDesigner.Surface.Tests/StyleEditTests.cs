@@ -46,7 +46,7 @@ public sealed class StyleEditTests
 
         CollectionAssert.AreEqual(new[] { "a", "b" }, queue.TakeFor(first).Select(insertion => insertion.Item).ToArray());
         Assert.AreEqual(1, queue.Count);
-        Assert.AreEqual(0, queue.TakeFor(first).Count);
+        Assert.IsEmpty(queue.TakeFor(first));
         CollectionAssert.AreEqual(new[] { "x" }, queue.TakeAll().Select(insertion => insertion.Item).ToArray());
         Assert.AreEqual(0, queue.Count);
     }
@@ -112,7 +112,7 @@ public sealed class StyleEditTests
         Assert.AreSame(dictionary, replacement.Dictionary);
         Assert.AreSame(oldStyle, replacement.OldValue);
         Assert.AreSame(newStyle, replacement.NewValue);
-        Assert.AreEqual(0, tracker.TakeReplacements().Count);
+        Assert.IsEmpty(tracker.TakeReplacements());
     }
 
     [TestMethod]
@@ -124,7 +124,7 @@ public sealed class StyleEditTests
 
         tracker.Removed(dictionary, typeof(Uri), new object());
         tracker.Added(dictionary, typeof(string), newStyle);
-        Assert.AreEqual(0, tracker.TakeReplacements().Count, "Another type is another key.");
+        Assert.IsEmpty(tracker.TakeReplacements(), "Another type is another key.");
 
         tracker.Removed(dictionary, typeof(Uri), new object());
         tracker.Added(dictionary, typeof(Uri), newStyle);
@@ -141,7 +141,7 @@ public sealed class StyleEditTests
         tracker.Added(new object(), "ProbeStyle", new object());
         tracker.Added(dictionary, "OtherStyle", new object());
 
-        Assert.AreEqual(0, tracker.TakeReplacements().Count, "Neither addition matches the removed key of that dictionary.");
+        Assert.IsEmpty(tracker.TakeReplacements(), "Neither addition matches the removed key of that dictionary.");
     }
 
     [TestMethod]
@@ -154,7 +154,7 @@ public sealed class StyleEditTests
         tracker.Removed(dictionary, "ProbeStyle", style);
         tracker.Added(dictionary, "ProbeStyle", style);
 
-        Assert.AreEqual(0, tracker.TakeReplacements().Count);
+        Assert.IsEmpty(tracker.TakeReplacements());
     }
 
     [TestMethod]
@@ -167,7 +167,7 @@ public sealed class StyleEditTests
 
         tracker.Added(dictionary, "ProbeStyle", new object());
 
-        Assert.AreEqual(0, tracker.TakeReplacements().Count);
+        Assert.IsEmpty(tracker.TakeReplacements());
     }
 
     [TestMethod]
