@@ -259,3 +259,22 @@ sequenceDiagram
 Closing a document releases its surface and document-owned state. Resources shared with another document are retained until their remaining owners are released. Document closure and process shutdown are separate lifetimes; the connection can serve more than one document.
 
 The surface watches the Visual Studio process and exits when its host disappears or the protocol shuts down. On disposal, it shuts down protocol work before releasing its services and pipes. The extension package also restores the platform configuration entries and removes its creator hook when disposed.
+
+### Failures after the preview is shown
+
+An exception that reaches `Application.UnhandledException` of the surface is sorted before anything is reported:
+
+- **Code of the project.** Code of the previewed project can fail in the designer for want of the application around it, for example a `Loaded` handler that looks for a navigation region of the app. An exception is the project's when the first method on its stack that is not the runtime's or the framework's comes from the staged files of the project, so a guard, LINQ or a parser of the framework that project code called counts as the project's. It is marked handled and logged once as a warning, and the page stays.
+- **Errors of the framework.** The framework reports some failures of its own, such as `E_FAIL` ("Unspecified error"), as an exception that no managed method threw. Such an exception is marked handled and logged once as well. A layout cycle or a template that fails to apply, when the framework reports it this way, is only logged too: the page stays, without that part.
+- **Anything else** is a failure of the surface. It is reported to Visual Studio as before, and the framework ends the process.
+
+An error of the framework can leave it unable to draw. After such an error the surface watches it: three seconds later, while a document is shown and no surface is frozen, it asks the framework to render one pixel of the island, and a framework that has stopped drawing never completes the render. The surface then logs its state with the latest Visual Studio messages, and reports the stall for the documents that are shown, and for every document that is created or shown in that process afterwards, so that Visual Studio shows the error view instead of an empty artboard. Frames are counted only while this render runs and while the first island of the process draws its first frames, because a handler of the frame event makes the framework draw all the time.
+
+Nothing in such a process draws again, and "Click here to reload the designer" reloads the documents inside the same process. The extension therefore restarts the process when it sees the report:
+
+- A process is restarted once, and a project at most three times in two minutes. A report after the limit is decided again, so reloading the designer restarts the surface once the limit allows it.
+- When the first island of the process stopped at its first frame, the cause is in what the document or App.xaml loads, which every new process loads again. The report says so, and names the context of the surface: the staged files of the project and App.xaml. Such a process is restarted once for its context; when the new process stops at its first frame again, it keeps the error view until App.xaml or the build of the project changes.
+
+As a precaution, a surface that Visual Studio froze and did not unfreeze within ten seconds unfreezes itself, and rendering that a freeze left suspended is resumed when Visual Studio shows a surface while none is frozen.
+
+Implementation: [unhandled exceptions](../src/WinUIDesigner.Surface/App.xaml.cs), [the rule for project code](../src/WinUIDesigner.Surface/Runtime/ProjectCodeExceptions.cs), [the watch](../src/WinUIDesigner.Surface/Services/SurfaceService.RenderWatchdog.cs), [the restart](../src/WinUIDesigner.Vsix/Platform/WinUISurfaceProcessContext.RenderStall.cs) and [its policy](../src/WinUIDesigner.Shared/Recovery/RenderStallRestartPolicy.cs).
