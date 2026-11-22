@@ -96,9 +96,10 @@ internal sealed partial class WinUIDesignerInstanceManager
         {
             // The scan is cached per text version, and a document without Uno namespaces needs nothing further.
             XamlNamespaceScanResult namespaces = _memberDispositions.GetNamespaces(document.Document);
-            string? path = document.Document?.DocumentContext?.DocumentPath;
+            string? path = null;
             if (namespaces.HasPlatformNamespaces)
             {
+                path = document.Document?.DocumentContext?.DocumentPath;
                 ReportPrefixesMissingFromIgnorable(document, namespaces, path);
             }
 
