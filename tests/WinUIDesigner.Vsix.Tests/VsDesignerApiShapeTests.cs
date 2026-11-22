@@ -29,7 +29,7 @@ public sealed class VsDesignerApiShapeTests
     private const string _InstanceBuilderContext = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.IInstanceBuilderContext";
     private const string _ProtocolHandler = "Microsoft.VisualStudio.DesignTools.RuntimeHost.Networking.IProtocolHandler";
     private const string _SurfaceProcessMarkupProviderContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessMarkupProvider";
-    private const string _SurfaceProcessDocument = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessDocument";
+    private const string _SurfaceProcessDocumentContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessDocument";
     private const string _MarkupDocument = "Microsoft.VisualStudio.DesignTools.Markup.IMarkupDocument";
 
     private static readonly Lazy<DesignerAssemblies> _Assemblies = new(DesignerAssemblies.Load);
@@ -290,11 +290,11 @@ public sealed class VsDesignerApiShapeTests
         // Their text is scanned for conditional namespaces before a document is sent to the surface.
         PropertyDefinition registered = RequireProperty(_SurfaceProcessMarkupProviderContract, "RegisteredDocuments");
         PropertyDefinition application = RequireProperty(_SurfaceProcessMarkupProviderContract, "AppXaml");
-        PropertyDefinition document = RequireProperty(_SurfaceProcessDocument, "Document");
+        PropertyDefinition document = RequireProperty(_SurfaceProcessDocumentContract, "Document");
 
         StringAssert.StartsWith(registered.PropertyType.Name, "IEnumerable", $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.RegisteredDocuments.");
         Assert.AreEqual("ISurfaceProcessDocument", application.PropertyType.Name, $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.AppXaml.");
-        Assert.AreEqual("IMarkupDocument", document.PropertyType.Name, $"Unexpected type of {_SurfaceProcessDocument}.Document.");
+        Assert.AreEqual("IMarkupDocument", document.PropertyType.Name, $"Unexpected type of {_SurfaceProcessDocumentContract}.Document.");
         Assert.IsTrue(
             RequireType(_MarkupDocument).Interfaces.Any(implemented => implemented.InterfaceType.Name == "IDocumentRoot"),
             $"{_MarkupDocument} must be a document root.");
