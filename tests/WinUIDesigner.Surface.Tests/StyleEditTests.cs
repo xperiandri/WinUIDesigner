@@ -61,6 +61,17 @@ public sealed class StyleEditTests
     }
 
     [TestMethod]
+    [DataRow(false, true, false, true, DisplayName = "The setters of a visual state that can be active")]
+    [DataRow(false, true, true, false, DisplayName = "The setters of a visual state of a new document or a lookup")]
+    [DataRow(true, true, true, true, DisplayName = "A sealed setter collection of a visual state")]
+    [DataRow(true, false, true, true, DisplayName = "The setters of a style in use, also while a document is built")]
+    [DataRow(false, false, false, false, DisplayName = "The setters of a style that is not in use")]
+    public void OnlyEditsThatThePublicApiCannotApplyGoThroughXamlDiagnostics(bool isSealed, bool ownerIsVisualState, bool buildsDetachedObjects, bool expected)
+    {
+        Assert.AreEqual(expected, SetterEditRoute.UsesXamlDiagnostics(isSealed, ownerIsVisualState, buildsDetachedObjects));
+    }
+
+    [TestMethod]
     public void RemovingAndAddingAStyleUnderOneKeyIsAReplacement()
     {
         var tracker = new ReplacedValueTracker();

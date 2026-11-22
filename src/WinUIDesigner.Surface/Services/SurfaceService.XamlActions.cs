@@ -130,6 +130,8 @@ internal sealed partial class SurfaceService
             return DispatcherOperation.InvokeAsync(_dispatcherQueue, () => ExecuteLookupActions(request, serializer), _protocolHandler.CancellationToken).GetAwaiter().GetResult();
         }
 
+        // The actions build a value for Visual Studio to read, outside the live tree.
+        using IDisposable detachedBuild = _styleEdits.EnterDetachedBuild();
         object? captured = null;
         var deferredSetterInsertions = CreateDeferredSetterInsertions();
         var actions = XamlActionJsonSerializer.Deserialize(request.Actions ?? []);
@@ -150,6 +152,8 @@ internal sealed partial class SurfaceService
     {
         using var scope = _objectIdentity.EnterDocument(document.DocumentId);
 
+        // The document joins a surface only after it is built.
+        using IDisposable detachedBuild = _styleEdits.EnterDetachedBuild();
         object? root = null;
         var deferredSetterInsertions = CreateDeferredSetterInsertions();
         var actions = XamlActionJsonSerializer.Deserialize(document.Actions ?? []);

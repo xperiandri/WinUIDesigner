@@ -45,6 +45,20 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
     private readonly HashSet<object> _keysRemovedThroughDiagnostics = [];
     private readonly HashSet<string> _loggedProblems = [];
     private bool _nativeUnavailable;
+    private int _detachedBuilds;
+
+    /// <summary>
+    /// Marks the actions that build a new document or a lookup value, until the returned scope is disposed.
+    /// </summary>
+    /// <remarks>
+    /// The visual states that these actions build are not in the live tree yet, so the public API applies their
+    /// setters; XAML Diagnostics would only keep them alive.
+    /// </remarks>
+    public IDisposable EnterDetachedBuild()
+    {
+        _detachedBuilds++;
+        return new DetachedBuildScope(this);
+    }
 
     /// <summary>
     /// Remembers the Style or VisualState that owns a setter collection.
@@ -252,8 +266,8 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
         }
     }
 
-    // Edits go through XAML Diagnostics when the collection is sealed, or when it belongs to a VisualState: only
-    // XAML Diagnostics updates the active state.
+    // Edits go through XAML Diagnostics when the collection is sealed, or when it belongs to a VisualState that can be
+    // the active state: only XAML Diagnostics updates the active state.
     private bool TryGetDiagnosticsRoute(
         SetterBaseCollection collection,
         [NotNullWhen(true)] out DependencyObject? owner,
@@ -272,14 +286,9 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
             return false;
         }
 
-        if (owner is VisualState)
-        {
-            collectionPropertyName = VisualStateSettersPropertyName;
-            return true;
-        }
-
-        collectionPropertyName = StyleSettersPropertyName;
-        return collection.IsSealed;
+        bool ownerIsVisualState = owner is VisualState;
+        collectionPropertyName = ownerIsVisualState ? VisualStateSettersPropertyName : StyleSettersPropertyName;
+        return SetterEditRoute.UsesXamlDiagnostics(collection.IsSealed, ownerIsVisualState, buildsDetachedObjects: _detachedBuilds > 0);
     }
 
     // A null fallback marks an edit that only XAML Diagnostics can apply: it throws when that fails. Otherwise
@@ -417,6 +426,20 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
             ReplaceBasedOn(merged, oldStyle, newStyle, visited);
+        }
+    }
+
+    private sealed class DetachedBuildScope(StyleEditService service) : IDisposable
+    {
+        private StyleEditService? _service = service;
+
+        public void Dispose()
+        {
+            if (_service is not null)
+            {
+                _service._detachedBuilds--;
+                _service = null;
+            }
         }
     }
 }
