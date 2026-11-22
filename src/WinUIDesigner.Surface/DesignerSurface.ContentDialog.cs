@@ -20,9 +20,6 @@ internal sealed partial class DesignerSurface
     // Gives the dialog the brushes of the theme of the preview and remembers the ones that it wrote over those of the style.
     private readonly ContentDialogBrushRetargeter _dialogBrushes = new();
 
-    // The theme of the preview and the theme of the application that the brushes of the dialog were chosen for last.
-    private (ElementTheme Preview, ApplicationTheme Application)? _dialogBrushThemes;
-
     // The pan and zoom of the artboard as Visual Studio sent them last. The dialog is not in the artboard (it is in the
     // popup layer of the island), so it is given them itself, see MoveDialogWithArtboard.
     private double _artboardOffsetX;
@@ -58,7 +55,6 @@ internal sealed partial class DesignerSurface
 
             dialog.XamlRoot = xamlRoot;
             _shownDialog = dialog;
-            _dialogBrushThemes = null;
             dialog.Loaded += OnShownDialogLoaded;
             dialog.SizeChanged += OnShownDialogSizeChanged;
             FitContentDialog();
@@ -211,11 +207,11 @@ internal sealed partial class DesignerSurface
     /// theme of the preview from the root as the content of the document does: it has the theme of the application
     /// (light unless the document says otherwise), as a white card around the dark content of a dark preview. The theme
     /// is set on the dialog, as the documentation of the control advises. That does not reach the brushes that a style
-    /// takes from the resources of the application (the style of Uno Material does), so once the template is there, and
-    /// whenever the theme of the preview or of the application changes, they are chosen for the theme of the preview
-    /// (<see cref="RetargetDialogBrushes"/>).
+    /// takes from the resources of the application (the style of Uno Material does), so once the template is there, whenever
+    /// the theme of the preview or of the application changes, and after edits (<paramref name="afterEdits"/>), they are
+    /// chosen for the theme of the preview (<see cref="RetargetDialogBrushes"/>).
     /// </summary>
-    private void SyncContentDialogTheme()
+    private void SyncContentDialogTheme(bool afterEdits = false)
     {
         if (_shownDialog is not { } dialog)
         {
@@ -230,12 +226,27 @@ internal sealed partial class DesignerSurface
 
         SyncSmokeLayerTheme(theme);
 
-        ApplicationTheme applicationTheme = Application.Current.RequestedTheme;
-        if (dialog.IsLoaded && _dialogBrushThemes != (theme, applicationTheme))
+        if (dialog.IsLoaded)
         {
-            _dialogBrushThemes = (theme, applicationTheme);
-            RetargetDialogBrushes(dialog, theme, applicationTheme);
+            RetargetDialogBrushes(dialog, theme, Application.Current.RequestedTheme, afterEdits);
         }
+    }
+
+    /// <summary>
+    /// After a batch of edits, a change of theme, or the same root set again (<see cref="RefreshLayout"/>), the dialog that is
+    /// shown is still the same object, but what it asks for can have changed: a design size that was removed, another style,
+    /// a brush that the document set or removed. Its brushes are chosen again, the ones that the surface wrote taken back
+    /// first, and it is fitted again.
+    /// </summary>
+    private void RefreshContentDialog()
+    {
+        if (_disposed || _shownDialog is null)
+        {
+            return;
+        }
+
+        SyncContentDialogTheme(afterEdits: true);
+        FitContentDialog();
     }
 
     /// <summary>
@@ -273,7 +284,7 @@ internal sealed partial class DesignerSurface
     /// that <see cref="ContentDialogThemePolicy"/> chooses for the theme of the preview; the ones that the surface wrote for
     /// another theme are taken back first, and a brush that the document sets on the dialog stays.
     /// </summary>
-    private void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme, ApplicationTheme application)
+    private void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme, ApplicationTheme application, bool afterEdits)
     {
         string? previewTheme = theme switch
         {
@@ -292,6 +303,7 @@ internal sealed partial class DesignerSurface
                 new DialogBrushProperties(dialog),
                 previewTheme,
                 applicationTheme,
+                afterEdits,
                 () => CollectThemeDictionaries(Application.Current.Resources, themeKeys, [], 0),
                 value => value is Brush brush ? DescribeThemeBrush(brush) : null,
                 LogDialogBrushChoice
@@ -501,7 +513,6 @@ internal sealed partial class DesignerSurface
 
         // The brushes that the surface wrote belong to the dialog that goes.
         _dialogBrushes.Forget();
-        _dialogBrushThemes = null;
 
         if (dialog is not null)
         {

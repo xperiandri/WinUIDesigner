@@ -265,6 +265,9 @@ internal sealed partial class DesignerSurface : IDisposable
         _transformRoot.Measure(new Size(width, height));
         _transformRoot.Arrange(new Rect(0, 0, width, height));
         _transformRoot.UpdateLayout();
+
+        // A ContentDialog is not under the root that was just laid out, and an edit can change it in place.
+        RefreshContentDialog();
     }
 
     private void OnLayoutUpdated(object? sender, object e)
@@ -311,7 +314,6 @@ internal sealed partial class DesignerSurface : IDisposable
             : ElementTheme.Dark;
 
         _viewportRoot.RequestedTheme = _previewRequestedTheme ?? _appRequestedTheme;
-        SyncContentDialogTheme();
 
         RefreshLayout();
     }
@@ -320,7 +322,6 @@ internal sealed partial class DesignerSurface : IDisposable
     {
         _appRequestedTheme = theme;
         _viewportRoot.RequestedTheme = _previewRequestedTheme ?? _appRequestedTheme;
-        SyncContentDialogTheme();
         RefreshLayout();
     }
 

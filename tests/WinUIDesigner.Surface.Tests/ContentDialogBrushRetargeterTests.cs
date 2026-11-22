@@ -73,6 +73,75 @@ public sealed class ContentDialogBrushRetargeterTests
         Assert.AreEqual(1, collected);
     }
 
+    [TestMethod]
+    public void WithoutEditsTheBrushesAreNotChosenAgainForTheSameThemes()
+    {
+        var (resources, dialog, retargeter) = MaterialDialog();
+        Refresh(retargeter, dialog, resources, Dark, Light);
+        dialog.Style["Background"] = resources.LightBase.Brush;
+
+        int collected = Refresh(retargeter, dialog, resources, Dark, Light);
+
+        Assert.AreEqual(0, collected);
+        Assert.AreSame(resources.DarkSurface.Brush, dialog.Local["Background"]);
+    }
+
+    [TestMethod]
+    public void AfterEditsTheBrushOfAnotherStyleIsChosen()
+    {
+        // The document gives the dialog another style while the brush that the surface wrote is still set on it.
+        var (resources, dialog, retargeter) = MaterialDialog();
+        Refresh(retargeter, dialog, resources, Dark, Light);
+        dialog.Style["Background"] = resources.LightBase.Brush;
+
+        Refresh(retargeter, dialog, resources, Dark, Light, afterEdits: true);
+
+        Assert.AreSame(resources.DarkBase.Brush, dialog.Local["Background"]);
+    }
+
+    [TestMethod]
+    public void AValueThatTheDocumentRemovesGivesTheChosenBrushOfTheStyleBack()
+    {
+        // Background="Red" is added to the dialog and removed again: the white card of the style must not come back.
+        var (resources, dialog, retargeter) = MaterialDialog();
+        Refresh(retargeter, dialog, resources, Dark, Light);
+        object red = Solid(0xFFFF0000).Brush;
+        dialog.Local["Background"] = red;
+        Refresh(retargeter, dialog, resources, Dark, Light, afterEdits: true);
+        Assert.AreSame(red, dialog.Local["Background"]);
+
+        dialog.Local.Remove("Background");
+        Refresh(retargeter, dialog, resources, Dark, Light, afterEdits: true);
+
+        Assert.AreSame(resources.DarkSurface.Brush, dialog.Local["Background"]);
+    }
+
+    [TestMethod]
+    public void EachBrushIsChosenOnceAsLongAsTheThemesStay()
+    {
+        var (resources, dialog, retargeter) = MaterialDialog();
+
+        Assert.AreEqual(1, Refresh(retargeter, dialog, resources, Dark, Light));
+        Assert.AreEqual(0, Refresh(retargeter, dialog, resources, Dark, Light, afterEdits: true));
+        Assert.AreSame(resources.DarkSurface.Brush, dialog.Local["Background"]);
+
+        Assert.AreEqual(0, Refresh(retargeter, dialog, resources, Dark, Dark));
+        Assert.AreEqual(1, Refresh(retargeter, dialog, resources, Dark, Light));
+    }
+
+    [TestMethod]
+    public void ForgettingTheDialogLeavesItsValuesAlone()
+    {
+        // The root was replaced: what the surface wrote on the old dialog is not taken from the new one.
+        var (resources, dialog, retargeter) = MaterialDialog();
+        Refresh(retargeter, dialog, resources, Dark, Light);
+        retargeter.Forget();
+
+        Refresh(retargeter, dialog, resources, Light, Light);
+
+        Assert.AreSame(resources.DarkSurface.Brush, dialog.Local["Background"]);
+    }
+
     /// <summary>The Material dialog of the Uno solution: the light brushes of the palette from its style, the dark stroke of WinUI.</summary>
     private static (ThemeResources Resources, FakeDialog Dialog, ContentDialogBrushRetargeter Retargeter) MaterialDialog()
     {
@@ -85,13 +154,14 @@ public sealed class ContentDialogBrushRetargeterTests
     }
 
     /// <summary>Chooses the brushes of the dialog and says how many times the resources were read.</summary>
-    private static int Refresh(ContentDialogBrushRetargeter retargeter, FakeDialog dialog, ThemeResources resources, string? previewTheme, string applicationTheme)
+    private static int Refresh(ContentDialogBrushRetargeter retargeter, FakeDialog dialog, ThemeResources resources, string? previewTheme, string applicationTheme, bool afterEdits = false)
     {
         int collected = 0;
         retargeter.Refresh(
             dialog,
             previewTheme,
             applicationTheme,
+            afterEdits,
             () =>
             {
                 collected++;
