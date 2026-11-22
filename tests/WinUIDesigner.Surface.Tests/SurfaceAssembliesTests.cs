@@ -38,7 +38,7 @@ public sealed class SurfaceAssembliesTests
         Assert.AreEqual(new Version(10, 0, 28000, 86), surface.GetVersion("MICROSOFT.WINDOWS.SDK.NET"));
         Assert.AreEqual(new Version(10, 0, 28000, 86), surface.GetVersion("Microsoft.Windows.SDK.NET"));
         Assert.IsNull(surface.GetVersion("Ecierge.Uno.App"));
-        CollectionAssert.AreEqual(new[] { @"C:\Surface\Microsoft.Windows.SDK.NET.dll" }, read);
+        Assert.AreEqual(@"C:\Surface\Microsoft.Windows.SDK.NET.dll", Assert.ContainsSingle(read));
     }
 
     [TestMethod]

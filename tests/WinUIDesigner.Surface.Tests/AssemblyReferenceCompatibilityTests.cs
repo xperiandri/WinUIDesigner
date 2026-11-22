@@ -53,7 +53,8 @@ public sealed class AssemblyReferenceCompatibilityTests
         IReadOnlyList<UnsatisfiedAssemblyReference> findings = AssemblyReferenceCompatibility.FindUnsatisfied(
             "Ecierge.Uno.App",
             references,
-            Surface(("Microsoft.Windows.SDK.NET", "10.0.19041.38")));
+            Surface(("Microsoft.Windows.SDK.NET", "10.0.19041.38"))
+        );
 
         UnsatisfiedAssemblyReference finding = Assert.ContainsSingle(findings);
         Assert.AreEqual("Ecierge.Uno.App", finding.Assembly);
@@ -73,7 +74,8 @@ public sealed class AssemblyReferenceCompatibilityTests
         IReadOnlyList<UnsatisfiedAssemblyReference> findings = AssemblyReferenceCompatibility.FindUnsatisfied(
             "Project.Assembly",
             references,
-            Surface(("Microsoft.Windows.SDK.NET", available)));
+            Surface(("Microsoft.Windows.SDK.NET", available))
+        );
 
         Assert.IsEmpty(findings);
     }
@@ -87,7 +89,8 @@ public sealed class AssemblyReferenceCompatibilityTests
         IReadOnlyList<UnsatisfiedAssemblyReference> findings = AssemblyReferenceCompatibility.FindUnsatisfied(
             "Ecierge.Uno.App",
             references,
-            Surface(("Microsoft.Windows.SDK.NET", "10.0.19041.38")));
+            Surface(("Microsoft.Windows.SDK.NET", "10.0.19041.38"))
+        );
 
         Assert.IsEmpty(findings);
     }
@@ -123,11 +126,14 @@ public sealed class AssemblyReferenceCompatibilityTests
                 ("Microsoft.WinUI", "3.0.0.0"),
                 ("Microsoft.Windows.SDK.NET", "10.0.19041.38"),
                 ("WinRT.Runtime", "2.3.1.0"),
-                ("System.Text.Json", "10.0.0.0")));
+                ("System.Text.Json", "10.0.0.0")
+            )
+        );
 
         CollectionAssert.AreEquivalent(
             new[] { "Microsoft.Windows.SDK.NET", "System.Text.Json" },
-            findings.Select(finding => finding.Reference).ToArray());
+            findings.Select(finding => finding.Reference).ToArray()
+        );
     }
 
     [TestMethod]
@@ -143,8 +149,8 @@ public sealed class AssemblyReferenceCompatibilityTests
         IReadOnlyList<string> lines = AssemblyReferenceCompatibility.Describe(findings);
 
         Assert.HasCount(2, lines);
-        StringAssert.StartsWith(lines[0], "Microsoft.Windows.SDK.NET 10.0.28000.87 is referenced by Ecierge.Uno.App, Ecierge.Uno.Navigation, but the design surface carries 10.0.19041.38");
-        StringAssert.StartsWith(lines[1], "System.Text.Json 11.0.0.0 is referenced by Ecierge.Uno.App, but the design surface carries 10.0.0.0");
+        Assert.StartsWith("Microsoft.Windows.SDK.NET 10.0.28000.87 is referenced by Ecierge.Uno.App, Ecierge.Uno.Navigation, but the design surface carries 10.0.19041.38", lines[0]);
+        Assert.StartsWith("System.Text.Json 11.0.0.0 is referenced by Ecierge.Uno.App, but the design surface carries 10.0.0.0", lines[1]);
     }
 
     [TestMethod]
@@ -156,7 +162,7 @@ public sealed class AssemblyReferenceCompatibilityTests
 
         string line = Assert.ContainsSingle(AssemblyReferenceCompatibility.Describe(findings));
 
-        StringAssert.Contains(line, "Project.Part1, Project.Part2, Project.Part3, Project.Part4, Project.Part5 and 3 more");
+        Assert.Contains("Project.Part1, Project.Part2, Project.Part3, Project.Part4, Project.Part5 and 3 more", line);
     }
 
     [TestMethod]

@@ -145,12 +145,14 @@ internal static class Program
     {
         AppDomain.CurrentDomain.FirstChanceException += (_, args) =>
         {
+            // A failure while one is being written, or one that is not worth the log.
             Exception exception = args.Exception;
             if (_isLoggingLoadFailure || !AssemblyLoadFailures.IsWorthLogging(exception))
             {
                 return;
             }
 
+            // A failure to load an assembly or a type.
             _isLoggingLoadFailure = true;
             try
             {

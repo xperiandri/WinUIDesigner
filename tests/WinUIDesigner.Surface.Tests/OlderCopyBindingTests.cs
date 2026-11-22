@@ -15,7 +15,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 /// <summary>
 /// The runtime rules that the surface relies on when its own copy of an assembly serves a reference to a newer
 /// version of it. System.Text.Json stands in for a projection: every test host carries it, as the surface carries its
-/// projections. <c>PersistedAssemblyBuilder</c>, which writes the probes, exists from .NET 9 on.
+/// projections. <see cref="PersistedAssemblyBuilder"/>, which writes the probes, exists from .NET 9 on.
 /// </summary>
 [TestClass]
 public sealed class OlderCopyBindingTests

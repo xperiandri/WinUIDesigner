@@ -51,6 +51,7 @@ internal sealed class SurfaceAssemblies
     {
         lock (_versions)
         {
+            // The first request for a name reads the version of the surface's copy; a name it does not carry has none.
             if (!_versions.TryGetValue(simpleName, out Version? version))
             {
                 version = _paths.TryGetValue(simpleName, out string? path) ? _readVersion(path) : null;
