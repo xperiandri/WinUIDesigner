@@ -210,6 +210,9 @@ internal sealed partial class SurfaceService
                         _protocolHandler.PostMessage((int)DesignerMessageId.OnApplicationEvent, new OnApplicationEventResponse { EventName = "OnIdle" });
                     });
 
+                    // A process whose framework has stopped drawing does not draw this document either.
+                    TellRenderStall(documentId, surface);
+
                     return new CreateSurfaceResponseInfo { DispatcherHandle = dispatcherHandle, RootVisualHandle = rootVisualHandle };
                 }
                 catch
@@ -477,6 +480,9 @@ internal sealed partial class SurfaceService
                 LoadAppResourcesIfNeeded();
                 _visualTreeService.PublishMutation(surface.Content, VisualMutationType.Add);
                 PublishSurfaceBounds(request.DocumentId, surface);
+
+                // A document that was open, but not shown, when the framework stopped drawing is not drawn either.
+                TellRenderStall(request.DocumentId, surface);
 
                 return new ResponseWithError { HResult = 0 };
             }, _protocolHandler.CancellationToken).ConfigureAwait(false);

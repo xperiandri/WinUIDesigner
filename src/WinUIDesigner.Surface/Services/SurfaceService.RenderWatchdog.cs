@@ -16,8 +16,8 @@ internal sealed partial class SurfaceService
     private const int _RenderProbeGraceMilliseconds = 500;
 
     private readonly Breadcrumbs _breadcrumbs = new(24);
+    private readonly RenderStallReports _renderStall = new();
     private bool _renderWatchArmed;
-    private bool _renderStallReported;
 
     // A timer that nothing refers to is collected, and does not fire.
     private DispatcherQueueTimer? _renderWatchTimer;
@@ -32,7 +32,7 @@ internal sealed partial class SurfaceService
     /// </summary>
     public void OnNativeFrameworkError(Exception exception)
     {
-        if (_renderWatchArmed || _renderStallReported)
+        if (_renderWatchArmed || _renderStall.HasStalled)
         {
             return;
         }
@@ -108,25 +108,40 @@ internal sealed partial class SurfaceService
 
     private void ReportRenderStall(Exception exception, int[] shownDocumentIds, string framesWhileRendering)
     {
-        _renderStallReported = true;
+        // The text is also how the extension knows that nothing in this process draws any more, and restarts the process.
+        _renderStall.Stalled(RenderStallReport.Message, exception.ToString());
 
         // Nothing in this process draws again: there is nothing left to count.
         RenderFrames.Counter.Stop();
 
-        // The text is also how the extension knows that nothing in this process draws any more, and restarts the process.
-        const string Message = RenderStallReport.Message;
-        WinUIDesignerLogger.LogError("Surface", $"{Message} A render of one pixel did not complete ({framesWhileRendering} meanwhile). {DescribeState()}", exception);
-
-        // Visual Studio shows the error on the view of the document that it names, and ignores one that names none.
+        WinUIDesignerLogger.LogError("Surface", $"{_renderStall.Message} A render of one pixel did not complete ({framesWhileRendering} meanwhile). {DescribeState()}", exception);
         foreach (int documentId in shownDocumentIds)
         {
-            _protocolHandler.PostMessage((int)DesignerMessageId.UnhandledException, new UnhandledExceptionResponse()
+            if (_surfaces.TryGetValue(documentId, out DesignerSurface? surface))
             {
-                DocumentId = documentId,
-                Message = Message,
-                CallStack = exception.ToString(),
-                IsArtboardException = true,
-            });
+                TellRenderStall(documentId, surface);
+            }
         }
+    }
+
+    /// <summary>
+    /// Tells Visual Studio that the surface of the document is not drawn, once the framework of the process has stopped
+    /// drawing: once for each surface, also for the documents that are created or shown after the report.
+    /// </summary>
+    private void TellRenderStall(int documentId, DesignerSurface surface)
+    {
+        if (!_renderStall.ShouldTell(surface))
+        {
+            return;
+        }
+
+        // Visual Studio shows the error on the view of the document that it names, and ignores one that names none.
+        _protocolHandler.PostMessage((int)DesignerMessageId.UnhandledException, new UnhandledExceptionResponse()
+        {
+            DocumentId = documentId,
+            Message = _renderStall.Message,
+            CallStack = _renderStall.Details,
+            IsArtboardException = true,
+        });
     }
 }
