@@ -3,16 +3,28 @@
 
 using System;
 using System.Diagnostics;
+using Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Shared;
 
 namespace WinUIDesigner.Surface.Services;
 
 /// <summary>
-/// Evaluates the <c>{ThemeResource}</c> references of construction actions for the theme of their owner.
+/// Evaluates the <c>{ThemeResource}</c> references of construction actions for the theme of their owner, and evaluates
+/// the properties set from them again when that theme changes: new artboard colours (the preview theme), another theme
+/// requested by the project's application, a <c>RequestedTheme</c> edited in the document, or content that comes
+/// under a surface. WinUI does the same for the references that its own XAML reader creates.
 /// </summary>
 internal sealed partial class SurfaceService
 {
+    private readonly ThemeResourceRegistry _themeReferences = new();
+
     // The theme of the last artboard colours: Visual Studio's artboard background is the same for every document.
     private ElementTheme? _lastPreviewTheme;
+
+    // The {ThemeResource} that ResolveActionValue evaluated for the action being executed.
+    private (object Owner, object Key, string Theme)? _evaluatedThemeResource;
+
+    // A RequestedTheme changed, or content came under a surface, during the action batch being executed.
+    private bool _themeReferencesNeedReapply;
 
     private int _themeResourceEvaluations;
     private long _themeResourceEvaluationTicks;
@@ -28,6 +40,7 @@ internal sealed partial class SurfaceService
         ThemeResourceMatch match = _resourceScopes.ResolveThemeResource(owner, key, theme.Theme);
         _themeResourceEvaluations++;
         _themeResourceEvaluationTicks += Stopwatch.GetTimestamp() - started;
+        _evaluatedThemeResource = (owner, key!, theme.Theme);
 
         if (WinUIDesignerLogger.IsVerboseLoggingEnabled)
         {
@@ -49,6 +62,92 @@ internal sealed partial class SurfaceService
         string? lastPreviewTheme = _lastPreviewTheme is { } theme ? ResourceScopeService.ToThemeName(theme) : null;
         string applicationTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark ? ThemeResourceThemes.Dark : ThemeResourceThemes.Light;
         return new(surfaceTheme, lastPreviewTheme, ResourceScopeService.ToThemeName(_appRequestedTheme), applicationTheme);
+    }
+
+    /// <summary>
+    /// Keeps the registry in step with an executed action: a property set from a <c>{ThemeResource}</c> is remembered,
+    /// a property set otherwise or cleared is forgotten, and a new <c>RequestedTheme</c> has the references evaluated
+    /// again at the end of the batch.
+    /// </summary>
+    private void TrackThemeResourceProperty(XamlAction action)
+    {
+        (object Owner, object Key, string Theme)? evaluated = _evaluatedThemeResource;
+        _evaluatedThemeResource = null;
+
+        (long ownerHandle, string property) = action switch
+        {
+            SetPropertyAction set => (set.ParentHandle, set.FullPropertyName),
+            ClearPropertyAction clear => (clear.ParentHandle, clear.FullPropertyName),
+            _ => (0L, string.Empty),
+        };
+        if (ownerHandle == 0 || ResolveObject(ownerHandle) is not { } owner)
+        {
+            return;
+        }
+
+        // A theme requested on the owner moves the theme of the references below it.
+        if (ThemeResourceThemes.IsRequestedThemeProperty(property))
+        {
+            _themeReferencesNeedReapply = true;
+        }
+
+        // Set from a reference: remembered while the owner belongs to a document, which forgets it when it is released.
+        if (action is SetPropertyAction && evaluated is { } use && ReferenceEquals(use.Owner, owner) && _objectIdentity.GetDocumentId(owner) != 0)
+        {
+            _themeReferences.Record(owner, property, use.Key, use.Theme);
+            return;
+        }
+
+        // Set to something else, or cleared.
+        _themeReferences.Forget(owner, property);
+    }
+
+    /// <summary>
+    /// Evaluates again the remembered properties whose owner has another theme now. A failure is logged per property and
+    /// never thrown; the property keeps its value.
+    /// </summary>
+    /// <returns><see langword="true"/> when a property was given a new value.</returns>
+    private bool ReapplyThemeReferences(string reason)
+    {
+        _themeReferencesNeedReapply = false;
+        if (_themeReferences.Count == 0)
+        {
+            return false;
+        }
+
+        ThemeResourceReapplyResult result;
+        try
+        {
+            result = _themeReferences.Reapply(
+                entry => _resourceScopes.DecideTheme(entry.Owner, GetThemePreview(entry.Owner)).Theme,
+                TryReapplyThemeReference
+            );
+        }
+        catch (Exception exception)
+        {
+            // Deciding a theme reads live objects; the request that asked for the pass must not fail with it.
+            WinUIDesignerLogger.LogWarning("Surface", $"The ThemeResource references were not evaluated again after {reason}.", exception);
+            return false;
+        }
+
+        WinUIDesignerLogger.LogTrace("Surface", $"ThemeResource references after {reason}: {result.Applied} evaluated again, {result.Failed} kept their value, {result.Visited - result.Applied - result.Failed} already in their theme.");
+        return result.Applied > 0;
+    }
+
+    private bool TryReapplyThemeReference(ThemeResourceEntry entry, string theme)
+    {
+        try
+        {
+            ThemeResourceMatch match = _resourceScopes.ResolveThemeResource(entry.Owner, entry.Key, theme);
+            XamlRuntimeUtilities.SetPropertyValue(entry.Owner, entry.Property, match.Value);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            // The Setter of a style that is in use is sealed: the public API refuses the new value.
+            WinUIDesignerLogger.LogTrace("Surface", $"ThemeResource '{entry.Key}' of a {entry.Owner.GetType().Name} keeps its {entry.Theme} value instead of the {theme} one: {exception.Message}");
+            return false;
+        }
     }
 
     /// <summary>Logs how many <c>{ThemeResource}</c> references a document construction evaluated, and how long it took.</summary>

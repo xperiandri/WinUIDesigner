@@ -157,6 +157,18 @@ public sealed class ThemeResourceThemesTests
         }
     }
 
+    [TestMethod]
+    [DataRow("RequestedTheme:Microsoft.UI.Xaml.FrameworkElement, Microsoft.WinUI", true)]
+    [DataRow("RequestedTheme", true)]
+    [DataRow(" RequestedTheme :Microsoft.UI.Xaml.FrameworkElement", true)]
+    [DataRow("Background:Microsoft.UI.Xaml.Controls.Control, Microsoft.WinUI", false)]
+    [DataRow("RequestedThemeOverride:Some.Type", false)]
+    [DataRow(null, false)]
+    public void RequestedThemeIsRecognizedWhateverItsDeclaringType(string? fullPropertyName, bool isRequestedTheme)
+    {
+        Assert.AreEqual(isRequestedTheme, ThemeResourceThemes.IsRequestedThemeProperty(fullPropertyName));
+    }
+
     // As the surface does: the parent is the ThemeDictionaries map, or the dictionary that owns it.
     internal static string? DictionaryTheme(object scope, object parent) => parent switch
     {

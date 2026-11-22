@@ -26,13 +26,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- The resource references of construction actions: the protocol, the scope walk and the theme lookup. -->
+		<!-- The resource references of construction actions: the protocol, the scope walk, the theme lookup and its registry. -->
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/StaticResourceReference.cs" Link="StaticResourceReference.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceReference.cs" Link="ThemeResourceReference.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ResourceReferenceProtocol.cs" Link="ResourceReferenceProtocol.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ResourceScopeWalk.cs" Link="ResourceScopeWalk.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceThemes.cs" Link="ThemeResourceThemes.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceLookup.cs" Link="ThemeResourceLookup.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceRegistry.cs" Link="ThemeResourceRegistry.cs" Visible="false" />
 	</ItemGroup>
 
 </Project>

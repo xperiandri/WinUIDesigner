@@ -217,6 +217,8 @@ internal sealed partial class SurfaceService
                 _trackedActionObjects.Remove(key);
             }
         }
+
+        _themeReferences.ForgetOwners(released);
     }
 
     private void Execute(
@@ -224,6 +226,8 @@ internal sealed partial class SurfaceService
         Action<int, object?>? setSurfaceContentOverride = null,
         List<DeferredSetterInsertion>? deferredSetterInsertions = null)
     {
+        _evaluatedThemeResource = null;
+
         switch (action)
         {
             case ConnectToLiveTreeAction connect:
@@ -420,6 +424,8 @@ internal sealed partial class SurfaceService
             default:
                 throw new NotSupportedException($"XAML action '{action.Action}' is not implemented by the WinUI designer surface.");
         }
+
+        TrackThemeResourceProperty(action);
     }
 
     private object? ResolveObject(long handle)

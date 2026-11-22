@@ -174,4 +174,20 @@ internal static class ThemeResourceThemes
             ? new(applicationRequestedTheme, ThemeChoiceSource.ApplicationRequestedTheme)
             : new(preview.ApplicationTheme, ThemeChoiceSource.Application);
     }
+
+    /// <summary>
+    /// Whether a property of an action (<c>Name:DeclaringType</c>) is <c>RequestedTheme</c>, whose change moves the
+    /// theme of the <c>{ThemeResource}</c> references below it.
+    /// </summary>
+    public static bool IsRequestedThemeProperty(string? fullPropertyName)
+    {
+        if (fullPropertyName is null)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> name = fullPropertyName.AsSpan();
+        int separator = name.IndexOf(':');
+        return (separator < 0 ? name : name[..separator]).Trim() is "RequestedTheme";
+    }
 }
