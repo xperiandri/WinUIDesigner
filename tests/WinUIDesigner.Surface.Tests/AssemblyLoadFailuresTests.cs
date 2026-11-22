@@ -18,6 +18,9 @@ public sealed class AssemblyLoadFailuresTests
     [DataRow("System.Resources.Extensions, Version=8.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51")]
     [DataRow("Microsoft.Windows.ApplicationModel.Resources.Projection, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null")]
     [DataRow(@"C:\Staged\Contoso.Resources.dll")]
+    // The runtime's probe for a satellite names its culture; an assembly asked for by a name without one is not a satellite.
+    [DataRow("Contoso.resources")]
+    [DataRow("Contoso.resources, Version=1.0.0.0, PublicKeyToken=null")]
     public void AMissingAssemblyWhoseNameMentionsResourcesIsLogged(string fileName)
     {
         Assert.IsTrue(AssemblyLoadFailures.IsWorthLogging(new FileNotFoundException(string.Empty, fileName)));
@@ -26,7 +29,6 @@ public sealed class AssemblyLoadFailuresTests
     [TestMethod]
     [DataRow("Contoso.resources, Version=1.0.0.0, Culture=de-DE, PublicKeyToken=null")]
     [DataRow("WinUISurface.resources, Version=1.0.0.0, Culture=en, PublicKeyToken=null")]
-    [DataRow("Contoso.resources")]
     public void AMissingSatelliteAssemblyIsNotLogged(string fileName)
     {
         Assert.IsFalse(AssemblyLoadFailures.IsWorthLogging(new FileNotFoundException(string.Empty, fileName)));

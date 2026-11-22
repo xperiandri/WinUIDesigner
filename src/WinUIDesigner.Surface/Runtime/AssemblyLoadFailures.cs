@@ -35,8 +35,9 @@ internal static class AssemblyLoadFailures
 
     /// <summary>
     /// Returns whether the name of an assembly that could not be found is the name of a satellite assembly of
-    /// resources. Only the simple name of a satellite ends with <c>.resources</c>, and a satellite never has the
-    /// neutral culture, which an ordinary assembly whose name ends the same way, such as <c>Contoso.Resources</c>, has.
+    /// resources. Only the simple name of a satellite ends with <c>.resources</c>, and a satellite always names its
+    /// culture, and that is never the neutral one. An ordinary assembly whose name ends the same way, such as
+    /// <c>Contoso.Resources</c>, has the neutral culture or none.
     /// </summary>
     /// <param name="fileName">
     /// The display name of the assembly, such as <c>Contoso.resources, Version=1.0.0.0, Culture=de-DE, PublicKeyToken=null</c>,
@@ -65,8 +66,9 @@ internal static class AssemblyLoadFailures
             }
         }
 
-        // A name without a culture.
-        return true;
+        // A name without a culture: the runtime's probe for a satellite names the culture, so this is an assembly that
+        // was asked for by its simple name.
+        return false;
     }
 
     /// <summary>
