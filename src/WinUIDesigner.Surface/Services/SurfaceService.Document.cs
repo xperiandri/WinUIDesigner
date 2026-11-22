@@ -388,7 +388,15 @@ internal sealed partial class SurfaceService
                     WinUIDesignerLogger.LogTrace("Surface", $"Artboard colours of document {request.DocumentId}: the preview theme is {_lastPreviewTheme}.");
                     if (ReapplyThemeReferences($"the artboard colours of document {request.DocumentId}"))
                     {
-                        CompleteActionBatch();
+                        try
+                        {
+                            CompleteActionBatch();
+                        }
+                        catch (Exception layoutError)
+                        {
+                            // The colours are applied: a layout that fails after them must not turn the response into an error.
+                            WinUIDesignerLogger.LogWarning("Surface", "Layout after the artboard colours also failed.", layoutError);
+                        }
                     }
                 }
 
