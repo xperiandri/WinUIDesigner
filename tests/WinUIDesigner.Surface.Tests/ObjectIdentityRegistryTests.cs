@@ -105,6 +105,7 @@ public sealed class ObjectIdentityRegistryTests
         var application = new object();
         registry.RegisterProcessObject(_ApplicationHandle, application);
 
+        // Removing the handle of a process object forgets the object like any other.
         registry.RemoveHandle(_ApplicationHandle);
         Assert.IsFalse(registry.TryGetObject(_ApplicationHandle, out _));
 
