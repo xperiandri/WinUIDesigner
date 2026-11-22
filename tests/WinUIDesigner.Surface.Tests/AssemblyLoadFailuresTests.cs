@@ -107,12 +107,17 @@ public sealed class AssemblyLoadFailuresTests
     }
 
     [TestMethod]
-    public void FailuresWithAnotherAssemblyOrHResultHaveAnotherKey()
+    public void FailuresWithAnotherAssemblyHResultOrExceptionTypeHaveAnotherKey()
     {
         string key = AssemblyLoadFailures.GetCauseKey(new FileLoadException(string.Empty, _WebView2Projection) { HResult = _RefDefMismatch });
 
+        // Only the assembly differs.
         Assert.AreNotEqual(key, AssemblyLoadFailures.GetCauseKey(new FileLoadException(string.Empty, "Microsoft.Windows.SDK.NET, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null") { HResult = _RefDefMismatch }));
+
+        // Only the HRESULT differs: the one that a FileLoadException has by default.
         Assert.AreNotEqual(key, AssemblyLoadFailures.GetCauseKey(new FileLoadException(string.Empty, _WebView2Projection)));
-        Assert.AreNotEqual(key, AssemblyLoadFailures.GetCauseKey(new FileNotFoundException(string.Empty, _WebView2Projection)));
+
+        // Only the type of the exception differs.
+        Assert.AreNotEqual(key, AssemblyLoadFailures.GetCauseKey(new FileNotFoundException(string.Empty, _WebView2Projection) { HResult = _RefDefMismatch }));
     }
 }

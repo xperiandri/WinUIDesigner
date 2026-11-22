@@ -2,6 +2,7 @@
 // Licensed under MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace WinUIDesigner.Surface.Runtime;
@@ -140,5 +141,30 @@ internal static class AssemblyLoadFailures
             TypeLoadException { TypeName: { Length: > 0 } typeName } => typeName,
             _ => null,
         };
+    }
+}
+
+/// <summary>
+/// Remembers the failures that were written to the log, so that each one is written once: XAML asks the same
+/// questions again and again, and a provider that fails fails in the same way every time.
+/// </summary>
+internal sealed class ReportedFailures
+{
+    private readonly HashSet<string> _keys = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Remembers a failure and returns whether it is new. A failure is known by what failed and by its cause.
+    /// </summary>
+    /// <param name="situation">What failed, with the provider it failed in.</param>
+    /// <param name="exception">
+    /// The exception, of which the type, the HRESULT and the file name (<see cref="AssemblyLoadFailures.GetCauseKey"/>)
+    /// are part of the key, and not the message.
+    /// </param>
+    public bool TryAdd(string situation, Exception exception)
+    {
+        lock (_keys)
+        {
+            return _keys.Add($"{situation}|{AssemblyLoadFailures.GetCauseKey(exception)}");
+        }
     }
 }

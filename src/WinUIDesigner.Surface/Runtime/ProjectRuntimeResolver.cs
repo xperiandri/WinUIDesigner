@@ -34,7 +34,7 @@ internal static class ProjectRuntimeResolver
     private static bool _providersInitialized;
 
     // Failures of the project's metadata providers already written to the log; XAML asks the same questions again and again.
-    private static readonly HashSet<string> _ReportedFailures = new(StringComparer.Ordinal);
+    private static readonly ReportedFailures _ReportedFailures = new();
 
     // The assemblies the surface carries itself.
     private static readonly SurfaceAssemblies _SurfaceAssemblies = new(AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string, ReadAssemblyVersion);
@@ -310,12 +310,9 @@ internal static class ProjectRuntimeResolver
     // same way for every type that needs it.
     private static void ReportFailureOnce(string situation, string message, Exception exception)
     {
-        lock (_ReportedFailures)
+        if (!_ReportedFailures.TryAdd(situation, exception))
         {
-            if (!_ReportedFailures.Add($"{situation}|{AssemblyLoadFailures.GetCauseKey(exception)}"))
-            {
-                return;
-            }
+            return;
         }
 
         WinUIDesignerLogger.LogWarning("Surface", $"{message} {AssemblyLoadFailures.DescribeCause(exception)} Later failures with the same cause are not logged.", exception);
