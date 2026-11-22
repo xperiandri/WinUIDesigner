@@ -166,6 +166,35 @@ public sealed class ContentDialogThemePolicyTests
     }
 
     [TestMethod]
+    public void TheDarkThemeTakesAnExplicitDarkDictionaryBeforeTheDefaultOne()
+    {
+        // The dark theme of Windows is Default, and the palette of an app may say Dark.
+        ThemeDictionarySet both = Set(("Default", "Key", Solid(0xFF111111)), ("Dark", "Key", Solid(0xFF222222)), ("Light", "Key", Solid(0xFF333333)));
+        ThemeDictionarySet defaultOnly = Set(("Default", "Key", Solid(0xFF111111)), ("Light", "Key", Solid(0xFF333333)));
+
+        Assert.AreEqual(0xFF222222u, both.For(Dark)?["Key"].Color);
+        Assert.AreEqual(0xFF111111u, defaultOnly.For(Dark)?["Key"].Color);
+
+        // The light theme takes the light dictionary only, and a theme that has none gets none.
+        Assert.AreEqual(0xFF333333u, both.For(Light)?["Key"].Color);
+        Assert.IsNull(Set(("Default", "Key", Solid(0xFF111111))).For(Light));
+    }
+
+    [TestMethod]
+    public void TwoSolidColoursDrawAlikeWithinAHairOfOpacityAndTheSameObjectAlways()
+    {
+        ThemeBrush brush = new(new object(), 0xFF336699, 0.5);
+        Assert.IsTrue(brush.DrawsLike(new ThemeBrush(new object(), 0xFF336699, 0.5004)));
+        Assert.IsFalse(brush.DrawsLike(new ThemeBrush(new object(), 0xFF336699, 0.52)));
+        Assert.IsFalse(brush.DrawsLike(new ThemeBrush(new object(), 0xFF336698, 0.5)));
+
+        // A brush that is no solid colour draws like itself, and not like another one.
+        object gradient = new();
+        Assert.IsTrue(new ThemeBrush(gradient, null, 1).DrawsLike(new ThemeBrush(gradient, null, 1)));
+        Assert.IsFalse(new ThemeBrush(gradient, null, 1).DrawsLike(new ThemeBrush(new object(), null, 1)));
+    }
+
+    [TestMethod]
     [DataRow(null, Light, false)]
     [DataRow(Light, Light, false)]
     [DataRow(Dark, Dark, false)]
