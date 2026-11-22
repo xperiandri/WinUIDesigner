@@ -118,10 +118,11 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         // 1. A staged PRI file answers it.
         if (answer.Candidate is { } candidate)
         {
-            if (IsFirstReport($"found|{name}|{request}"))
-            {
-                host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] was found in the staged PRI '{answer.PriFile}' as {host.Describe(candidate)}.");
-            }
+            ReportOnce(
+                $"found|{name}|{request}",
+                StagedResourceLogLevel.Trace,
+                () => $"Resource '{name}' [{request}] was found in the staged PRI '{answer.PriFile}' as {host.Describe(candidate)}."
+            );
 
             return candidate;
         }
@@ -138,19 +139,21 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         if (MissingImagePlaceholder.IsImage(name))
         {
             string placeholder = GetPlaceholder(name);
-            if (IsFirstReport($"placeholder|{name}"))
-            {
-                host.Log(StagedResourceLogLevel.Warning, $"The image '{StagedResourceLookup.ToAppUri(name)}' {DescribeMiss(answer)}, and it is not a staged file in '{contentDirectory}'; the designer shows it empty.");
-            }
+            ReportOnce(
+                $"placeholder|{name}",
+                StagedResourceLogLevel.Warning,
+                () => $"The image '{StagedResourceLookup.ToAppUri(name)}' {DescribeMiss(answer)}, and it is not a staged file in '{contentDirectory}'; the designer shows it empty."
+            );
 
             return host.CreateFileCandidate(placeholder);
         }
 
         // 4. Anything else stays unresolved, as before; the line shows what the framework asked for.
-        if (IsFirstReport($"unresolved|{name}"))
-        {
-            host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' [{request}] {DescribeMiss(answer)}, and it is not a staged file; it stays unresolved.");
-        }
+        ReportOnce(
+            $"unresolved|{name}",
+            StagedResourceLogLevel.Trace,
+            () => $"Resource '{name}' [{request}] {DescribeMiss(answer)}, and it is not a staged file; it stays unresolved."
+        );
 
         return null;
     }
@@ -160,10 +163,12 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
     /// </summary>
     public void ReportFailure(string name, Exception exception)
     {
-        if (IsFirstReport($"failed|{name}"))
-        {
-            host.Log(StagedResourceLogLevel.Warning, $"Resolving the resource '{name}' failed; it stays unresolved.", exception);
-        }
+        ReportOnce(
+            $"failed|{name}",
+            StagedResourceLogLevel.Warning,
+            () => $"Resolving the resource '{name}' failed; it stays unresolved.",
+            exception
+        );
     }
 
     // The first usable candidate of the staged PRI files, in their order, or, for a request that none of them answers,
@@ -247,10 +252,12 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
             // The PRI file is left out of this lookup, and reported once.
             outcome.Failed = true;
             string priFile = host.PriFiles[index];
-            if (IsFirstReport($"failed-pri|{priFile}"))
-            {
-                host.Log(StagedResourceLogLevel.Warning, $"Looking up the resource '{name}' in the staged PRI '{priFile}' failed; the other PRI files and the staged files are still asked, and further failures of this PRI file are not logged.", ex);
-            }
+            ReportOnce(
+                $"failed-pri|{priFile}",
+                StagedResourceLogLevel.Warning,
+                () => $"Looking up the resource '{name}' in the staged PRI '{priFile}' failed; the other PRI files and the staged files are still asked, and further failures of this PRI file are not logged.",
+                ex
+            );
 
             return null;
         }
@@ -272,22 +279,21 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         // not built yet does not show in the designer, so the line is Information and shows without verbose logging.
         if (StagedResourceLookup.IsMarkup(name))
         {
-            if (IsFirstReport($"build-output|{name}"))
-            {
-                host.Log(
-                    StagedResourceLogLevel.Information,
-                    FormattableString.Invariant($"Resource '{name}' comes from the build output '{path}' of {host.GetLastWriteTime(path):yyyy-MM-dd HH:mm:ss} (local time); changes made after that build are not shown. It {DescribeMiss(miss)}.")
-                );
-            }
+            ReportOnce(
+                $"build-output|{name}",
+                StagedResourceLogLevel.Information,
+                () => FormattableString.Invariant($"Resource '{name}' comes from the build output '{path}' of {host.GetLastWriteTime(path):yyyy-MM-dd HH:mm:ss} (local time); changes made after that build are not shown. It {DescribeMiss(miss)}.")
+            );
 
             return;
         }
 
         // Any other file, such as an image in a folder named after a qualifier.
-        if (IsFirstReport($"staged-file|{name}"))
-        {
-            host.Log(StagedResourceLogLevel.Trace, $"Resource '{name}' {DescribeMiss(miss)}; the staged file '{path}' is used.");
-        }
+        ReportOnce(
+            $"staged-file|{name}",
+            StagedResourceLogLevel.Trace,
+            () => $"Resource '{name}' {DescribeMiss(miss)}; the staged file '{path}' is used."
+        );
     }
 
     // For the log: "is in none of the 419 staged PRI files", or "is in 2 of the 419 staged PRI files, but none of them
@@ -318,12 +324,38 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
     }
 
-    // Whether the line is written to the log for the first time.
-    private bool IsFirstReport(string key)
+    // Writes a line to the log, the first time for the key. The line is a diagnostic and is built here, so that whatever
+    // fails while it is built or written does not change the answer to the request, which the framework may not ask again.
+    private void ReportOnce(string key, StagedResourceLogLevel level, Func<string> message, Exception? exception = null)
     {
         lock (_reported)
         {
-            return _reported.Add(key);
+            if (!_reported.Add(key))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            host.Log(level, message(), exception);
+        }
+        catch (Exception ex)
+        {
+            ReportLostLine(key, ex);
+        }
+    }
+
+    // The line is lost, so the log is told why, when it takes anything.
+    private void ReportLostLine(string key, Exception exception)
+    {
+        try
+        {
+            host.Log(StagedResourceLogLevel.Warning, $"A line of the log ({key}) could not be built or written; the answer to the request does not depend on it.", exception);
+        }
+        catch (Exception)
+        {
+            // The log itself fails: nothing is left to tell.
         }
     }
 

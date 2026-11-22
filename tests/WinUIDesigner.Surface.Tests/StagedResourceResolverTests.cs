@@ -474,6 +474,59 @@ public sealed class StagedResourceResolverTests
     }
 
     [TestMethod]
+    public void LineThatCannotBeBuiltDoesNotChangeTheAnswer()
+    {
+        // MRT Core cannot describe the candidate that the PRI file gave.
+        var embedded = new Candidate(null);
+        var exception = new InvalidOperationException("MRT said no.");
+        var host = new FakeHost("resources.pri") { DescribeFailure = exception };
+        host.Knows(0, "Files/App.xbf", embedded);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreSame(embedded, resolver.Resolve("Files/App.xbf", _NoQualifiers));
+        Assert.AreSame(embedded, resolver.Resolve("Files/App.xbf", _NoQualifiers));
+
+        // The line is lost, and the log says so once, with the exception.
+        Line line = Assert.ContainsSingle(host.Lines);
+        Assert.AreEqual(StagedResourceLogLevel.Warning, line.Level);
+        Assert.AreSame(exception, line.Exception);
+        Assert.Contains("(found|Files/App.xbf|)", line.Message);
+    }
+
+    [TestMethod]
+    public void StagedFileAnswersWhenItsDateCannotBeRead()
+    {
+        // Styles.xbf exists, but its write time cannot be read.
+        string staged = Staged("Ecierge.Uno.Controls/Styles.xbf");
+        var host = new FakeHost("resources.pri");
+        host.Files.Add(staged);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreEqual(new Candidate(staged), resolver.Resolve("Files/Ecierge.Uno.Controls/Styles.xbf", _NoQualifiers));
+
+        Line line = Assert.ContainsSingle(host.Lines);
+        Assert.AreEqual(StagedResourceLogLevel.Warning, line.Level);
+        Assert.IsInstanceOfType<IOException>(line.Exception);
+    }
+
+    [TestMethod]
+    public void LogThatFailsDoesNotChangeTheAnswers()
+    {
+        // The log fails for every line, also for the line that says that a line was lost.
+        var embedded = new Candidate(null);
+        var host = new FakeHost("resources.pri") { LogFailure = new IOException("The log is full.") };
+        host.Knows(0, "Files/App.xbf", embedded);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreSame(embedded, resolver.Resolve("Files/App.xbf", _NoQualifiers));
+        Assert.AreEqual(new Candidate(host.PlaceholderPath("missing-image.png")), resolver.Resolve("Files/Assets/Images/back.png", _NoQualifiers));
+        Assert.IsNull(resolver.Resolve("Files/Strings/Resources.resw", _NoQualifiers));
+        resolver.ReportFailure("Files/Assets/a.png", new InvalidOperationException("MRT said no."));
+
+        Assert.IsEmpty(host.Lines);
+    }
+
+    [TestMethod]
     public void FailureIsReportedOncePerName()
     {
         var host = new FakeHost("resources.pri");
@@ -522,6 +575,11 @@ public sealed class StagedResourceResolverTests
 
         public IReadOnlyList<string> PriFiles { get; } = priFiles;
 
+        // The failure of Describe, which only feeds the log, and the failure of the log itself, which writes no line.
+        public Exception? DescribeFailure { get; init; }
+
+        public Exception? LogFailure { get; init; }
+
         // The files that exist.
         public HashSet<string> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -564,7 +622,15 @@ public sealed class StagedResourceResolverTests
 
         public Candidate CreateFileCandidate(string path) => new(path);
 
-        public string Describe(Candidate candidate) => candidate.FilePath is { } path ? $"the file '{path}'" : "data";
+        public string Describe(Candidate candidate)
+        {
+            if (DescribeFailure is { } failure)
+            {
+                throw failure;
+            }
+
+            return candidate.FilePath is { } path ? $"the file '{path}'" : "data";
+        }
 
         public bool FileExists(string path)
         {
@@ -575,7 +641,11 @@ public sealed class StagedResourceResolverTests
             }
         }
 
-        public DateTime GetLastWriteTime(string path) => WrittenAt[path];
+        public DateTime GetLastWriteTime(string path)
+        {
+            // A file that no test gave a time cannot be read, like one that is deleted in between.
+            return WrittenAt.TryGetValue(path, out DateTime writtenAt) ? writtenAt : throw new IOException($"The write time of '{path}' cannot be read.");
+        }
 
         public string WritePlaceholder(string name)
         {
@@ -588,6 +658,11 @@ public sealed class StagedResourceResolverTests
 
         public void Log(StagedResourceLogLevel level, string message, Exception? exception)
         {
+            if (LogFailure is { } failure)
+            {
+                throw failure;
+            }
+
             lock (_gate)
             {
                 Lines.Add(new Line(level, message, exception));
