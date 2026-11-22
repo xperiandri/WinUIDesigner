@@ -26,7 +26,7 @@ internal static class PreparedXamlNames
     /// </remarks>
     public static bool IsXamlControlsNamespace(string namespaceName)
     {
-        return namespaceName is _XamlControlsNamespace or XamlNamespaceUri.PresentationNamespace;
+        return namespaceName is _XamlControlsNamespace or XamlNamespaces.Presentation;
     }
 
     /// <summary>

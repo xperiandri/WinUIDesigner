@@ -21,10 +21,7 @@ namespace WinUIDesigner.Surface.Markup;
 /// </remarks>
 internal static class XamlNamespaceRewriter
 {
-    private const string _XamlLanguageNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
-    private const string _MarkupCompatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-
-    private static readonly XName _IgnorableName = XName.Get("Ignorable", _MarkupCompatibilityNamespace);
+    private static readonly XName _IgnorableName = XName.Get("Ignorable", XamlNamespaces.MarkupCompatibility);
 
     /// <summary>
     /// Rewrites <paramref name="document"/> in place according to the namespace policies.
@@ -183,7 +180,7 @@ internal static class XamlNamespaceRewriter
         // An Uno platform namespace stands for the default namespace on that platform.
         if (UnoPlatformPrefixes.IsPlatformUri(uri.BaseUri))
         {
-            return XamlNamespaceUri.PresentationNamespace;
+            return XamlNamespaces.Presentation;
         }
 
         return uri.BaseUri;
@@ -602,7 +599,7 @@ internal static class XamlNamespaceRewriter
             string target = binding.NormalizedNamespace;
 
             // A directive such as x:Name is only a directive in the XAML language namespace.
-            if (target == _XamlLanguageNamespace)
+            if (target == XamlNamespaces.XamlLanguage)
             {
                 return XNamespace.Get(target) + localName;
             }

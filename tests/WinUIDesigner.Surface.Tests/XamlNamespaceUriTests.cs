@@ -6,19 +6,17 @@ using WinUIDesigner.Markup;
 [TestClass]
 public sealed class XamlNamespaceUriTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-
     [TestMethod]
     public void PlainNamespaceIsItsOwnBaseUri()
     {
-        XamlNamespaceUri uri = XamlNamespaceUri.Parse(_Presentation);
+        XamlNamespaceUri uri = XamlNamespaceUri.Parse(XamlNamespaces.Presentation);
 
-        Assert.AreEqual(_Presentation, uri.Original);
-        Assert.AreEqual(_Presentation, uri.BaseUri);
+        Assert.AreEqual(XamlNamespaces.Presentation, uri.Original);
+        Assert.AreEqual(XamlNamespaces.Presentation, uri.BaseUri);
         Assert.IsNull(uri.Condition);
         Assert.IsFalse(uri.IsConditional);
         Assert.AreEqual(0, uri.UsingNamespaces.Count);
-        Assert.AreEqual(_Presentation, uri.ToString());
+        Assert.AreEqual(XamlNamespaces.Presentation, uri.ToString());
     }
 
     [TestMethod]
@@ -26,10 +24,10 @@ public sealed class XamlNamespaceUriTests
     {
         const string condition = "IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)";
 
-        XamlNamespaceUri uri = XamlNamespaceUri.Parse(_Presentation + "?" + condition);
+        XamlNamespaceUri uri = XamlNamespaceUri.Parse(XamlNamespaces.Presentation + "?" + condition);
 
-        Assert.AreEqual(_Presentation + "?" + condition, uri.Original);
-        Assert.AreEqual(_Presentation, uri.BaseUri);
+        Assert.AreEqual(XamlNamespaces.Presentation + "?" + condition, uri.Original);
+        Assert.AreEqual(XamlNamespaces.Presentation, uri.BaseUri);
         Assert.AreEqual(condition, uri.Condition);
         Assert.IsTrue(uri.IsConditional);
         Assert.AreEqual(0, uri.UsingNamespaces.Count);
@@ -47,9 +45,9 @@ public sealed class XamlNamespaceUriTests
     [TestMethod]
     public void CustomConditionKeepsItsPrefix()
     {
-        XamlNamespaceUri uri = XamlNamespaceUri.Parse(_Presentation + "?conditions:IsFeatureEnabled(Preview)");
+        XamlNamespaceUri uri = XamlNamespaceUri.Parse(XamlNamespaces.Presentation + "?conditions:IsFeatureEnabled(Preview)");
 
-        Assert.AreEqual(_Presentation, uri.BaseUri);
+        Assert.AreEqual(XamlNamespaces.Presentation, uri.BaseUri);
         Assert.AreEqual("conditions:IsFeatureEnabled(Preview)", uri.Condition);
     }
 
@@ -87,9 +85,9 @@ public sealed class XamlNamespaceUriTests
     [TestMethod]
     public void EmptyConditionIsStillACondition()
     {
-        XamlNamespaceUri uri = XamlNamespaceUri.Parse(_Presentation + "?");
+        XamlNamespaceUri uri = XamlNamespaceUri.Parse(XamlNamespaces.Presentation + "?");
 
-        Assert.AreEqual(_Presentation, uri.BaseUri);
+        Assert.AreEqual(XamlNamespaces.Presentation, uri.BaseUri);
         Assert.AreEqual(string.Empty, uri.Condition);
         Assert.IsTrue(uri.IsConditional);
     }

@@ -10,6 +10,7 @@ using Microsoft.VisualStudio.DesignTools.Markup.Text;
 using Microsoft.VisualStudio.DesignTools.Markup.Xaml;
 using Microsoft.VisualStudio.DesignTools.Markup.Xml;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WinUIDesigner.Markup;
 using WinUIDesigner.Platform;
 
 /// <summary>
@@ -23,8 +24,6 @@ using WinUIDesigner.Platform;
 [TestClass]
 public sealed class XamlSourcePrefixReaderTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _Android = "http://uno.ui/android";
     private const string _Condition = "IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)";
 
     private const string _Xaml = """
@@ -49,8 +48,8 @@ public sealed class XamlSourcePrefixReaderTests
 
         Assert.IsTrue(prefix.IsKnown);
         Assert.AreEqual("win", prefix.Prefix);
-        Assert.AreEqual(_Presentation, prefix.Namespace?.Value);
-        Assert.AreEqual(_Presentation, prefix.Uri.Original);
+        Assert.AreEqual(XamlNamespaces.Presentation, prefix.Namespace?.Value);
+        Assert.AreEqual(XamlNamespaces.Presentation, prefix.Uri.Original);
         Assert.IsFalse(prefix.IsIgnorable);
     }
 
@@ -85,7 +84,7 @@ public sealed class XamlSourcePrefixReaderTests
 
         Assert.IsNotNull(document.Child.StartTagRange);
         Assert.AreEqual("win", prefix.Prefix);
-        Assert.AreEqual(_Presentation, prefix.Namespace?.Value);
+        Assert.AreEqual(XamlNamespaces.Presentation, prefix.Namespace?.Value);
     }
 
     [TestMethod]
@@ -97,7 +96,7 @@ public sealed class XamlSourcePrefixReaderTests
 
         Assert.IsNull(document.TextBlock.StartTagRange);
         Assert.AreEqual("android", prefix.Prefix);
-        Assert.AreEqual(_Android, prefix.Namespace?.Value);
+        Assert.AreEqual(TestXamlNamespaces.Android, prefix.Namespace?.Value);
     }
 
     [TestMethod]
@@ -148,8 +147,8 @@ public sealed class XamlSourcePrefixReaderTests
 
         XamlSourcePrefix prefix = XamlSourcePrefixReader.ReadContainerPrefix(document.TextBlock);
 
-        Assert.AreEqual(_Android, prefix.ResolveNamespace("android"));
-        Assert.AreEqual(_Presentation, prefix.ResolveNamespace(string.Empty));
+        Assert.AreEqual(TestXamlNamespaces.Android, prefix.ResolveNamespace("android"));
+        Assert.AreEqual(XamlNamespaces.Presentation, prefix.ResolveNamespace(string.Empty));
         Assert.IsNull(prefix.ResolveNamespace("ios"));
     }
 
@@ -158,10 +157,10 @@ public sealed class XamlSourcePrefixReaderTests
     {
         var document = new SampleDocument();
 
-        var prefix = new XamlSourcePrefix("c7", new XmlNamespace(_Presentation, '?', _Condition), isIgnorable: false, document.Border);
+        var prefix = new XamlSourcePrefix("c7", new XmlNamespace(XamlNamespaces.Presentation, '?', _Condition), isIgnorable: false, document.Border);
 
-        Assert.AreEqual($"{_Presentation}?{_Condition}", prefix.Uri.Original);
-        Assert.AreEqual(_Presentation, prefix.Uri.BaseUri);
+        Assert.AreEqual($"{XamlNamespaces.Presentation}?{_Condition}", prefix.Uri.Original);
+        Assert.AreEqual(XamlNamespaces.Presentation, prefix.Uri.BaseUri);
         Assert.AreEqual(_Condition, prefix.Uri.Condition);
     }
 
@@ -176,11 +175,11 @@ public sealed class XamlSourcePrefixReaderTests
             var document = new XmlDocumentReference(Buffer, new SourceContext(null, 0, _Xaml.Length), "utf-8", beginTracking: true);
 
             Grid = Element(document, "<Grid", "</Grid>", "mc:Ignorable=\"android\">");
-            Declare(Grid, string.Empty, _Presentation);
-            Declare(Grid, "win", _Presentation);
-            Declare(Grid, "android", _Android);
-            Declare(Grid, "mc", "http://schemas.openxmlformats.org/markup-compatibility/2006");
-            Grid.AddIgnorableNamespace(new XmlNamespace(_Android));
+            Declare(Grid, string.Empty, XamlNamespaces.Presentation);
+            Declare(Grid, "win", XamlNamespaces.Presentation);
+            Declare(Grid, "android", TestXamlNamespaces.Android);
+            Declare(Grid, "mc", XamlNamespaces.MarkupCompatibility);
+            Grid.AddIgnorableNamespace(new XmlNamespace(TestXamlNamespaces.Android));
 
             Border = Element(Grid, "<win:Border ", "</win:Border>", "Opacity=\"1\">");
             Child = Element(Border, "<win:Border.Child>", "</win:Border.Child>", "<win:Border.Child>");

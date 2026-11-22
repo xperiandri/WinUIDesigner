@@ -12,16 +12,13 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class ConditionalNamespacePolicyTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _Conditional = _Presentation + "?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)";
-
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     [DataRow(null)]
     public void ConditionalNamespaceIsLeftAloneWhateverItsConditionEvaluatesTo(bool? outcome)
     {
-        XamlNamespaceUri uri = XamlNamespaceUri.Parse(_Conditional);
+        XamlNamespaceUri uri = XamlNamespaceUri.Parse(TestXamlNamespaces.Conditional);
 
         Assert.AreEqual(XamlPrefixDisposition.Leave, ConditionalNamespacePolicy.Classify(uri, _ => outcome));
         Assert.AreEqual(XamlPrefixDisposition.Leave, ConditionalNamespacePolicy.Classify(uri, evaluateCondition: null));
@@ -30,7 +27,7 @@ public sealed class ConditionalNamespacePolicyTests
     [TestMethod]
     public void UnconditionalNamespaceIsLeftAlone()
     {
-        XamlPrefixDisposition disposition = ConditionalNamespacePolicy.Classify(XamlNamespaceUri.Parse(_Presentation), _ => true);
+        XamlPrefixDisposition disposition = ConditionalNamespacePolicy.Classify(XamlNamespaceUri.Parse(XamlNamespaces.Presentation), _ => true);
 
         Assert.AreEqual(XamlPrefixDisposition.Leave, disposition);
     }
@@ -39,7 +36,7 @@ public sealed class ConditionalNamespacePolicyTests
     public void DocumentWithConditionalMembersIsNotRewritten()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:c7="{_Conditional}">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{TestXamlNamespaces.Conditional}">
               <c7:Border c7:CornerRadius="4">
                 <c7:Border.Child><TextBlock c7:Text="new" /></c7:Border.Child>
               </c7:Border>

@@ -14,8 +14,6 @@ namespace WinUIDesigner.Markup;
 /// </summary>
 internal static class XamlNamespaceScanner
 {
-    private const string _XmlnsNamespace = "http://www.w3.org/2000/xmlns/";
-    private const string _MarkupCompatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
     private const string _IgnorableAttribute = "Ignorable";
 
     /// <summary>
@@ -76,7 +74,7 @@ internal static class XamlNamespaceScanner
 
                 do
                 {
-                    if (reader.NamespaceURI == _XmlnsNamespace)
+                    if (reader.NamespaceURI == XamlNamespaces.Xmlns)
                     {
                         // "xmlns" alone declares the default namespace; "xmlns:p" declares prefix "p".
                         string prefix = reader.Prefix.Length == 0 ? string.Empty : reader.LocalName;
@@ -92,7 +90,7 @@ internal static class XamlNamespaceScanner
                         hasConditionalNamespaces |= uri.IsConditional;
                         hasPlatformNamespaces |= UnoPlatformPrefixes.IsPlatformUri(uri.BaseUri);
                     }
-                    else if (reader.LocalName == _IgnorableAttribute && reader.NamespaceURI == _MarkupCompatibilityNamespace)
+                    else if (reader.LocalName == _IgnorableAttribute && reader.NamespaceURI == XamlNamespaces.MarkupCompatibility)
                     {
                         AddPrefixes(ignorablePrefixes, reader.Value);
                     }

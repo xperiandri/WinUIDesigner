@@ -7,10 +7,6 @@ using WinUIDesigner.Markup;
 [TestClass]
 public sealed class XamlNamespaceScannerTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _MarkupCompatibility = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-    private const string _Android = "http://uno.ui/android";
-
     [TestMethod]
     public void DeclarationsOnTheRootAndOnNestedElementsAreReportedInDocumentOrder()
     {
@@ -33,20 +29,20 @@ public sealed class XamlNamespaceScannerTests
         Assert.AreEqual(7, result.Declarations[0].LinePosition);
 
         XamlNamespaceUri conditional = result.Declarations[2].Uri;
-        Assert.AreEqual(_Presentation, conditional.BaseUri);
+        Assert.AreEqual(XamlNamespaces.Presentation, conditional.BaseUri);
         Assert.AreEqual("IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)", conditional.Condition);
-        Assert.AreEqual(_Android, result.Declarations[3].Uri.Original);
+        Assert.AreEqual(TestXamlNamespaces.Android, result.Declarations[3].Uri.Original);
     }
 
     [TestMethod]
     public void PrefixIsResolvedToItsFirstDeclaration()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"{_Android}\"><Grid xmlns:android=\"using:Other\" /></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\"><Grid xmlns:android=\"using:Other\" /></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
-        Assert.AreEqual(_Presentation, result.FindNamespace(string.Empty));
-        Assert.AreEqual(_Android, result.FindNamespace("android"));
+        Assert.AreEqual(XamlNamespaces.Presentation, result.FindNamespace(string.Empty));
+        Assert.AreEqual(TestXamlNamespaces.Android, result.FindNamespace("android"));
         Assert.IsNull(result.FindNamespace("ios"));
     }
 
@@ -58,7 +54,7 @@ public sealed class XamlNamespaceScannerTests
     [DataRow("d\tandroid\nios")]
     public void IgnorablePrefixesAreSplitOnAnyWhitespace(string ignorable)
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:mc=\"{_MarkupCompatibility}\" mc:Ignorable=\"{ignorable}\" />";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:mc=\"{XamlNamespaces.MarkupCompatibility}\" mc:Ignorable=\"{ignorable}\" />";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -71,7 +67,7 @@ public sealed class XamlNamespaceScannerTests
     public void IgnorablePrefixesOfNestedElementsAreCollectedToo()
     {
         string xaml =
-            $"<Page xmlns=\"{_Presentation}\" xmlns:mc=\"{_MarkupCompatibility}\" mc:Ignorable=\"d\">" +
+            $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:mc=\"{XamlNamespaces.MarkupCompatibility}\" mc:Ignorable=\"d\">" +
             "<Grid mc:Ignorable=\"android\" /></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
@@ -82,7 +78,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void IgnorableAttributeOfAnotherNamespaceIsNotMarkupCompatibility()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:my=\"using:My\" my:Ignorable=\"android\" Ignorable=\"ios\" />";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:my=\"using:My\" my:Ignorable=\"android\" Ignorable=\"ios\" />";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -92,7 +88,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void ConditionalNamespaceIsFlagged()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:c7=\"{_Presentation}?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)\" />";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:c7=\"{XamlNamespaces.Presentation}?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)\" />";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -104,7 +100,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void OrdinaryDocumentHasNoFlags()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:local=\"using:My.App\"><local:Card Title=\"A?\" /></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:local=\"using:My.App\"><local:Card Title=\"A?\" /></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -118,7 +114,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void ObjectElementUnderPlatformNamespaceIsFlagged()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"{_Android}\"><StackPanel><android:Border /></StackPanel></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\"><StackPanel><android:Border /></StackPanel></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -129,7 +125,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void ObjectElementUnderPlatformNamespaceWithUsingSuffixIsFlagged()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"{_Android}#using:My.Droid\"><android:NativeView /></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}#using:My.Droid\"><android:NativeView /></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -140,7 +136,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void AttributeUnderPlatformNamespaceIsNotAnObjectElement()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"{_Android}\"><TextBlock android:Text=\"Hello\" /></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\"><TextBlock android:Text=\"Hello\" /></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -152,7 +148,7 @@ public sealed class XamlNamespaceScannerTests
     public void PropertyElementUnderPlatformNamespaceIsNotAnObjectElement()
     {
         string xaml =
-            $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"{_Android}\">" +
+            $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\">" +
             "<Border><android:Border.Child><Grid /></android:Border.Child></Border></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
@@ -164,7 +160,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void PresentationNamespaceUnderAPlatformPrefixIsNotAPlatformNamespace()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:win=\"{_Presentation}\"><win:Border win:Tag=\"1\" /></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:win=\"{XamlNamespaces.Presentation}\"><win:Border win:Tag=\"1\" /></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -176,7 +172,7 @@ public sealed class XamlNamespaceScannerTests
     public void ElementPrefixIsResolvedAgainstTheDeclarationInScope()
     {
         // "p" is a platform namespace on the root but an ordinary namespace where the element is written.
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:p=\"{_Android}\"><Grid xmlns:p=\"using:My.App\"><p:Card /></Grid></Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:p=\"{TestXamlNamespaces.Android}\"><Grid xmlns:p=\"using:My.App\"><p:Card /></Grid></Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 
@@ -205,7 +201,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void FactsReadBeforeMalformedXamlAreStillReported()
     {
-        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"{_Android}\" xmlns:mc=\"{_MarkupCompatibility}\" mc:Ignorable=\"android\"><android:Border /><Grid><</Page>";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:android=\"{TestXamlNamespaces.Android}\" xmlns:mc=\"{XamlNamespaces.MarkupCompatibility}\" mc:Ignorable=\"android\"><android:Border /><Grid><</Page>";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 

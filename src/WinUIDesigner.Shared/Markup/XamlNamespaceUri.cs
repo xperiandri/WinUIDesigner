@@ -18,11 +18,6 @@ namespace WinUIDesigner.Markup;
 internal readonly struct XamlNamespaceUri
 {
     /// <summary>
-    /// The default WinUI presentation namespace.
-    /// </summary>
-    public const string PresentationNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-
-    /// <summary>
     /// The scheme of a CLR-namespace URI such as <c>using:My.Controls</c>.
     /// </summary>
     public const string UsingScheme = "using:";

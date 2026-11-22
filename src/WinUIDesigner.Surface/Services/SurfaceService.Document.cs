@@ -536,7 +536,7 @@ internal sealed partial class SurfaceService
                             if (element.Name.NamespaceName == "using:XSurfUwp.Fallback"
                                 && ("XSurfUwp.Fallback." + element.Name.LocalName is "XSurfUwp.Fallback.FallbackControl" or "XSurfUwp.Fallback.LayoutFaultFallbackControl"))
                             {
-                                VisualTreeService.RenameForRuntime(element, XNamespace.Get(XamlNamespaceUri.PresentationNamespace) + "ContentControl");
+                                VisualTreeService.RenameForRuntime(element, XNamespace.Get(XamlNamespaces.Presentation) + "ContentControl");
                                 if (element.Attribute("Content") is null && element.Attribute("Tag") is { } originalType)
                                 {
                                     element.SetAttributeValue("Content", originalType.Value);
