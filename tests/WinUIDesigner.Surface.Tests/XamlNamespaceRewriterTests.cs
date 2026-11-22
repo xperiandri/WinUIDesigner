@@ -365,7 +365,7 @@ public sealed class XamlNamespaceRewriterTests
     public void IgnorableStateIsThatOfTheElementWhereThePrefixIsUsed()
     {
         string xaml = $"""
-            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" xmlns:android="{TestXamlNamespaces.Android}" xmlns:ios="http://uno.ui/ios" mc:Ignorable="ios">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" xmlns:android="{TestXamlNamespaces.Android}" xmlns:ios="{TestXamlNamespaces.Ios}" mc:Ignorable="ios">
               <android:Border Tag="outside" />
               <ios:Border Tag="ios" />
               <Grid mc:Ignorable="android">
@@ -478,7 +478,7 @@ public sealed class XamlNamespaceRewriterTests
     [TestMethod]
     public void FailingClassificationLeavesThePrefixAloneAndIsReported()
     {
-        string xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}" xmlns:ios="http://uno.ui/ios"><android:Border /><ios:Border /></Page>""";
+        string xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}" xmlns:ios="{TestXamlNamespaces.Ios}"><android:Border /><ios:Border /></Page>""";
         var reported = new List<string>();
 
         XamlNamespaceRewriteResult result = Rewrite(

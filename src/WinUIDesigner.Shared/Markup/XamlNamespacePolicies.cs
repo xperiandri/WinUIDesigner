@@ -88,6 +88,7 @@ internal static class XamlNamespacePolicies
                 evaluate = condition => evaluateCondition(condition, scan.FindNamespace);
             }
 
+            // A policy decides about the prefix as the document lists it in mc:Ignorable.
             bool isIgnorable = scan.IsIgnorable(declaration.Prefix);
             if (Classify(declaration.Prefix, declaration.Uri, isIgnorable, targetPlatform, evaluate) != XamlPrefixDisposition.Leave)
             {

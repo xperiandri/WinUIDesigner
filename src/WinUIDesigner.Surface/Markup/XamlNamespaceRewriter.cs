@@ -84,17 +84,20 @@ internal static class XamlNamespaceRewriter
             bool matches = true;
             while (matches && reader.Read())
             {
+                // Only elements are paired with the elements of the document.
                 if (reader.NodeType != XmlNodeType.Element)
                 {
                     continue;
                 }
 
+                // The text has more elements than the document.
                 if (!elements.MoveNext())
                 {
                     matches = false;
                     break;
                 }
 
+                // The element of the text is not the one the document has at this place.
                 XElement element = elements.Current;
                 if (element.Name.LocalName != reader.LocalName || element.Name.NamespaceName != reader.NamespaceURI)
                 {
@@ -109,6 +112,7 @@ internal static class XamlNamespaceRewriter
                 {
                     do
                     {
+                        // The text has more attributes than the element, or other ones.
                         if (attribute is null || attribute.Name.LocalName != reader.LocalName)
                         {
                             matches = false;
@@ -123,9 +127,11 @@ internal static class XamlNamespaceRewriter
                     reader.MoveToElement();
                 }
 
+                // The element has attributes that the text does not.
                 matches &= attribute is null;
             }
 
+            // Every element of the text had its counterpart, and the document has none left over.
             if (matches && !elements.MoveNext())
             {
                 return true;
@@ -174,7 +180,7 @@ internal static class XamlNamespaceRewriter
         // without type information, so the first one is taken.
         if (uri.UsingNamespaces.Count != 0)
         {
-            return XamlNamespaceUri.UsingScheme + uri.UsingNamespaces[0];
+            return $"{XamlNamespaceUri.UsingScheme}{uri.UsingNamespaces[0]}";
         }
 
         // An Uno platform namespace stands for the default namespace on that platform.
@@ -369,11 +375,13 @@ internal static class XamlNamespaceRewriter
 
         private void EnsureSourcePrefixes(XElement root)
         {
+            // The prefixes were captured before, by the caller or by an earlier run.
             if (root.Annotation<SourcePrefix>() is not null)
             {
                 return;
             }
 
+            // The text is not given, or is not the text the document was parsed from.
             string? source = _options.SourceXaml;
             if (source is null || !CaptureSourcePrefixes(_document, source))
             {
@@ -463,6 +471,7 @@ internal static class XamlNamespaceRewriter
                 (children ??= []).Add(child);
             }
 
+            // An element without children is finished here; the others are visited through their frame.
             if (children is null)
             {
                 RestoreScope(shadowed, ignorable);
@@ -474,6 +483,7 @@ internal static class XamlNamespaceRewriter
 
         private void RestoreScope(List<KeyValuePair<string, Binding?>>? shadowed, List<Binding>? ignorable)
         {
+            // The prefixes that the element listed in mc:Ignorable stop being ignorable.
             if (ignorable is not null)
             {
                 foreach (Binding binding in ignorable)
@@ -482,6 +492,7 @@ internal static class XamlNamespaceRewriter
                 }
             }
 
+            // An element that declared no prefix has nothing to undo.
             if (shadowed is null)
             {
                 return;
@@ -638,11 +649,13 @@ internal static class XamlNamespaceRewriter
         /// </summary>
         private void Repoint(Binding binding)
         {
+            // A declaration that is not kept stays as written.
             if (Classify(binding) != XamlPrefixDisposition.Keep)
             {
                 return;
             }
 
+            // A declaration that already names the bare namespace has nothing to change.
             string target = binding.NormalizedNamespace;
             if (string.Equals(binding.Declaration.Value, target, StringComparison.Ordinal))
             {
@@ -686,11 +699,13 @@ internal static class XamlNamespaceRewriter
                     continue;
                 }
 
+                // The prefix is bound to another namespace.
                 if (!string.Equals(binding.Uri.Original, namespaceName, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
+                // A second prefix is bound to the namespace: there is no telling them apart.
                 if (found is not null)
                 {
                     return null;
@@ -769,6 +784,7 @@ internal static class XamlNamespaceRewriter
 
         private bool ShouldDropNormalizedAttribute(XElement element, XName name, string value)
         {
+            // Without a filter, every normalized attribute is kept.
             Func<XElement, XName, string, bool>? filter = _options.ShouldDropNormalizedAttribute;
             if (filter is null)
             {
@@ -781,6 +797,7 @@ internal static class XamlNamespaceRewriter
             }
             catch (Exception exception)
             {
+                // A filter that cannot decide keeps the attribute.
                 Report($"Filtering attribute {name.LocalName} failed; it is kept. {exception.GetType().Name}: {exception.Message}");
                 return false;
             }

@@ -91,6 +91,7 @@ internal sealed class XamlMemberDispositionService
     /// </summary>
     public XamlPrefixDisposition GetNodeDisposition(DocumentNode? node)
     {
+        // There is no node to judge.
         if (node is null)
         {
             return XamlPrefixDisposition.Leave;
@@ -100,11 +101,14 @@ internal sealed class XamlMemberDispositionService
         {
             ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = GetState(node.DocumentRoot)?.Verdicts;
             object? site = verdicts is null ? null : node.SourceContext;
+
+            // A document without policy namespaces, or a node without source, is left alone.
             if (verdicts is null || site is null)
             {
                 return XamlPrefixDisposition.Leave;
             }
 
+            // The source of a place is read once; the verdict is kept for the next question about it.
             if (!verdicts.TryGetValue(site, out XamlPrefixDisposition verdict))
             {
                 verdict = Classify(XamlSourcePrefixReader.ReadElementPrefix(node));
@@ -127,6 +131,7 @@ internal sealed class XamlMemberDispositionService
     /// </summary>
     public XamlPrefixDisposition GetPropertyDisposition(DocumentCompositeNode? parentNode, IProperty? property)
     {
+        // There is no property to judge.
         if (parentNode is null || property is null)
         {
             return XamlPrefixDisposition.Leave;
@@ -137,11 +142,14 @@ internal sealed class XamlMemberDispositionService
             // The source reference of the attribute or property element identifies this place in the text.
             ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = GetState(parentNode.DocumentRoot)?.Verdicts;
             object? site = verdicts is null ? null : parentNode.GetContainerContext(property);
+
+            // A document without policy namespaces, or a property without source, is left alone.
             if (verdicts is null || site is null)
             {
                 return XamlPrefixDisposition.Leave;
             }
 
+            // The source of a place is read once; the verdict is kept for the next question about it.
             if (!verdicts.TryGetValue(site, out XamlPrefixDisposition verdict))
             {
                 verdict = Classify(XamlSourcePrefixReader.ReadPropertyPrefix(parentNode, property));
@@ -170,6 +178,7 @@ internal sealed class XamlMemberDispositionService
     /// </summary>
     private DocumentState? GetState(IDocumentRoot? root)
     {
+        // A document without a text buffer has no namespaces to scan.
         IMarkupTextBuffer? buffer = root?.TextBuffer;
         if (root is null || buffer is null)
         {
@@ -271,14 +280,8 @@ internal sealed class XamlMemberDispositionService
     {
         public static ReferenceComparer Instance { get; } = new();
 
-        bool IEqualityComparer<object>.Equals(object? x, object? y)
-        {
-            return ReferenceEquals(x, y);
-        }
+        bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
 
-        int IEqualityComparer<object>.GetHashCode(object obj)
-        {
-            return RuntimeHelpers.GetHashCode(obj);
-        }
+        int IEqualityComparer<object>.GetHashCode(object obj) => RuntimeHelpers.GetHashCode(obj);
     }
 }

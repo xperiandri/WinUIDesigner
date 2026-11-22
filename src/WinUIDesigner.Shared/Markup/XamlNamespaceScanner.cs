@@ -22,6 +22,7 @@ internal static class XamlNamespaceScanner
     /// </summary>
     public static XamlNamespaceScanResult Scan(string? xaml)
     {
+        // There is no text to scan.
         if (xaml is null || xaml.Length == 0)
         {
             return XamlNamespaceScanResult.Empty;
@@ -51,6 +52,7 @@ internal static class XamlNamespaceScanner
 
             while (reader.Read())
             {
+                // Only elements carry prefixes and declarations.
                 if (reader.NodeType != XmlNodeType.Element)
                 {
                     continue;
@@ -67,6 +69,7 @@ internal static class XamlNamespaceScanner
                     hasPlatformPrefixedObjectElements = true;
                 }
 
+                // An element without attributes declares nothing.
                 if (!reader.MoveToFirstAttribute())
                 {
                     continue;
@@ -93,6 +96,7 @@ internal static class XamlNamespaceScanner
                     }
                     else if (reader.LocalName == _IgnorableAttribute && reader.NamespaceURI == XamlNamespaces.MarkupCompatibility)
                     {
+                        // mc:Ignorable lists the prefixes whose members the XAML reader skips.
                         AddPrefixes(ignorablePrefixes, reader.Value);
                     }
                 }
@@ -127,11 +131,13 @@ internal static class XamlNamespaceScanner
     /// </returns>
     public static string? ReadElementPrefix(string? startTagText)
     {
+        // There is no text to read.
         if (startTagText is null)
         {
             return null;
         }
 
+        // The text does not begin with a start tag.
         int index = SkipWhitespace(startTagText, 0);
         if (index >= startTagText.Length || startTagText[index] != '<')
         {

@@ -59,9 +59,9 @@ public sealed class UnoPlatformPrefixesTests
         string xaml = $"""
             <Page xmlns="{XamlNamespaces.Presentation}"
                   xmlns:win="{XamlNamespaces.Presentation}"
-                  xmlns:not_win="http://uno.ui/not_win"
-                  xmlns:android="http://uno.ui/android"
-                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:not_win="{TestXamlNamespaces.NotWin}"
+                  xmlns:android="{TestXamlNamespaces.Android}"
+                  xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
                   mc:Ignorable="not_win android">
               <win:Border win:Tag="windows" android:Tag="droid" />
               <not_win:Border />

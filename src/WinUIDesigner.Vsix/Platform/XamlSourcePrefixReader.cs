@@ -124,6 +124,7 @@ internal static class XamlSourcePrefixReader
     {
         try
         {
+            // There is no property to read.
             if (parentNode is null || property is null)
             {
                 return XamlSourcePrefix.None;

@@ -15,8 +15,8 @@ using WinUIDesigner.Platform;
 [TestClass]
 public sealed class XamlMemberDispositionServiceTests
 {
-    private const string _Xaml = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" />""";
-    private const string _AndroidDeclaration = " xmlns:android=\"http://uno.ui/android\"";
+    private const string _Xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" />""";
+    private const string _AndroidDeclaration = $" xmlns:android=\"{TestXamlNamespaces.Android}\"";
 
     [TestMethod]
     public void NamespacesAreScannedOncePerText()

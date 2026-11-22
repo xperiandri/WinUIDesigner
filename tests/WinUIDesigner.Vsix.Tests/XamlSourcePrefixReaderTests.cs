@@ -24,8 +24,6 @@ using WinUIDesigner.Platform;
 [TestClass]
 public sealed class XamlSourcePrefixReaderTests
 {
-    private const string _Condition = "IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)";
-
     private const string _Xaml = """
         <Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
               xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -157,11 +155,11 @@ public sealed class XamlSourcePrefixReaderTests
     {
         var document = new SampleDocument();
 
-        var prefix = new XamlSourcePrefix("c7", new XmlNamespace(XamlNamespaces.Presentation, '?', _Condition), isIgnorable: false, document.Border);
+        var prefix = new XamlSourcePrefix("c7", new XmlNamespace(XamlNamespaces.Presentation, '?', TestXamlNamespaces.Condition), isIgnorable: false, document.Border);
 
-        Assert.AreEqual($"{XamlNamespaces.Presentation}?{_Condition}", prefix.Uri.Original);
+        Assert.AreEqual(TestXamlNamespaces.Conditional, prefix.Uri.Original);
         Assert.AreEqual(XamlNamespaces.Presentation, prefix.Uri.BaseUri);
-        Assert.AreEqual(_Condition, prefix.Uri.Condition);
+        Assert.AreEqual(TestXamlNamespaces.Condition, prefix.Uri.Condition);
     }
 
     /// <summary>

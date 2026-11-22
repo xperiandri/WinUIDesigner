@@ -30,7 +30,7 @@ public sealed class XamlNamespaceScannerTests
 
         XamlNamespaceUri conditional = result.Declarations[2].Uri;
         Assert.AreEqual(XamlNamespaces.Presentation, conditional.BaseUri);
-        Assert.AreEqual("IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)", conditional.Condition);
+        Assert.AreEqual(TestXamlNamespaces.Condition, conditional.Condition);
         Assert.AreEqual(TestXamlNamespaces.Android, result.Declarations[3].Uri.Original);
     }
 
@@ -88,7 +88,7 @@ public sealed class XamlNamespaceScannerTests
     [TestMethod]
     public void ConditionalNamespaceIsFlagged()
     {
-        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:c7=\"{XamlNamespaces.Presentation}?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)\" />";
+        string xaml = $"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:c7=\"{TestXamlNamespaces.Conditional}\" />";
 
         XamlNamespaceScanResult result = XamlNamespaceScanner.Scan(xaml);
 

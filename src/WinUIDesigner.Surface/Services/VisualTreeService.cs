@@ -28,6 +28,7 @@ internal sealed class VisualTreeService(ProtocolHandler protocolHandler, ObjectI
     /// </summary>
     public static void RenameForRuntime(XElement element, XName runtimeName)
     {
+        // The first rename records the name of the prepared file; a later one keeps it.
         if (element.Annotation<PreparedName>() is null)
         {
             element.AddAnnotation(new PreparedName(element.Name));
