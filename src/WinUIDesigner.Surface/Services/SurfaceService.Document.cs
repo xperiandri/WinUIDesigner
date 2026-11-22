@@ -277,6 +277,16 @@ internal sealed partial class SurfaceService
         }
     }
 
+    // A step that gave up because the protocol or the dispatcher queue shut down did not fail: the surface is ending, and
+    // the report of the give-up is in the log already.
+    private static void LogOperationFailure(Exception exception)
+    {
+        if (!DispatcherOperation.IsUnanswered(exception))
+        {
+            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+        }
+    }
+
     private async Task<ResponseWithError> HandleCloseDocumentAsync(CloseDocumentRequestInfo request)
     {
         try
@@ -305,7 +315,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -332,7 +342,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -385,7 +395,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -412,7 +422,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -501,7 +511,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),

@@ -18,7 +18,9 @@ namespace WinUIDesigner.Surface.Common;
 /// it is busy: only the protocol's token and the shutdown of the dispatcher queue end them. Visual Studio blocks on its
 /// synchronous requests, so only those give up after <see cref="InteractiveTimeout"/>
 /// (<see cref="InvokeAsync{T}(DispatcherQueue, Func{T}, CancellationToken, string)"/> and
-/// <see cref="TryInvoke{T}(DispatcherQueue, Func{T}, CancellationToken, out T, string)"/>).
+/// <see cref="TryInvoke{T}(DispatcherQueue, Func{T}, CancellationToken, out T, string)"/>). A request that gives up fails
+/// with a <see cref="DispatcherTimeoutException"/> or a <see cref="DispatcherCanceledException"/>, which only this class
+/// throws.
 /// </remarks>
 internal static partial class DispatcherOperation
 {
@@ -29,8 +31,8 @@ internal static partial class DispatcherOperation
 
     /// <summary>
     /// Runs <paramref name="callback"/> on the UI thread for a request that Visual Studio waits for, and gives up after
-    /// <see cref="InteractiveTimeout"/> with a <see cref="TimeoutException"/>; a callback that has not started by then
-    /// does not run.
+    /// <see cref="InteractiveTimeout"/> with a <see cref="DispatcherTimeoutException"/>; a callback that has not started by
+    /// then does not run.
     /// </summary>
     /// <param name="request">The name of the request in the log: the calling member unless it is given.</param>
     public static Task<T> InvokeAsync<T>(DispatcherQueue queue, Func<T> callback, CancellationToken cancellationToken, [CallerMemberName] string request = "")
@@ -40,8 +42,10 @@ internal static partial class DispatcherOperation
 
     /// <summary>
     /// Runs one step of the work on a document on the UI thread, however long the thread is busy with the steps before
-    /// it: only <paramref name="cancellationToken"/> and the shutdown of the dispatcher queue end the wait.
+    /// it: only <paramref name="cancellationToken"/> and the shutdown of the dispatcher queue end the wait, with a
+    /// <see cref="DispatcherCanceledException"/>.
     /// </summary>
+    /// <remarks>The step is queued before this method returns, so steps run in the order in which they were started.</remarks>
     /// <param name="step">The name of the step in the log.</param>
     public static Task<T> RunAsync<T>(DispatcherQueue queue, string step, Func<T> callback, CancellationToken cancellationToken)
     {
@@ -79,11 +83,14 @@ internal static partial class DispatcherOperation
 
     /// <summary>
     /// Whether <paramref name="exception"/> tells that a request gave up waiting for the UI thread, rather than that its
-    /// callback failed: the time limit passed (<see cref="TimeoutException"/>), or the protocol or the dispatcher queue
-    /// shut down, or the queue refused the request (<see cref="OperationCanceledException"/>).
+    /// callback failed: the time limit passed (<see cref="DispatcherTimeoutException"/>), or the protocol or the dispatcher
+    /// queue shut down, or the queue refused the request (<see cref="DispatcherCanceledException"/>).
     /// </summary>
-    /// <remarks>The check is by type, so a callback that throws one of these types is treated the same way.</remarks>
-    public static bool IsUnanswered(Exception exception) => exception is TimeoutException or OperationCanceledException;
+    /// <remarks>
+    /// Only this class throws these two types, so an exception of the callback is a failure whatever its type, also a
+    /// <see cref="TimeoutException"/> or an <see cref="OperationCanceledException"/> of the project's code.
+    /// </remarks>
+    public static bool IsUnanswered(Exception exception) => exception is DispatcherTimeoutException or DispatcherCanceledException;
 
     internal static Task<T> RunAsync<T>(DispatcherQueue queue, string step, Func<T> callback, TimeProvider time, CancellationToken cancellationToken)
     {
@@ -122,7 +129,14 @@ internal static partial class DispatcherOperation
 
     internal static async Task<T> InvokeAsync<T>(DispatcherQueue queue, string request, Func<T> callback, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        // The protocol has ended: nothing is queued.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            var ended = new DispatcherCanceledException("The protocol has ended.");
+            ReportGaveUp(request, TimeSpan.Zero, ended);
+
+            throw ended;
+        }
 
         // Already on the UI thread, inside another step: run right away.
         if (queue.HasThreadAccess)
@@ -178,7 +192,7 @@ internal static partial class DispatcherOperation
             }))
             {
                 // The queue refuses work: it is shutting down.
-                var refused = new OperationCanceledException("Unable to enqueue the designer request.");
+                var refused = new DispatcherCanceledException("Unable to enqueue the designer request.");
                 ReportGaveUp(request, TimeSpan.Zero, refused);
 
                 throw refused;
@@ -199,10 +213,13 @@ internal static partial class DispatcherOperation
                 }
 
                 // The wait ended before the callback did: the time limit passed, or the protocol or the queue shut down.
-                ReportGaveUp(request, time.GetElapsedTime(enqueued), ex);
                 _ = completion.Task.Exception;
+                Exception unanswered = ex is TimeoutException
+                    ? new DispatcherTimeoutException($"The UI thread did not answer '{request}' within {timeout.TotalSeconds:0.#} s.", ex)
+                    : new DispatcherCanceledException("The protocol or the dispatcher queue is shutting down.", ex);
+                ReportGaveUp(request, time.GetElapsedTime(enqueued), unanswered);
 
-                throw;
+                throw unanswered;
             }
         }
         finally
@@ -210,6 +227,7 @@ internal static partial class DispatcherOperation
             queue.ShutdownStarting -= OnShutdown;
         }
     }
+
 
     // The surface writes these reports to its log (DispatcherOperation.Log.cs); the test project records them instead.
 
@@ -234,3 +252,18 @@ internal static partial class DispatcherOperation
     /// </summary>
     static partial void ReportLongWait(string what, TimeSpan waited);
 }
+
+/// <summary>
+/// A request stopped waiting for the UI thread because its time limit passed: the UI thread did not answer in time.
+/// </summary>
+/// <remarks>See <see cref="DispatcherOperation.IsUnanswered(Exception)"/>.</remarks>
+internal sealed class DispatcherTimeoutException(string message, Exception? innerException = null)
+    : TimeoutException(message, innerException);
+
+/// <summary>
+/// A request stopped waiting for the UI thread because the protocol or the dispatcher queue shut down, or because the queue
+/// refused the request.
+/// </summary>
+/// <remarks>See <see cref="DispatcherOperation.IsUnanswered(Exception)"/>.</remarks>
+internal sealed class DispatcherCanceledException(string message, Exception? innerException = null)
+    : OperationCanceledException(message, innerException);

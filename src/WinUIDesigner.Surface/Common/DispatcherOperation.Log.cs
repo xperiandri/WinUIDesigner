@@ -16,12 +16,13 @@ internal static partial class DispatcherOperation
         WinUIDesignerLogger.LogTrace("Surface", $"'{step}' waited {queueWait.TotalMilliseconds:0} ms for the UI thread and ran for {runTime.TotalMilliseconds:0} ms.");
     }
 
+
     static partial void ReportGaveUp(string request, TimeSpan waited, Exception reason)
     {
         if (reason is TimeoutException)
         {
-            // The time limit passed: the UI thread was busy for that long.
-            WinUIDesignerLogger.LogWarning("Surface", $"'{request}' gave up after {waited.TotalSeconds:0.#} s: the UI thread did not take it in time.");
+            // The time limit passed: the UI thread did not answer for that long.
+            WinUIDesignerLogger.LogWarning("Surface", $"'{request}' gave up after {waited.TotalSeconds:0.#} s: the UI thread did not answer in time.");
         }
         else
         {

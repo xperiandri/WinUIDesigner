@@ -20,7 +20,7 @@ internal sealed partial class SurfaceService
         {
             try
             {
-                // When the UI thread does not take the request in time, the document did not fail: answer without snap lines.
+                // When the UI thread does not answer in time, the document did not fail: answer without snap lines.
                 return DispatcherOperation.TryInvoke(_dispatcherQueue, () => HandleGetSnapLines(request), _protocolHandler.CancellationToken, out var response)
                     ? response
                     : GetSnapLinesResponse.Empty;
@@ -84,7 +84,7 @@ internal sealed partial class SurfaceService
         {
             try
             {
-                // When the UI thread does not take the request in time, the document did not fail: answer without snap data.
+                // When the UI thread does not answer in time, the document did not fail: answer without snap data.
                 return DispatcherOperation.TryInvoke(_dispatcherQueue, () => HandleGetElementSnapData(request), _protocolHandler.CancellationToken, out var response)
                     ? response
                     : new GetElementSnapDataResponse();

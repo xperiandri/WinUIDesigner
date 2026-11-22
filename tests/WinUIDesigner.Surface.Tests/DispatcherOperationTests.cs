@@ -56,9 +56,10 @@ public sealed class DispatcherOperationTests
             protocol.Cancel();
         }
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => Promptly(step));
+        DispatcherCanceledException ended = await Assert.ThrowsExactlyAsync<DispatcherCanceledException>(() => Promptly(step));
         queued!();
         Assert.IsFalse(changed);
+        Assert.IsTrue(DispatcherOperation.IsUnanswered(ended));
     }
 
     [TestMethod]
@@ -99,10 +100,11 @@ public sealed class DispatcherOperationTests
         Assert.IsFalse(pending.IsCompleted);
 
         time.Advance(TimeSpan.FromTicks(1));
-        await Assert.ThrowsExactlyAsync<TimeoutException>(() => Promptly(pending));
+        DispatcherTimeoutException gaveUp = await Assert.ThrowsExactlyAsync<DispatcherTimeoutException>(() => Promptly(pending));
         queued!();
 
         Assert.IsFalse(changed);
+        Assert.IsTrue(DispatcherOperation.IsUnanswered(gaveUp));
         Assert.IsInstanceOfType<TimeoutException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, Request)).Exception);
         Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.Step, Request));
     }
@@ -130,7 +132,7 @@ public sealed class DispatcherOperationTests
         {
             Assert.IsTrue(started.Wait(TimeSpan.FromSeconds(10)));
             time.Advance(DispatcherOperation.InteractiveTimeout);
-            await Assert.ThrowsExactlyAsync<TimeoutException>(() => Promptly(pending));
+            await Assert.ThrowsExactlyAsync<DispatcherTimeoutException>(() => Promptly(pending));
             time.Advance(TimeSpan.FromSeconds(5));
         }
         finally
@@ -162,7 +164,7 @@ public sealed class DispatcherOperationTests
         Assert.IsFalse(await Promptly(answered));
         queued!();
         Assert.IsFalse(changed);
-        Assert.IsInstanceOfType<TimeoutException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, request)).Exception);
+        Assert.IsInstanceOfType<DispatcherTimeoutException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, request)).Exception);
     }
 
     [TestMethod]
@@ -188,7 +190,7 @@ public sealed class DispatcherOperationTests
         var queue = new DispatcherQueue(_ => false);
 
         Assert.IsFalse(DispatcherOperation.TryInvoke(queue, () => 1, default, out _));
-        Assert.IsInstanceOfType<OperationCanceledException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, nameof(SynchronousRequestThatTheQueueRefusesIsAnsweredWithoutAnException))).Exception);
+        Assert.IsInstanceOfType<DispatcherCanceledException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, nameof(SynchronousRequestThatTheQueueRefusesIsAnsweredWithoutAnException))).Exception);
     }
 
     [TestMethod]
@@ -201,6 +203,7 @@ public sealed class DispatcherOperationTests
 
         Assert.IsFalse(DispatcherOperation.TryInvoke(queue, () => ran = true, protocol.Token, out _));
         Assert.IsFalse(ran);
+        Assert.IsInstanceOfType<DispatcherCanceledException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, nameof(SynchronousRequestOfACancelledProtocolIsAnsweredWithoutAnException))).Exception);
     }
 
     [TestMethod]
@@ -212,16 +215,46 @@ public sealed class DispatcherOperationTests
     }
 
     [TestMethod]
-    [DataRow(typeof(TimeoutException), true)]
-    [DataRow(typeof(OperationCanceledException), true)]
-    [DataRow(typeof(TaskCanceledException), true)]
-    [DataRow(typeof(InvalidOperationException), false)]
-    [DataRow(typeof(COMException), false)]
-    public void GivingUpIsToldApartFromAFailure(Type exceptionType, bool unanswered)
+    [DataRow(typeof(TimeoutException))]
+    [DataRow(typeof(OperationCanceledException))]
+    [DataRow(typeof(TaskCanceledException))]
+    public async Task CallbackThatThrowsWhatGivingUpThrowsHasFailedAndDidNotGiveUp(Type exceptionType)
+    {
+        string request = $"{nameof(CallbackThatThrowsWhatGivingUpThrowsHasFailedAndDidNotGiveUp)} {exceptionType.Name}";
+        var failure = (Exception)Activator.CreateInstance(exceptionType)!;
+        var time = new ManualTimeProvider();
+        var queue = new DispatcherQueue(action => { action(); return true; });
+
+        // A synchronous observer gets the exception of the callback, like any other: it is no answer without the UI thread.
+        Exception observed = Assert.Throws<Exception>(() => DispatcherOperation.TryInvoke<int>(queue, request, () => throw failure, DispatcherOperation.InteractiveTimeout, time, default, out _));
+        Assert.AreSame(failure, observed);
+        Assert.IsFalse(DispatcherOperation.IsUnanswered(observed));
+
+        // A step that fails like this has failed: the load of the prepared XAML falls back to construction actions then.
+        Exception failed = await Assert.ThrowsAsync<Exception>(() => Promptly(DispatcherOperation.RunAsync<int>(queue, request, () => throw failure, time, default)));
+        Assert.AreSame(failure, failed);
+        Assert.IsFalse(DispatcherOperation.IsUnanswered(failed));
+        Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.GaveUp, request));
+    }
+
+    [TestMethod]
+    [DataRow(typeof(TimeoutException))]
+    [DataRow(typeof(OperationCanceledException))]
+    [DataRow(typeof(TaskCanceledException))]
+    [DataRow(typeof(InvalidOperationException))]
+    [DataRow(typeof(COMException))]
+    public void FailureIsToldApartFromGivingUp(Type exceptionType)
     {
         var exception = (Exception)Activator.CreateInstance(exceptionType)!;
 
-        Assert.AreEqual(unanswered, DispatcherOperation.IsUnanswered(exception));
+        Assert.IsFalse(DispatcherOperation.IsUnanswered(exception));
+    }
+
+    [TestMethod]
+    public void ExceptionsOfGivingUpAreUnanswered()
+    {
+        Assert.IsTrue(DispatcherOperation.IsUnanswered(new DispatcherTimeoutException("The time limit passed.")));
+        Assert.IsTrue(DispatcherOperation.IsUnanswered(new DispatcherCanceledException("The protocol has ended.")));
     }
 
     [TestMethod]

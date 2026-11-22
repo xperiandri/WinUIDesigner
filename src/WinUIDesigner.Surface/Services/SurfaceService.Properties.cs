@@ -142,7 +142,7 @@ internal sealed partial class SurfaceService
                 return response;
             }, _protocolHandler.CancellationToken, out state))
             {
-                // The UI thread did not take the request in time. The document did not fail: answer without properties.
+                // The UI thread did not answer in time. The document did not fail: answer without properties.
                 state = new LiveObjectState
                 {
                     Properties = [],
@@ -426,7 +426,7 @@ internal sealed partial class SurfaceService
             },
             _protocolHandler.CancellationToken, out var value))
             {
-                // The UI thread did not take the request in time. The document did not fail: answer without a value.
+                // The UI thread did not answer in time. The document did not fail: answer without a value.
                 value = new LiveValue();
             }
 
@@ -463,7 +463,7 @@ internal sealed partial class SurfaceService
                 return _serializer.Serialize(XamlRuntimeUtilities.GetUnderlyingValue(target, request.Property));
             }, _protocolHandler.CancellationToken, out var value))
             {
-                // The UI thread did not take the request in time. The document did not fail: answer without a value.
+                // The UI thread did not answer in time. The document did not fail: answer without a value.
                 value = new LiveValue();
             }
 
@@ -503,7 +503,7 @@ internal sealed partial class SurfaceService
         {
             if (!DispatcherOperation.TryInvoke(_dispatcherQueue, () => ExecuteLookupActions(request, _serializer), _protocolHandler.CancellationToken, out var value))
             {
-                // The UI thread did not take the request in time. The document did not fail: answer without a value.
+                // The UI thread did not answer in time. The document did not fail: answer without a value.
                 value = new LiveValue();
             }
 
@@ -541,7 +541,7 @@ internal sealed partial class SurfaceService
 
         try
         {
-            // When the UI thread does not take the request in time, the document did not fail: answer without a value.
+            // When the UI thread does not answer in time, the document did not fail: answer without a value.
             return DispatcherOperation.TryInvoke(_dispatcherQueue, () => _serializer.Serialize(XamlRuntimeUtilities.ResolveMember(request.MemberName)), _protocolHandler.CancellationToken, out var value)
                 ? value
                 : new LiveValue();
