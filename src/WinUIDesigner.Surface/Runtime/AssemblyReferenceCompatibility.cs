@@ -51,10 +51,12 @@ internal enum ReferenceResolution
 /// <remarks>
 /// The surface carries its own copies of many assemblies, such as <c>Microsoft.Windows.SDK.NET</c>, the projection
 /// of the Windows SDK. The runtime binds a reference to one of these names only to the surface's copy, and only when
-/// that copy is not older than the referenced version: it does not bind the reference to an older copy, and it cannot
-/// load the project's newer copy beside the surface's (<c>0x80131040</c>, "the located assembly's manifest definition
-/// does not match the assembly reference"). The project's assemblies still load, but their code that needs such a
-/// reference fails, and so does the XAML metadata provider of an assembly whose type table names one of its types.
+/// that copy is not older than the referenced version: it does not bind the reference to an older copy
+/// (<see cref="System.IO.FileNotFoundException"/>, <c>0x80070002</c>), and it cannot load the project's newer copy
+/// beside the surface's (<see cref="System.IO.FileLoadException"/>; its HRESULT depends on the runtime, for example
+/// <c>0x80131040</c>, "the located assembly's manifest definition does not match the assembly reference", on .NET 10).
+/// The project's assemblies still load, but their code that needs such a reference fails, and so does the XAML
+/// metadata provider of an assembly whose type table names one of its types.
 /// The surface therefore serves a newer reference to the projection of a WinRT component with its own, older copy
 /// (<see cref="Resolve"/>): a newer projection only adds types and members, so only the code that uses one of them
 /// fails.

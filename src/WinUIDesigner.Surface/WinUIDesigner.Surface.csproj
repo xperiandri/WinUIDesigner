@@ -9,8 +9,10 @@
 			The surface loads the assemblies of the previewed project into its own process. The runtime binds a
 			project's reference to Microsoft.Windows.SDK.NET (the projection of the Windows SDK) only to the surface's
 			own copy, and only when the assembly version of that copy is not older than the referenced one: it does not
-			bind the reference to an older copy ("The located assembly's manifest definition does not match the
-			assembly reference", 0x80131040). The surface then serves the reference with its own copy
+			bind the reference to an older copy (FileNotFoundException, 0x80070002), and it cannot load the project's
+			newer copy beside its own (FileLoadException; its HRESULT depends on the runtime, for example 0x80131040,
+			"The located assembly's manifest definition does not match the assembly reference", on .NET 10). The
+			surface then serves the reference with its own copy
 			(ProjectRuntimeResolver.ServeNewerProjectionReferences), and the project's code that uses a type or member
 			that only the newer projection has fails. A newer projection contains the older ones, so the surface carries
 			a recent one; the platform version it targets and the Windows version it supports stay as they are.
@@ -28,12 +30,15 @@
 			The surface carries its own Microsoft.Web.WebView2.Core.Projection, the projection of the WebView2 SDK, under
 			the same rule. The Windows App SDK asks only for WebView2 SDK 1.0.3719.77, while an app can use a newer one,
 			and central package management with transitive pinning does that for a whole solution. A library whose XAML
-			uses the WebView2 control names CoreWebView2 in the type table of its XAML metadata provider. With an older
-			copy, that provider fails for every type it is asked for once its type table names a type that only the
-			newer version has, and other code fails when it uses such a type or member. The projection of 1.0.3967.48
-			references the same WinRT.Runtime 2.1, Windows SDK projection 10.0.17763 and System.* 8.0 assemblies as the
-			one of 1.0.3719.77, so both surfaces carry it; the native Microsoft.Web.WebView2.Core.dll comes from the same
-			package. The build fails when the projection it resolves is older than this version.
+			uses the WebView2 control names CoreWebView2, which both versions have, in the type table of its XAML metadata
+			provider. A reference to a newer version than the surface carries is served by the surface's copy
+			(ProjectRuntimeResolver.ServeNewerProjectionReferences), so such a provider fails only for a type that exists
+			in the newer projection alone, and other code fails only when it uses such a type or member. Carrying
+			1.0.3967.48, the version that an app had pinned when this showed, closes the gap between that app and the
+			surface. The projection of 1.0.3967.48 references the same WinRT.Runtime 2.1, Windows SDK projection
+			10.0.17763 and System.* 8.0 assemblies as the one of 1.0.3719.77, so both surfaces carry it; the native
+			Microsoft.Web.WebView2.Core.dll comes from the same package. The build fails when the projection it resolves
+			is older than this version.
 		-->
 		<WinUIDesignerWebView2Version>1.0.3967.48</WinUIDesignerWebView2Version>
 		<OutputType>Exe</OutputType>
