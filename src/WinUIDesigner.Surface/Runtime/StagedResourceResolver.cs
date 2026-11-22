@@ -330,6 +330,7 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
     {
         lock (_reported)
         {
+            // Written before.
             if (!_reported.Add(key))
             {
                 return;

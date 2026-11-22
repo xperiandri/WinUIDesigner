@@ -40,11 +40,13 @@ internal static class MissingImagePlaceholder
     /// </summary>
     public static bool IsImage(string name)
     {
+        // Only a file of the application can be an image.
         if (!StagedResourceLookup.IsFileResource(name))
         {
             return false;
         }
 
+        // An extension of a format that WinUI decodes.
         ReadOnlySpan<char> extension = Path.GetExtension(name.AsSpan());
         foreach (string imageExtension in _ImageExtensions)
         {
@@ -54,6 +56,7 @@ internal static class MissingImagePlaceholder
             }
         }
 
+        // Any other extension, or none: XBF, XAML and RESW files among them.
         return false;
     }
 

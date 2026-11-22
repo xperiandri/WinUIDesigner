@@ -38,6 +38,8 @@ public sealed class StagedResourceLookupTests
     [DataRow("")]
     public void NamesOfOtherResourcesNameNoFile(string name) => Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
 
+    // Parent and current folders, also escaped and also when the path would stay below the root; escaped separators; empty
+    // segments; rooted segments; a stream; characters that no file name has.
     [TestMethod]
     [DataRow("Files/../outside.png")]
     [DataRow("Files/Assets/../../outside.png")]
@@ -57,12 +59,7 @@ public sealed class StagedResourceLookupTests
     [DataRow("Files/logo%3F.png")]
     [DataRow("Files/logo*.png")]
     [DataRow("Files/logo%00.png")]
-    public void NamesThatLeaveTheRootOrNameNoFileAreRefused(string name)
-    {
-        // Parent and current folders, also escaped and also when the path would stay below the root; escaped
-        // separators; empty segments; rooted segments; a stream; characters that no file name has.
-        Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
-    }
+    public void NamesThatLeaveTheRootOrNameNoFileAreRefused(string name) => Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
 
     // The AppX folder in other case, with an escaped letter, and with a trailing dot that Windows drops from the segment.
     [TestMethod]
@@ -175,6 +172,8 @@ public sealed class StagedResourceLookupTests
     [DataRow("files/Themes/Generic.Xaml")]
     public void CompiledAndPlainXamlIsMarkup(string name) => Assert.IsTrue(StagedResourceLookup.IsMarkup(name));
 
+    // An image, a RESW file, an image whose name contains .xbf, a file without an extension, and names that are no file
+    // resources.
     [TestMethod]
     [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]
     [DataRow("Files/Strings/en-US/Resources.resw")]
@@ -182,12 +181,7 @@ public sealed class StagedResourceLookupTests
     [DataRow("Files/Ecierge.Uno.Controls/xbf")]
     [DataRow("Ecierge.Uno.Controls/Styles.xbf")]
     [DataRow("Resources/Styles.xaml")]
-    public void OtherResourcesAreNoMarkup(string name)
-    {
-        // An image, a RESW file, an image whose name contains .xbf, a file without an extension, and names that are no
-        // file resources.
-        Assert.IsFalse(StagedResourceLookup.IsMarkup(name));
-    }
+    public void OtherResourcesAreNoMarkup(string name) => Assert.IsFalse(StagedResourceLookup.IsMarkup(name));
 
     [TestMethod]
     [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", "ms-appx:///Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]

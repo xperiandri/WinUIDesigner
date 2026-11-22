@@ -43,6 +43,7 @@ public sealed class MissingImagePlaceholderTests
     [DataRow("Files/Assets/logo.SVG")]
     public void ImagesAreRecognizedInAnyCase(string name) => Assert.IsTrue(MissingImagePlaceholder.IsImage(name));
 
+    // XBF, XAML and RESW files, a file without an extension, and names that are no file resources.
     [TestMethod]
     [DataRow("Files/Ecierge.Uno.Controls/Styles.xbf")]
     [DataRow("Files/Ecierge.Uno.Controls/Styles.xaml")]
@@ -51,11 +52,7 @@ public sealed class MissingImagePlaceholderTests
     [DataRow("Files/Assets/logo.png.xbf")]
     [DataRow("Assets/logo.png")]
     [DataRow("Resources/logo.png")]
-    public void OtherResourcesAreNoImages(string name)
-    {
-        // XBF, XAML and RESW files, a file without an extension, and names that are no file resources.
-        Assert.IsFalse(MissingImagePlaceholder.IsImage(name));
-    }
+    public void OtherResourcesAreNoImages(string name) => Assert.IsFalse(MissingImagePlaceholder.IsImage(name));
 
     [TestMethod]
     [DataRow("Files/Assets/Images/svg/theme-dark/ecierge_waves_logo.svg", "missing-image.svg")]
