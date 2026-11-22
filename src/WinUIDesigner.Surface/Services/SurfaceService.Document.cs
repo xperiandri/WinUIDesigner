@@ -120,10 +120,12 @@ internal sealed partial class SurfaceService
                     surface.SetRequestedTheme(_appRequestedTheme);
                 }
 
-                // App.xaml is rebuilt for every surface; only a theme that it changed moves the references.
+                // App.xaml is rebuilt for every surface, and only a theme that it changed moves the references. They are evaluated
+                // again after the rebuild, by the pass of the creation of the surface: now Application.Resources lacks the
+                // dictionary of App.xaml, so a pass would give a key that App.xaml overrides the value that the framework defines.
                 if (_appRequestedTheme != previousAppRequestedTheme)
                 {
-                    ReapplyThemeReferences("a new RequestedTheme of the application");
+                    _themeReferencesNeedReapply = true;
                 }
 
                 return true;
