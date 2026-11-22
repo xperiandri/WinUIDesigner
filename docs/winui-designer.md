@@ -148,7 +148,11 @@ Prepared XAML that reaches the reader unchanged is therefore loaded correctly al
 
 #### Conditional namespaces
 
+Not implemented yet: the policy leaves every conditional prefix as written.
+
 #### Uno platform prefixes
+
+Not implemented yet: the policy leaves every platform prefix as written.
 
 ## Embedding the surface
 
