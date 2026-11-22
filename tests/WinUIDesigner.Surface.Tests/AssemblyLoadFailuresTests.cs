@@ -1,6 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
@@ -9,6 +10,8 @@ public sealed class AssemblyLoadFailuresTests
 {
     // FUSION_E_REF_DEF_MISMATCH: "the located assembly's manifest definition does not match the assembly reference".
     private const int _RefDefMismatch = unchecked((int)0x80131040);
+
+    private const string _WebView2Projection = "Microsoft.Web.WebView2.Core.Projection, Version=1.0.3967.48, Culture=neutral, PublicKeyToken=null";
 
     [TestMethod]
     [DataRow("Contoso.Resources, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null")]
@@ -69,5 +72,45 @@ public sealed class AssemblyLoadFailuresTests
     public void AFailureThatNamesNoFileIsDescribedByItsHResult()
     {
         Assert.AreEqual("TypeLoadException 0x80131522: Missing type.", AssemblyLoadFailures.Describe(new TypeLoadException("Missing type.")));
+    }
+
+    [TestMethod]
+    public void TheCauseOfAFailureNamesTheAssemblyThatCouldNotBeLoaded()
+    {
+        // As a provider's constructor reports it: the failure to load inside the exception of the invocation.
+        var exception = new TargetInvocationException(new FileLoadException(string.Empty, _WebView2Projection) { HResult = _RefDefMismatch });
+
+        Assert.AreEqual(
+            $"The assembly '{_WebView2Projection}' could not be loaded (FileLoadException 0x80131040).",
+            AssemblyLoadFailures.DescribeCause(exception)
+        );
+    }
+
+    [TestMethod]
+    public void TheCauseOfAnotherFailureIsTheExceptionItself()
+    {
+        Assert.AreEqual(
+            "It failed with InvalidOperationException 0x80131509.",
+            AssemblyLoadFailures.DescribeCause(new InvalidOperationException("The type table is broken."))
+        );
+    }
+
+    [TestMethod]
+    public void FailuresWithTheSameCauseHaveTheSameKeyWhateverTheirMessage()
+    {
+        string key = AssemblyLoadFailures.GetCauseKey(new FileLoadException(string.Empty, _WebView2Projection) { HResult = _RefDefMismatch });
+
+        Assert.AreEqual(key, AssemblyLoadFailures.GetCauseKey(new FileLoadException("Could not load file or assembly.", _WebView2Projection) { HResult = _RefDefMismatch }));
+        Assert.AreEqual(key, AssemblyLoadFailures.GetCauseKey(new TargetInvocationException(new FileLoadException(string.Empty, _WebView2Projection) { HResult = _RefDefMismatch })));
+    }
+
+    [TestMethod]
+    public void FailuresWithAnotherAssemblyOrHResultHaveAnotherKey()
+    {
+        string key = AssemblyLoadFailures.GetCauseKey(new FileLoadException(string.Empty, _WebView2Projection) { HResult = _RefDefMismatch });
+
+        Assert.AreNotEqual(key, AssemblyLoadFailures.GetCauseKey(new FileLoadException(string.Empty, "Microsoft.Windows.SDK.NET, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null") { HResult = _RefDefMismatch }));
+        Assert.AreNotEqual(key, AssemblyLoadFailures.GetCauseKey(new FileLoadException(string.Empty, _WebView2Projection)));
+        Assert.AreNotEqual(key, AssemblyLoadFailures.GetCauseKey(new FileNotFoundException(string.Empty, _WebView2Projection)));
     }
 }

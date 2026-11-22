@@ -283,7 +283,7 @@ internal static class ProjectRuntimeResolver
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
-                    ReportFailureOnce($"type|{provider.GetType().FullName}|{ex.GetType().FullName}|{ex.Message}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to describe the type '{name}'.", ex);
+                    ReportFailureOnce($"type|{provider.GetType().FullName}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to describe the type '{name}', and the designer cannot use the types that it fails to describe.", ex);
                 }
             }
 
@@ -308,24 +308,28 @@ internal static class ProjectRuntimeResolver
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                ReportFailureOnce($"xmlns|{provider.GetType().FullName}|{ex.GetType().FullName}|{ex.Message}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to list its XML namespaces.", ex);
+                ReportFailureOnce($"xmlns|{provider.GetType().FullName}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to list its XML namespaces, so the designer does not know them.", ex);
             }
         }
 
         return [.. definitions];
     }
 
-    private static void ReportFailureOnce(string key, string message, Exception exception)
+    // A failure is known by what failed (the situation and the provider) and by its cause: the type, the HRESULT and the
+    // file name of the exception (AssemblyLoadFailures.GetCauseKey). Not by its message, which is empty in the
+    // single-file surface, and not by the type XAML asked for: a provider that cannot load an assembly fails in the
+    // same way for every type that needs it.
+    private static void ReportFailureOnce(string situation, string message, Exception exception)
     {
         lock (_ReportedFailures)
         {
-            if (!_ReportedFailures.Add(key))
+            if (!_ReportedFailures.Add($"{situation}|{AssemblyLoadFailures.GetCauseKey(exception)}"))
             {
                 return;
             }
         }
 
-        WinUIDesignerLogger.LogWarning("Surface", message, exception);
+        WinUIDesignerLogger.LogWarning("Surface", $"{message} {AssemblyLoadFailures.DescribeCause(exception)} Later failures with the same cause are not logged.", exception);
     }
 
     private static void ReportServedOnce(AssemblyName reference, Assembly surfaceCopy)

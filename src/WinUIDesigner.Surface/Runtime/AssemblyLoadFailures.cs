@@ -82,6 +82,51 @@ internal static class AssemblyLoadFailures
         return string.IsNullOrEmpty(exception.Message) ? description : $"{description}: {exception.Message}";
     }
 
+    /// <summary>
+    /// Describes the cause of a failure in one sentence for a warning: the assembly or the type that could not be
+    /// loaded, or else the exception, with its HRESULT.
+    /// </summary>
+    public static string DescribeCause(Exception exception)
+    {
+        Exception cause = FindCause(exception);
+        string failure = $"{cause.GetType().Name} 0x{cause.HResult:X8}";
+        return GetSubject(cause) switch
+        {
+            // A type that could not be loaded.
+            { } typeName when cause is TypeLoadException => $"The type '{typeName}' could not be loaded ({failure}).",
+            // An assembly that could not be found or loaded.
+            { } assembly => $"The assembly '{assembly}' could not be loaded ({failure}).",
+            // Any other failure.
+            null => $"It failed with {failure}.",
+        };
+    }
+
+    /// <summary>
+    /// Returns a key that is the same for the failures with the same cause: the type of the exception that names the
+    /// assembly or the type that could not be loaded, or else of the exception itself, its HRESULT and that name. The
+    /// message is left out, because it is empty in the single-file surface and names nothing else.
+    /// </summary>
+    public static string GetCauseKey(Exception exception)
+    {
+        Exception cause = FindCause(exception);
+        return FormattableString.Invariant($"{cause.GetType().FullName}|0x{cause.HResult:X8}|{GetSubject(cause)}");
+    }
+
+    // The outermost exception that names what could not be loaded, such as the FileLoadException inside the
+    // TargetInvocationException of a constructor, or the exception itself when none does.
+    private static Exception FindCause(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (GetSubject(current) is not null)
+            {
+                return current;
+            }
+        }
+
+        return exception;
+    }
+
     // The assembly, by its display name or its path, or the type that could not be loaded, when the exception names it.
     private static string? GetSubject(Exception exception)
     {
