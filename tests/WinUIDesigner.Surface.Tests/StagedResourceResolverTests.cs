@@ -546,13 +546,28 @@ public sealed class StagedResourceResolverTests
     [TestMethod]
     public void RequestsFromSeveralThreadsWriteAndReportOnce()
     {
-        var host = new FakeHost("resources.pri");
+        // Writing the placeholder takes a while, so that the threads that ask for the same image meet there.
+        var host = new FakeHost("resources.pri") { PlaceholderWriteTime = TimeSpan.FromMilliseconds(20) };
         var resolver = new StagedResourceResolver<Candidate>(_Root, host);
 
         Parallel.For(0, 64, _ => Assert.IsNotNull(resolver.Resolve("Files/Assets/logo.png", _NoQualifiers)));
 
         Assert.ContainsSingle(host.Placeholders);
         Assert.ContainsSingle(host.Lines);
+    }
+
+    [TestMethod]
+    public void RequestsForManyNamesFromSeveralThreadsAreReportedOncePerName()
+    {
+        var host = new FakeHost();
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        // 4000 images, each asked for ten times, by threads that run at the same time. There is no PRI file to ask, so
+        // nothing holds the threads back before they meet at the remembered misses and the lines that are written.
+        Parallel.For(0, 40000, index => Assert.IsNotNull(resolver.Resolve($"Files/Assets/image{index % 4000}.png", _NoQualifiers)));
+
+        Assert.HasCount(4000, host.Lines);
+        Assert.ContainsSingle(host.Placeholders);
     }
 
     // What a lookup in a PRI file gives. The surface has a MRT Core candidate in its place.
@@ -579,6 +594,9 @@ public sealed class StagedResourceResolverTests
         public Exception? DescribeFailure { get; init; }
 
         public Exception? LogFailure { get; init; }
+
+        // How long writing a placeholder takes.
+        public TimeSpan PlaceholderWriteTime { get; init; }
 
         // The files that exist.
         public HashSet<string> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -649,6 +667,7 @@ public sealed class StagedResourceResolverTests
 
         public string WritePlaceholder(string name)
         {
+            Thread.Sleep(PlaceholderWriteTime);
             lock (_gate)
             {
                 Placeholders.Add(name);
