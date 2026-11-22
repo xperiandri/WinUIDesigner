@@ -20,8 +20,11 @@ namespace WinUIDesigner.Markup;
 /// name the renderer (<c>skia</c>, <c>androidskia</c>) and the reference build of a library (<c>netstdref</c>).
 /// </para>
 /// <para>
-/// The previewed platform is one of the target names of the table below. Previewing another platform is a
-/// matter of passing another target; nothing else has to change.
+/// The previewed platform is one of the target names of the table below. The classification is the same for every
+/// target, but only prepared XAML can show a target other than Windows: the document model that construction actions
+/// are generated from has no nodes for the members of an ignorable Uno namespace (<c>android:Text</c>,
+/// <c>&lt;not_win:Border&gt;</c>), and the action path can only drop properties. Another target would therefore also
+/// have to keep every document on the prepared-XAML route, with the second cleaning that keeps the raw elements.
 /// </para>
 /// </remarks>
 internal static class UnoPlatformPrefixes

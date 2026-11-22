@@ -152,7 +152,7 @@ Not implemented yet: the policy leaves every conditional prefix as written.
 
 #### Uno platform prefixes
 
-[Uno Platform markup](https://platform.uno/docs/articles/platform-specific-xaml.html) assigns a member to a platform through the prefix it is written under. The designer previews the Windows build of such markup, which is what the Windows XAML compiler makes of it. The previewed platform is one value, the target `win`, set in the surface and in the instance manager; previewing another platform means passing another target.
+[Uno Platform markup](https://platform.uno/docs/articles/platform-specific-xaml.html) assigns a member to a platform through the prefix it is written under. The designer previews the Windows build of such markup, which is what the Windows XAML compiler makes of it. The previewed platform is one value, the target `win`, set in the surface and in the instance manager. The classification is the same for every target, but previewing another platform also needs the prepared-XAML route described below, because the document model that construction actions are generated from has no nodes for the members of an ignorable Uno namespace.
 
 | Prefix | Documented namespace | On Windows |
 | --- | --- | --- |
@@ -182,7 +182,7 @@ The alternative keeps the prepared XAML: the document is cleaned a second time w
 
 Limitations:
 
-- Only the Windows target can be previewed.
+- Only the Windows target can be previewed. Another target would also need every document on the prepared-XAML route, which only the second cleaning provides and which is off by default.
 - Uno treats the namespace of an excluded prefix as arbitrary. An object element under such a prefix is only recognized when the namespace is an Uno one; with another namespace, such as `http://nventive.com/android`, its stand-in stays. Attributes and property elements are handled with any namespace.
 - A platform prefix that is missing from `mc:Ignorable` is dropped from prepared XAML, but its object elements are nodes of an unknown type in the document model and appear as such when the document is built from construction actions.
 

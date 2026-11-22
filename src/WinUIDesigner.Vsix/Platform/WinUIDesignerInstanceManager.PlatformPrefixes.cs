@@ -37,8 +37,9 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// </summary>
     private Task PreparePlatformPrefixesAsync(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
     {
-        // The designer previews the Windows flavor of the markup. Previewing another platform means setting
-        // another target here and in the surface; the policies themselves do not change.
+        // The designer previews the Windows flavor of the markup. The classification is the same for every target,
+        // but another target would also have to keep every document on the prepared-XAML route (the second
+        // cleaning): construction actions have no nodes for the members of an ignorable Uno namespace.
         _memberDispositions.TargetPlatform = UnoPlatformPrefixes.DefaultTargetPlatform;
 
         // The request can carry App.xaml and the design-time resources as well; they were not necessarily

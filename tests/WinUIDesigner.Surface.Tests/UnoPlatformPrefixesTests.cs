@@ -154,7 +154,7 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("netstdref", "netstdref")]
     // A target the table does not know, like a plain netX.0 library, sees no positive prefix at all.
     [DataRow("net9.0", "")]
-    public void PreviewingAnotherPlatformIsAMatterOfTheTarget(string target, string included)
+    public void EveryTargetIncludesItsDocumentedPrefixesAndExcludesTheirNegations(string target, string included)
     {
         string[] expected = included.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         foreach (string prefix in _PositivePrefixes)
