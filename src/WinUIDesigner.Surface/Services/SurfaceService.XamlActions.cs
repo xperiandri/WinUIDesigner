@@ -20,6 +20,7 @@ internal sealed partial class SurfaceService
     private readonly ResourceScopeService _resourceScopes;
     private readonly Dictionary<long, object?> _actionObjects = [];
     private readonly Dictionary<long, object?> _trackedActionObjects = [];
+    private readonly ConstructionFallbacks _constructionFallbacks = new();
 
     private ResponseWithError HandleExecuteActions(ExecuteXamlActionsRequestInfo request)
     {
@@ -46,6 +47,7 @@ internal sealed partial class SurfaceService
         {
             var actions = XamlActionJsonSerializer.Deserialize(request.Actions ?? []);
             var documentId = 0;
+            _constructionFallbacks.Clear();
 
             foreach (XamlAction action in actions)
             {
@@ -85,7 +87,9 @@ internal sealed partial class SurfaceService
 
             return new ResponseWithError()
             {
-                HResult = 0
+                HResult = 0,
+                // Objects that their fallbacks replaced: Visual Studio shows why on their elements, and keeps the edit.
+                Error = _constructionFallbacks.TakeErrors(),
             };
         }
         catch (Exception ex)
@@ -138,6 +142,7 @@ internal sealed partial class SurfaceService
     private object BuildDocument(CreateDocumentInfo document)
     {
         using var scope = _objectIdentity.EnterDocument(document.DocumentId);
+        _constructionFallbacks.Clear();
 
         object? root = null;
         var deferredSetterInsertions = new List<DeferredSetterInsertion>();
@@ -187,6 +192,12 @@ internal sealed partial class SurfaceService
             }
         }
 
+        // Objects that their fallbacks replaced: Visual Studio shows why on their elements.
+        if (_constructionFallbacks.TakeErrors() is { } fallbackErrors)
+        {
+            _protocolHandler.PostMessage((int)DesignerMessageId.InstanceBuildingErrors, new InstanceBuildingErrors { DocumentId = document.DocumentId, Errors = fallbackErrors });
+        }
+
         return root ?? throw new InvalidOperationException($"No root was constructed for document {document.DocumentId}.");
     }
 
@@ -216,6 +227,27 @@ internal sealed partial class SurfaceService
                 _trackedActionObjects.Remove(key);
             }
         }
+    }
+
+    /// <summary>
+    /// Builds <paramref name="runtimeType"/> the way <paramref name="create"/> asks for it.
+    /// </summary>
+    private object? ConstructInstance(CreateInstanceAction create, Type runtimeType)
+    {
+        // A static factory method (x:FactoryMethod).
+        if (!string.IsNullOrWhiteSpace(create.FactoryMethod))
+        {
+            return XamlRuntimeUtilities.InvokeFactory(runtimeType, create.FactoryMethod, create.ArgumentTypes, create.ArgumentHandles, ResolveObject);
+        }
+
+        // A constructor with arguments (x:Arguments).
+        if (create.ArgumentHandles is { Length: > 0 })
+        {
+            return XamlRuntimeUtilities.CreateInstance(runtimeType, create.ArgumentTypes, create.ArgumentHandles, ResolveObject);
+        }
+
+        // The parameterless constructor.
+        return Activator.CreateInstance(runtimeType);
     }
 
     private void Execute(
@@ -249,7 +281,9 @@ internal sealed partial class SurfaceService
                 break;
             case CreateInstanceAction create:
                 {
-                    Type? runtimeType = XamlRuntimeUtilities.ResolveType(create.TypeName) ?? XamlRuntimeUtilities.ResolveType(create.FallbackTypeName);
+                    Type? namedType = XamlRuntimeUtilities.ResolveType(create.TypeName);
+                    Type? fallbackType = XamlRuntimeUtilities.ResolveType(create.FallbackTypeName);
+                    Type? runtimeType = namedType ?? fallbackType;
                     if (runtimeType is null)
                     {
                         throw new TypeLoadException($"Unable to resolve '{create.TypeName}' (fallback '{create.FallbackTypeName}').");
@@ -262,17 +296,23 @@ internal sealed partial class SurfaceService
                         // target this instance without running the user's application startup.
                         instance = Application.Current;
                     }
-                    else if (!string.IsNullOrWhiteSpace(create.FactoryMethod))
-                    {
-                        instance = XamlRuntimeUtilities.InvokeFactory(runtimeType, create.FactoryMethod, create.ArgumentTypes, create.ArgumentHandles, ResolveObject);
-                    }
-                    else if (create.ArgumentHandles is { Length: > 0 })
-                    {
-                        instance = XamlRuntimeUtilities.CreateInstance(runtimeType, create.ArgumentTypes, create.ArgumentHandles, ResolveObject);
-                    }
                     else
                     {
-                        instance = Activator.CreateInstance(runtimeType);
+                        // The code of a type of the project can fail, for example when its InitializeComponent cannot
+                        // load its XAML: the fallback that Visual Studio names for the type then takes its place, as
+                        // it does for a type that does not resolve.
+                        Func<object?>? constructFallback = namedType is not null && fallbackType is not null
+                            ? () => Activator.CreateInstance(fallbackType)
+                            : null;
+                        (instance, Exception? constructionFailure) = _constructionFallbacks.Construct(
+                            create,
+                            () => ConstructInstance(create, runtimeType),
+                            constructFallback
+                        );
+                        if (constructionFailure is not null)
+                        {
+                            WinUIDesignerLogger.LogWarning("Surface", $"Constructing '{create.TypeName}' failed; its fallback '{create.FallbackTypeName}' takes its place.", constructionFailure);
+                        }
                     }
 
                     if (instance is null)
