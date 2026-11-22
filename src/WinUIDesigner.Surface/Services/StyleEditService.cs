@@ -32,7 +32,7 @@ namespace WinUIDesigner.Surface.Services;
 /// also keeps every object it is given alive until the process exits, so only edits that need it take this path.
 /// </para>
 /// </remarks>
-internal sealed class StyleEditService(Action requestDiagnosticsConnection)
+internal sealed class StyleEditService
 {
     private const string StyleSettersPropertyName = "Microsoft.UI.Xaml.Style.Setters";
     private const string VisualStateSettersPropertyName = "Microsoft.UI.Xaml.VisualState.Setters";
@@ -40,12 +40,32 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
     private const string VisualStateFallback = "the setters of a visual state change in the preview when the state is entered again or the designer is refreshed.";
     private const string DictionaryFallback = "references to a rebuilt or moved style keep the old style until the designer is refreshed, except the Style of elements, which moves to a rebuilt style.";
 
+    private readonly Action _requestDiagnosticsConnection;
     private readonly ConditionalWeakTable<SetterBaseCollection, DependencyObject> _setterCollectionOwners = new();
     private readonly ReplacedValueTracker _replacedValues = new();
+    private readonly ReferenceMover<FrameworkElement, Style> _elementStyles;
+    private readonly ReferenceMover<Style, Style> _basedOnStyles;
     private readonly DetachedKeyCounter _keysRemovedThroughDiagnostics = new();
     private readonly HashSet<string> _loggedProblems = [];
     private bool _nativeUnavailable;
     private int _detachedBuilds;
+
+    public StyleEditService(Action requestDiagnosticsConnection)
+    {
+        _requestDiagnosticsConnection = requestDiagnosticsConnection;
+        _elementStyles = new(
+            static element => element.ReadLocalValue(FrameworkElement.StyleProperty) as Style,
+            static (element, style) => StyleReplacementRules.CanStyle(style.TargetType, element),
+            static (element, style) => element.Style = style,
+            ReportMoveFailure
+        );
+        _basedOnStyles = new(
+            static style => style.BasedOn,
+            static (style, baseStyle) => StyleReplacementRules.CanBaseOn(style.TargetType, baseStyle.TargetType),
+            SetBasedOn,
+            ReportMoveFailure
+        );
+    }
 
     /// <summary>
     /// Marks the actions that build a new document or a lookup value, until the returned scope is disposed.
@@ -239,6 +259,11 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
     /// XAML Diagnostics nothing is re-resolved. This moves the Style of every element in <paramref name="roots"/>, and
     /// BasedOn of the styles in the same dictionary and in the application resources, that still refer to a replaced
     /// style. Visual Studio addresses the new style through its own new handles, so no handle has to move.
+    /// <para>
+    /// The edits of the batch are applied by then, so moving is best effort and does not fail the batch: a reference
+    /// that WinUI does not let take the new style, such as an element of a type that the rebuilt style no longer
+    /// targets, keeps the old one, as before the edit; a failure is logged once, and the other references still move.
+    /// </para>
     /// </remarks>
     public void CompleteBatch(IEnumerable<FrameworkElement> roots)
     {
@@ -256,14 +281,22 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
                 continue;
             }
 
-            foreach (FrameworkElement root in rootList)
+            try
             {
-                ReplaceElementStyles(root, oldStyle, newStyle);
-            }
+                foreach (FrameworkElement root in rootList)
+                {
+                    ReplaceElementStyles(root, oldStyle, newStyle);
+                }
 
-            var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-            ReplaceBasedOn((ResourceDictionary)dictionary, oldStyle, newStyle, visited);
-            ReplaceBasedOn(Application.Current.Resources, oldStyle, newStyle, visited);
+                var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
+                ReplaceBasedOn((ResourceDictionary)dictionary, oldStyle, newStyle, visited);
+                ReplaceBasedOn(Application.Current.Resources, oldStyle, newStyle, visited);
+            }
+            catch (Exception ex)
+            {
+                // The references to the other replaced styles of the batch still move.
+                ReportMoveFailure(ex);
+            }
         }
     }
 
@@ -316,7 +349,7 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
 
         if (hr == NativeMethods.E_PENDING)
         {
-            requestDiagnosticsConnection();
+            _requestDiagnosticsConnection();
             if (fallback is not null)
             {
                 LogOnce($"unavailable:{fallback}", $"XAML Diagnostics is not connected: {fallback}");
@@ -380,12 +413,20 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
         }
     }
 
-    private static void ReplaceElementStyles(DependencyObject element, Style oldStyle, Style newStyle)
+    // The cause of a StyleEditException is logged once already.
+    private void ReportMoveFailure(Exception ex)
     {
-        if (element is FrameworkElement frameworkElement
-            && ReferenceEquals(frameworkElement.ReadLocalValue(FrameworkElement.StyleProperty), oldStyle))
+        if (ex is not StyleEditException)
         {
-            frameworkElement.Style = newStyle;
+            LogOnce($"move:{ex.HResult:X8}", $"Could not move a reference to a rebuilt style: {ex.Message} {RefreshAdvice}");
+        }
+    }
+
+    private void ReplaceElementStyles(DependencyObject element, Style oldStyle, Style newStyle)
+    {
+        if (element is FrameworkElement frameworkElement)
+        {
+            _elementStyles.Move(frameworkElement, oldStyle, newStyle);
         }
 
         int childCount = VisualTreeHelper.GetChildrenCount(element);
@@ -397,36 +438,36 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
 
     private void ReplaceBasedOn(ResourceDictionary dictionary, Style oldStyle, Style newStyle, HashSet<ResourceDictionary> visited)
     {
-        // Enumerating a dictionary creates its deferred resources; the framework's control styles hold thousands
-        // and never refer to a project style.
-        if (dictionary is XamlControlsResources || !visited.Add(dictionary))
+        if (!StyleReplacementRules.SearchesDictionary(dictionary is XamlControlsResources, dictionary.Source) || !visited.Add(dictionary))
         {
             return;
         }
 
-        foreach (KeyValuePair<object, object> entry in dictionary)
-        {
-            if (entry.Value is not Style style || !ReferenceEquals(style.BasedOn, oldStyle))
-            {
-                continue;
-            }
-
-            try
-            {
-                if (!TrySetProperty(style, nameof(Style.BasedOn), newStyle))
-                {
-                    style.BasedOn = newStyle;
-                }
-            }
-            catch (StyleEditException)
-            {
-                // Already logged once; the remaining references can still move.
-            }
-        }
-
+        _basedOnStyles.MoveAll(StylesIn(dictionary), oldStyle, newStyle);
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
             ReplaceBasedOn(merged, oldStyle, newStyle, visited);
+        }
+    }
+
+    // A sealed style takes its new base through XAML Diagnostics, which also updates the elements that use it.
+    private void SetBasedOn(Style style, Style baseStyle)
+    {
+        if (!TrySetProperty(style, nameof(Style.BasedOn), baseStyle))
+        {
+            style.BasedOn = baseStyle;
+        }
+    }
+
+    // Enumerating a dictionary creates its deferred resources, and creating one can fail.
+    private static IEnumerable<Style> StylesIn(ResourceDictionary dictionary)
+    {
+        foreach (KeyValuePair<object, object> entry in dictionary)
+        {
+            if (entry.Value is Style style)
+            {
+                yield return style;
+            }
         }
     }
 

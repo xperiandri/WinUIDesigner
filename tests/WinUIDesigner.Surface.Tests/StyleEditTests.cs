@@ -8,6 +8,32 @@ public sealed class StyleEditTests
 {
     private sealed record Insertion(List<string> Collection, int Index, string Item);
 
+    private sealed class Holder(object? value, bool accepts = true, bool fails = false)
+    {
+        public object? Value { get; private set; } = value;
+
+        public bool Accepts { get; } = accepts;
+
+        public void Take(object newValue)
+        {
+            if (fails)
+            {
+                throw new InvalidOperationException("WinUI rejected the value.");
+            }
+
+            Value = newValue;
+        }
+    }
+
+    // Stand-ins for the control types that the TargetType rules compare.
+    private class Control { }
+
+    private class ButtonBase : Control { }
+
+    private sealed class Button : ButtonBase { }
+
+    private sealed class ToggleButton : ButtonBase { }
+
     [TestMethod]
     public void PendingInsertionsAreTakenPerCollectionInTheirOriginalOrder()
     {
@@ -169,6 +195,79 @@ public sealed class StyleEditTests
     }
 
     [TestMethod]
+    public void AReferenceThatCannotMoveKeepsTheOldValueAndTheOthersStillMove()
+    {
+        object oldValue = new();
+        object newValue = new();
+        object otherValue = new();
+        var moved = new Holder(oldValue);
+        var failing = new Holder(oldValue, fails: true);
+        var rejecting = new Holder(oldValue, accepts: false);
+        var unrelated = new Holder(otherValue);
+        var last = new Holder(oldValue);
+        var failures = new List<Exception>();
+
+        CreateMover(failures).MoveAll([moved, failing, rejecting, unrelated, last], oldValue, newValue);
+
+        Assert.AreSame(newValue, moved.Value);
+        Assert.AreSame(oldValue, failing.Value);
+        Assert.AreSame(oldValue, rejecting.Value, "A holder that WinUI would reject keeps the old value, without a failure.");
+        Assert.AreSame(otherValue, unrelated.Value);
+        Assert.AreSame(newValue, last.Value, "The holders after a failure still move.");
+        Assert.HasCount(1, failures);
+    }
+
+    [TestMethod]
+    public void HoldersThatCannotBeListedEndTheirListWithoutFailingTheMove()
+    {
+        object oldValue = new();
+        object newValue = new();
+        var first = new Holder(oldValue);
+        var failures = new List<Exception>();
+
+        IEnumerable<Holder> Holders()
+        {
+            yield return first;
+            throw new InvalidOperationException("A deferred resource could not be created.");
+        }
+
+        CreateMover(failures).MoveAll(Holders(), oldValue, newValue);
+
+        Assert.AreSame(newValue, first.Value);
+        Assert.HasCount(1, failures);
+    }
+
+    [TestMethod]
+    public void AnElementCanUseAStyleForItsTypeOrABaseType()
+    {
+        var button = new Button();
+
+        Assert.IsTrue(StyleReplacementRules.CanStyle(typeof(Button), button));
+        Assert.IsTrue(StyleReplacementRules.CanStyle(typeof(ButtonBase), button));
+        Assert.IsFalse(StyleReplacementRules.CanStyle(typeof(ToggleButton), button), "An element keeps its style when the rebuilt one targets another type.");
+        Assert.IsTrue(StyleReplacementRules.CanStyle(null, button), "WinUI decides about a style without a TargetType.");
+    }
+
+    [TestMethod]
+    public void AStyleCanBeBasedOnAStyleForItsTypeOrABaseType()
+    {
+        Assert.IsTrue(StyleReplacementRules.CanBaseOn(typeof(Button), typeof(Button)));
+        Assert.IsTrue(StyleReplacementRules.CanBaseOn(typeof(Button), typeof(Control)));
+        Assert.IsFalse(StyleReplacementRules.CanBaseOn(typeof(Button), typeof(ToggleButton)));
+        Assert.IsFalse(StyleReplacementRules.CanBaseOn(typeof(ButtonBase), typeof(Button)), "A base cannot target a derived type.");
+        Assert.IsTrue(StyleReplacementRules.CanBaseOn(null, typeof(Button)));
+        Assert.IsTrue(StyleReplacementRules.CanBaseOn(typeof(Button), null));
+    }
+
+    [TestMethod]
+    public void DerivedStylesAreNotSoughtInTheDictionariesOfOtherFiles()
+    {
+        Assert.IsTrue(StyleReplacementRules.SearchesDictionary(isFrameworkResources: false, source: null));
+        Assert.IsFalse(StyleReplacementRules.SearchesDictionary(isFrameworkResources: false, new Uri("ms-appx:///SampleLibrary/Themes/Generic.xaml")), "A library theme holds thousands of deferred resources.");
+        Assert.IsFalse(StyleReplacementRules.SearchesDictionary(isFrameworkResources: true, source: null));
+    }
+
+    [TestMethod]
     [DataRow("BasedOn:Microsoft.UI.Xaml.Style, Microsoft.WinUI, Version=3.0.0.0, Culture=neutral, PublicKeyToken=null", "Microsoft.UI.Xaml.Style.BasedOn")]
     [DataRow("Value:Microsoft.UI.Xaml.Setter", "Microsoft.UI.Xaml.Setter.Value")]
     [DataRow("Value", "Microsoft.UI.Xaml.Setter.Value")]
@@ -190,5 +289,15 @@ public sealed class StyleEditTests
     private static void Insert(Insertion insertion)
     {
         insertion.Collection.Insert(Math.Min(insertion.Index, insertion.Collection.Count), insertion.Item);
+    }
+
+    private static ReferenceMover<Holder, object> CreateMover(List<Exception> failures)
+    {
+        return new(
+            static holder => holder.Value,
+            static (holder, _) => holder.Accepts,
+            static (holder, value) => holder.Take(value),
+            failures.Add
+        );
     }
 }
