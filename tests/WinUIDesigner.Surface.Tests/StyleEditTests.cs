@@ -238,6 +238,25 @@ public sealed class StyleEditTests
     }
 
     [TestMethod]
+    public void TrackedHoldersMoveWhereverTheyAre()
+    {
+        object oldValue = new();
+        object newValue = new();
+        var tracked = new Holder(oldValue);
+        var untracked = new Holder(oldValue);
+        var unrelated = new Holder(new object());
+        var mover = CreateMover([]);
+        mover.Track(tracked);
+        mover.Track(unrelated);
+
+        mover.MoveTracked(oldValue, newValue);
+
+        Assert.AreSame(newValue, tracked.Value, "A BasedOn that an action set moves, in whatever dictionary its style is.");
+        Assert.AreSame(oldValue, untracked.Value, "The surface moves only the references it resolved itself.");
+        Assert.AreNotSame(newValue, unrelated.Value);
+    }
+
+    [TestMethod]
     public void AnElementCanUseAStyleForItsTypeOrABaseType()
     {
         var button = new Button();

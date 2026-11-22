@@ -36,6 +36,7 @@ internal sealed class StyleEditService
 {
     private const string StyleSettersPropertyName = "Microsoft.UI.Xaml.Style.Setters";
     private const string VisualStateSettersPropertyName = "Microsoft.UI.Xaml.VisualState.Setters";
+    private const string BasedOnPropertyName = "Microsoft.UI.Xaml.Style.BasedOn";
     private const string RefreshAdvice = "Refresh the designer to see the change.";
     private const string VisualStateFallback = "the setters of a visual state change in the preview when the state is entered again or the designer is refreshed.";
     private const string DictionaryFallback = "references to a rebuilt or moved style keep the old style until the designer is refreshed, except the Style of elements, which moves to a rebuilt style.";
@@ -171,6 +172,24 @@ internal sealed class StyleEditService
     }
 
     /// <summary>
+    /// Remembers a Style whose BasedOn an action set, so that <see cref="CompleteBatch"/> moves that reference when
+    /// Visual Studio rebuilds the base style.
+    /// </summary>
+    /// <remarks>
+    /// The surface resolves the <c>{StaticResource}</c> of an action itself, so the framework does not know the
+    /// reference and XAML Diagnostics does not move it. The style can be in any dictionary of a document, including a
+    /// theme dictionary or the resources of an element, or inline in an element.
+    /// </remarks>
+    public void TrackPropertySet(object target, string fullPropertyName)
+    {
+        if (target is Style style
+            && XamlDiagnosticsPropertyName.FromActionProperty(fullPropertyName, typeof(Style).FullName!) == BasedOnPropertyName)
+        {
+            _basedOnStyles.Track(style);
+        }
+    }
+
+    /// <summary>
     /// Removes a Style from a resource dictionary. Returns <see langword="false"/> when the public API applies the edit.
     /// </summary>
     /// <remarks>
@@ -256,9 +275,10 @@ internal sealed class StyleEditService
     /// <remarks>
     /// XAML Diagnostics re-resolves the <c>{StaticResource}</c> references that the XAML reader resolved, but the
     /// surface resolves those of construction actions itself, so the framework does not know them; without
-    /// XAML Diagnostics nothing is re-resolved. This moves the Style of every element in <paramref name="roots"/>, and
-    /// BasedOn of the styles in the same dictionary and in the application resources, that still refer to a replaced
-    /// style. Visual Studio addresses the new style through its own new handles, so no handle has to move.
+    /// XAML Diagnostics nothing is re-resolved. This moves what still refers to a replaced style: the Style of every
+    /// element in <paramref name="roots"/>, BasedOn of the styles in the same dictionary and in the application
+    /// resources, and BasedOn of every style that <see cref="TrackPropertySet"/> remembered, wherever that style is.
+    /// Visual Studio addresses the new style through its own new handles, so no handle has to move.
     /// <para>
     /// The edits of the batch are applied by then, so moving is best effort and does not fail the batch: a reference
     /// that WinUI does not let take the new style, such as an element of a type that the rebuilt style no longer
@@ -291,6 +311,7 @@ internal sealed class StyleEditService
                 var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
                 ReplaceBasedOn((ResourceDictionary)dictionary, oldStyle, newStyle, visited);
                 ReplaceBasedOn(Application.Current.Resources, oldStyle, newStyle, visited);
+                _basedOnStyles.MoveTracked(oldStyle, newStyle);
             }
             catch (Exception ex)
             {

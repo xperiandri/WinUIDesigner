@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace WinUIDesigner.Surface.Common;
 
@@ -12,7 +14,7 @@ namespace WinUIDesigner.Surface.Common;
 /// <remarks>
 /// The edit that replaced the value is already applied when its references move, so moving them is best effort: a
 /// holder that cannot take the new value keeps the old one, as before the edit, the failure is reported, and the other
-/// holders still move.
+/// holders still move. Holders can also be tracked, so that they move wherever they are.
 /// </remarks>
 /// <typeparam name="THolder">An object that refers to a value through one of its properties.</typeparam>
 /// <typeparam name="TValue">The value referred to.</typeparam>
@@ -28,6 +30,19 @@ internal sealed class ReferenceMover<THolder, TValue>(
     where THolder : class
     where TValue : class
 {
+    private readonly ConditionalWeakTable<THolder, object?> _tracked = new();
+
+    /// <summary>
+    /// Remembers <paramref name="holder"/>, without keeping it alive, so that <see cref="MoveTracked"/> moves it
+    /// wherever it is.
+    /// </summary>
+    public void Track(THolder holder) => _tracked.AddOrUpdate(holder, null);
+
+    /// <summary>
+    /// Moves every tracked holder that refers to <paramref name="oldValue"/>.
+    /// </summary>
+    public void MoveTracked(TValue oldValue, TValue newValue) => MoveAll(_tracked.Select(static entry => entry.Key), oldValue, newValue);
+
     /// <summary>
     /// Moves <paramref name="holder"/> when it refers to <paramref name="oldValue"/>.
     /// </summary>

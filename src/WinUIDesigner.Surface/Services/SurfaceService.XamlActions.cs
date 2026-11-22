@@ -375,6 +375,7 @@ internal sealed partial class SurfaceService
                     XamlRuntimeUtilities.SetPropertyValue(propertyOwner, setProperty.FullPropertyName, newValue);
                 }
 
+                _styleEdits.TrackPropertySet(propertyOwner, setProperty.FullPropertyName);
                 break;
             case ClearPropertyAction clearProperty:
                 object clearedOwner = (ResolveObject(clearProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearProperty.ParentHandle}."));
