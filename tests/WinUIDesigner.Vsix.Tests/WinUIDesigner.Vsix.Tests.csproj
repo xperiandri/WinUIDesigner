@@ -19,6 +19,8 @@
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XmlElementReferenceExtensions.cs" Link="XmlElementReferenceExtensions.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlMemberDispositionService.cs" Link="XamlMemberDispositionService.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlLostValueFinder.cs" Link="XamlLostValueFinder.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlVerdictLedger.cs" Link="XamlVerdictLedger.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlRebuildTargets.cs" Link="XamlRebuildTargets.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlConditionAnswers.cs" Link="XamlConditionAnswers.cs" Visible="false" />
 	</ItemGroup>
 

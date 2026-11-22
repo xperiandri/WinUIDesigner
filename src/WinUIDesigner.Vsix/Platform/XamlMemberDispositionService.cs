@@ -203,6 +203,64 @@ internal sealed class XamlMemberDispositionService
         }
     }
 
+    /// <summary>
+    /// Returns whether the policies may drop members of <paramref name="document"/>: it declares a namespace that
+    /// one of them applies to.
+    /// </summary>
+    public bool HasPolicyNamespaces(IDocumentRoot? document)
+    {
+        try
+        {
+            return GetState(document)?.Verdicts is not null;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Returns, for every element of <paramref name="document"/> except its root and for every property that an
+    /// element has, whether the policies drop it.
+    /// </summary>
+    public Dictionary<XamlVerdictPlace, bool> GetDroppedPlaces(IDocumentRoot? document)
+    {
+        var places = new Dictionary<XamlVerdictPlace, bool>();
+        if (document?.RootNode is not { } root)
+        {
+            return places;
+        }
+
+        AddPlaces(root, places);
+        foreach (DocumentNode node in root.DescendantNodes)
+        {
+            AddPlaces(node, places);
+        }
+
+        return places;
+    }
+
+    private void AddPlaces(DocumentNode node, Dictionary<XamlVerdictPlace, bool> places)
+    {
+        // A value is no element, and has no properties.
+        if (node is not DocumentCompositeNode element)
+        {
+            return;
+        }
+
+        // The root is exempt: a document needs its root.
+        if (element.Parent is not null)
+        {
+            places[new XamlVerdictPlace(element, null)] = GetNodeDisposition(element) == XamlPrefixDisposition.Drop;
+        }
+
+        foreach (KeyValuePair<IProperty, DocumentNode> property in element.Properties)
+        {
+            places[new XamlVerdictPlace(element, property.Key)] = GetPropertyDisposition(element, property.Key) == XamlPrefixDisposition.Drop;
+        }
+    }
+
     private static void LogFailure(Exception exception)
     {
         // This runs for every property that is built: a failure costs a skipped policy and, unless
@@ -374,4 +432,33 @@ internal sealed class XamlMemberDispositionService
 
         int IEqualityComparer<object>.GetHashCode(object obj) => RuntimeHelpers.GetHashCode(obj);
     }
+}
+
+/// <summary>
+/// A place in a document that a policy judges: an element, or a property of an element.
+/// </summary>
+internal readonly struct XamlVerdictPlace(DocumentCompositeNode node, IProperty? property) : IEquatable<XamlVerdictPlace>
+{
+    /// <summary>
+    /// Gets the element, or the element that has the property.
+    /// </summary>
+    public DocumentCompositeNode Node { get; } = node;
+
+    /// <summary>
+    /// Gets the property, or <see langword="null"/> for the element itself.
+    /// </summary>
+    public IProperty? Property { get; } = property;
+
+    /// <inheritdoc/>
+    public bool Equals(XamlVerdictPlace other)
+    {
+        // A node is itself, whatever Equals says about the nodes of a document.
+        return ReferenceEquals(Node, other.Node) && Equals(Property, other.Property);
+    }
+
+    /// <inheritdoc/>
+    public override bool Equals(object? obj) => obj is XamlVerdictPlace other && Equals(other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => (RuntimeHelpers.GetHashCode(Node) * 397) ^ (Property?.GetHashCode() ?? 0);
 }

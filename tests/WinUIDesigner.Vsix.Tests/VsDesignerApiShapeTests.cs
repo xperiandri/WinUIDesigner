@@ -31,6 +31,10 @@ public sealed class VsDesignerApiShapeTests
     private const string _SurfaceProcessMarkupProviderContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessMarkupProvider";
     private const string _SurfaceProcessDocumentContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessDocument";
     private const string _MarkupDocument = "Microsoft.VisualStudio.DesignTools.Markup.IMarkupDocument";
+    private const string _DocumentRoot = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.IDocumentRoot";
+    private const string _DocumentNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentNode";
+    private const string _DocumentCompositeNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentCompositeNode";
+    private const string _MarkupUtility = "Microsoft.VisualStudio.DesignTools.Markup.MarkupUtility";
 
     private static readonly Lazy<DesignerAssemblies> _Assemblies = new(DesignerAssemblies.Load);
 
@@ -298,6 +302,78 @@ public sealed class VsDesignerApiShapeTests
         Assert.IsTrue(
             RequireType(_MarkupDocument).Interfaces.Any(implemented => implemented.InterfaceType.Name == "IDocumentRoot"),
             $"{_MarkupDocument} must be a document root.");
+    }
+
+    [TestMethod]
+    [DataRow("ParseCompleted")]
+    [DataRow("Disposing")]
+    public void MarkupDocumentTellsWhenAnEditWasParsedAndWhenItGoes(string eventName)
+    {
+        // After each edit the extension looks at what the namespace policies drop, and stops when the document goes.
+        EventDefinition documentEvent = RequireEvent(_MarkupDocument, eventName);
+
+        Assert.AreEqual("EventHandler", documentEvent.EventType.Name, $"Unexpected type of {_MarkupDocument}.{eventName}.");
+    }
+
+    [TestMethod]
+    public void DocumentRootAnnouncesTheChangeOfANode()
+    {
+        // The change that builds a node again is announced the way every other change of the document is.
+        MethodDefinition method = RequireMethod(_DocumentRoot, "OnNodeChange", "DocumentNode", "DocumentNodeChange");
+
+        Assert.AreEqual("Void", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+        Assert.IsTrue(method.IsPublic && !method.IsStatic, $"Expected a public instance method: {Describe(method)}");
+    }
+
+    [TestMethod]
+    public void MarkupUtilityCreatesTheChangeThatBuildsANodeAgain()
+    {
+        MethodDefinition method = RequireMethod(_MarkupUtility, "CreateRebuild", "DocumentNode");
+
+        Assert.AreEqual("DocumentNodeChange", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+        Assert.IsTrue(method.IsPublic && method.IsStatic, $"Expected a public static method: {Describe(method)}");
+    }
+
+    [TestMethod]
+    [DataRow("DescendantNodes", "IEnumerable`1")]
+    [DataRow("IsInDocument", "Boolean")]
+    [DataRow("Parent", "DocumentCompositeNode")]
+    public void DocumentNodeCanBeWalked(string propertyName, string propertyType)
+    {
+        // The elements and the properties of a document are visited to see which of them the policies drop.
+        PropertyDefinition property = RequireProperty(_DocumentNode, propertyName);
+
+        Assert.AreEqual(propertyType, property.PropertyType.Name, $"Unexpected type of {_DocumentNode}.{propertyName}.");
+        Assert.IsTrue(property.GetMethod is { IsPublic: true, IsStatic: false }, $"{_DocumentNode}.{propertyName} needs a public instance getter.");
+    }
+
+    [TestMethod]
+    public void CompositeNodeListsItsProperties()
+    {
+        PropertyDefinition properties = RequireProperty(_DocumentCompositeNode, "Properties");
+        TypeDefinition dictionary = RequireType($"{properties.PropertyType.Namespace}.{properties.PropertyType.Name}");
+
+        Assert.Contains(
+            implemented => implemented.InterfaceType.FullName.StartsWith("System.Collections.Generic.IEnumerable`1<System.Collections.Generic.KeyValuePair`2<", StringComparison.Ordinal),
+            dictionary.Interfaces,
+            $"{dictionary.FullName} must list its properties as key and value pairs."
+        );
+    }
+
+    private static EventDefinition RequireEvent(string typeName, string eventName)
+    {
+        DesignerAssemblies assemblies = _Assemblies.Value;
+        for (TypeDefinition? type = RequireType(typeName); type is not null; type = assemblies.FindBaseType(type))
+        {
+            EventDefinition? definition = type.Events.FirstOrDefault(candidate => candidate.Name == eventName);
+            if (definition is not null)
+            {
+                return definition;
+            }
+        }
+
+        Assert.Fail($"Event {typeName}.{eventName} was not found in the designer assemblies of {assemblies.InstallRoot}.");
+        return null!;
     }
 
     private static TypeDefinition RequireType(string fullName)
