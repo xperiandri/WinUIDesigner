@@ -181,7 +181,8 @@ internal static class ProjectRuntimeResolver
         return XamlTypeLookup.Find(
             type,
             _Providers.Select(provider => _ProviderFailures.Isolate<IXamlType>(provider, provider.GetXamlType)),
-            GetXamlType);
+            GetXamlType
+        );
     }
 
     private static void EnsureProviders()

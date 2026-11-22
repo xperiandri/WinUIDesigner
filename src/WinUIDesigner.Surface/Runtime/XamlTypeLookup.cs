@@ -29,6 +29,7 @@ internal static class XamlTypeLookup
     /// </summary>
     public static T? Find<T>(Type type, IEnumerable<Func<Type, T?>> providers, Func<string, T?> byName) where T : class
     {
+        // A provider that describes the type finds it as it is, however it is nested.
         foreach (Func<Type, T?> provider in providers)
         {
             if (provider(type) is { } found)
@@ -37,6 +38,7 @@ internal static class XamlTypeLookup
             }
         }
 
+        // No provider knows the type itself: ask by its name, unless it has none (a constructed generic type).
         return GetXamlName(type) is { } name ? byName(name) : null;
     }
 }

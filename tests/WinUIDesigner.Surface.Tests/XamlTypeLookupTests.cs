@@ -29,16 +29,10 @@ public sealed class XamlTypeLookupTests
     }
 
     [TestMethod]
-    public void TypeWithoutANestingKeepsItsFullName()
-    {
-        Assert.AreEqual("System.String", XamlTypeLookup.GetXamlName(typeof(string)));
-    }
+    public void TypeWithoutANestingKeepsItsFullName() => Assert.AreEqual("System.String", XamlTypeLookup.GetXamlName(typeof(string)));
 
     [TestMethod]
-    public void ConstructedGenericTypeHasNoName()
-    {
-        Assert.IsNull(XamlTypeLookup.GetXamlName(typeof(List<string>)));
-    }
+    public void ConstructedGenericTypeHasNoName() => Assert.IsNull(XamlTypeLookup.GetXamlName(typeof(List<string>)));
 
     [TestMethod]
     public void NestedTypeIsFoundByTheNameWhenNoProviderKnowsTheTypeItself()
@@ -51,8 +45,9 @@ public sealed class XamlTypeLookupTests
             name =>
             {
                 requested = name;
-                return "metadata of " + name;
-            });
+                return $"metadata of {name}";
+            }
+        );
 
         Assert.AreEqual("XamlTypeLookupTests.NestedMask", requested);
         Assert.AreEqual("metadata of XamlTypeLookupTests.NestedMask", found);
@@ -64,7 +59,8 @@ public sealed class XamlTypeLookupTests
         string? found = XamlTypeLookup.Find<string>(
             typeof(NestedMask),
             [Providers(), Providers((typeof(NestedMask), "from the second provider"))],
-            _ => throw new AssertFailedException("The name must not be asked for when a provider knows the type."));
+            _ => throw new AssertFailedException("The name must not be asked for when a provider knows the type.")
+        );
 
         Assert.AreEqual("from the second provider", found);
     }
@@ -75,7 +71,8 @@ public sealed class XamlTypeLookupTests
         string? found = XamlTypeLookup.Find<string>(
             typeof(NestedMask),
             [Providers((typeof(NestedMask), "first")), Providers((typeof(NestedMask), "second"))],
-            _ => null);
+            _ => null
+        );
 
         Assert.AreEqual("first", found);
     }
@@ -86,7 +83,8 @@ public sealed class XamlTypeLookupTests
         string? found = XamlTypeLookup.Find<string>(
             typeof(List<string>),
             [Providers()],
-            _ => throw new AssertFailedException("A constructed generic type has no name to ask for."));
+            _ => throw new AssertFailedException("A constructed generic type has no name to ask for.")
+        );
 
         Assert.IsNull(found);
     }
