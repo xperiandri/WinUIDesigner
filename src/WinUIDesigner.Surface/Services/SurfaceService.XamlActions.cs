@@ -145,8 +145,8 @@ internal sealed partial class SurfaceService
 
     private object BuildDocument(CreateDocumentInfo document)
     {
-        using var scope = _objectIdentity.EnterDocument(document.DocumentId);
         _constructionFallbacks.Clear();
+        using var scope = _objectIdentity.EnterDocument(document.DocumentId);
 
         object? root = null;
         var deferredSetterInsertions = new List<DeferredSetterInsertion>();
