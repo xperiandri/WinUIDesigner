@@ -256,7 +256,7 @@ public sealed class XamlConditionTests
         string[] texts =
         [
             "(", ")", "()", "((", "))", ")(", ":", "::", "a:", ":a", "a:b", "a(b", "a)b", "a(b)c(d)", "\0", "\uD800",
-            "IsApiContractPresent(,,,,)", "IsTypePresent(()", "IsPropertyPresent(,)", new string('(', 2000), new string('a', 5000) + "(x)",
+            "IsApiContractPresent(,,,,)", "IsTypePresent(()", "IsPropertyPresent(,)", new string('(', 2000), $"{new string('a', 5000)}(x)",
         ];
 
         foreach (string text in texts)

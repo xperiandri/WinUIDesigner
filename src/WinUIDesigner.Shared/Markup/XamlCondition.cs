@@ -212,7 +212,7 @@ internal sealed class XamlCondition
         {
             // The argument is opaque to everyone but the condition type, so no white space is dropped from it.
             // The namespace of the type is not part of the key: it depends on where the prefix is declared.
-            string key = name + "(" + argument + ")";
+            string key = $"{name}({argument})";
             return new XamlCondition(text, XamlConditionKind.Custom, isNegated: false, prefix, name, argument, _NoArguments, 0, null, key, error: null);
         }
 
@@ -223,16 +223,10 @@ internal sealed class XamlCondition
     /// Returns this condition as the built-in method its name spells, ignoring the prefix. The XAML reader finds
     /// the built-in methods through any prefix that is bound to the presentation namespace.
     /// </summary>
-    public XamlCondition WithoutPrefix()
-    {
-        return Prefix.Length == 0 ? this : Parse(Name + "(" + Argument + ")");
-    }
+    public XamlCondition WithoutPrefix() => Prefix.Length == 0 ? this : Parse($"{Name}({Argument})");
 
     /// <inheritdoc/>
-    public override string ToString()
-    {
-        return Text;
-    }
+    public override string ToString() => Text;
 
     private static XamlCondition ParseBuiltIn(string text, string name, string argument)
     {
@@ -271,8 +265,9 @@ internal sealed class XamlCondition
                     minor = minorValue;
                 }
 
-                string contractKey = _ApiContractPresent + "(" + arguments[0] + "," + major.ToString(CultureInfo.InvariantCulture)
-                    + (minor.HasValue ? "," + minor.Value.ToString(CultureInfo.InvariantCulture) : string.Empty) + ")";
+                // The key is data that is compared again: the numbers are written the same way in every culture.
+                string minorPart = minor.HasValue ? FormattableString.Invariant($",{minor.Value}") : string.Empty;
+                string contractKey = FormattableString.Invariant($"{_ApiContractPresent}({arguments[0]},{major}{minorPart})");
                 return new XamlCondition(text, XamlConditionKind.ApiContract, name == _ApiContractNotPresent, string.Empty, name, argument, arguments, major, minor, contractKey, error: null);
 
             case _TypePresent:
@@ -282,7 +277,7 @@ internal sealed class XamlCondition
                     return Invalid(text, $"{name} takes one argument, a type name");
                 }
 
-                return new XamlCondition(text, XamlConditionKind.Type, name == _TypeNotPresent, string.Empty, name, argument, arguments, 0, null, _TypePresent + "(" + arguments[0] + ")", error: null);
+                return new XamlCondition(text, XamlConditionKind.Type, name == _TypeNotPresent, string.Empty, name, argument, arguments, 0, null, $"{_TypePresent}({arguments[0]})", error: null);
 
             default:
                 if (arguments.Length != 2)
@@ -290,7 +285,7 @@ internal sealed class XamlCondition
                     return Invalid(text, $"{name} takes two arguments, a type name and a property name");
                 }
 
-                return new XamlCondition(text, XamlConditionKind.Property, name == _PropertyNotPresent, string.Empty, name, argument, arguments, 0, null, _PropertyPresent + "(" + arguments[0] + "," + arguments[1] + ")", error: null);
+                return new XamlCondition(text, XamlConditionKind.Property, name == _PropertyNotPresent, string.Empty, name, argument, arguments, 0, null, $"{_PropertyPresent}({arguments[0]},{arguments[1]})", error: null);
         }
     }
 

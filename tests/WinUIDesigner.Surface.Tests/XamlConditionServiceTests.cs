@@ -10,7 +10,7 @@ using WinUIDesigner.Markup;
 [TestClass]
 public sealed class XamlConditionServiceTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
 
     [TestMethod]
@@ -192,7 +192,7 @@ public sealed class XamlConditionServiceTests
     {
         var probes = new RecordingProbes();
         XamlConditionService conditions = probes.CreateService();
-        Func<string, string?> namespaces = Namespaces(("", _Presentation), ("uri", "http://example.org/conditions"));
+        Func<string, string?> namespaces = Namespaces(("", XamlNamespaces.Presentation), ("uri", "http://example.org/conditions"));
 
         Assert.AreEqual(false, conditions.Evaluate(condition, namespaces));
         Assert.AreEqual(false, conditions.Evaluate(condition, namespaces));
@@ -250,7 +250,7 @@ public sealed class XamlConditionServiceTests
     {
         var probes = new RecordingProbes { ContractAnswer = (_, major, _) => major <= 10 };
         XamlConditionService conditions = probes.CreateService();
-        Func<string, string?> namespaces = Namespaces(("p", _Presentation), ("cond", "using:My.App"));
+        Func<string, string?> namespaces = Namespaces(("p", XamlNamespaces.Presentation), ("cond", "using:My.App"));
 
         Assert.AreEqual(true, conditions.Evaluate($"p:IsApiContractPresent({_Contract},7)", namespaces));
         Assert.AreEqual(false, conditions.Evaluate($"IsApiContractNotPresent({_Contract},7)", namespaces));
@@ -334,7 +334,7 @@ public sealed class XamlConditionServiceTests
     [DataRow("", "")]
     public void QueryKeyIdentifiesTheQuestion(string condition, string expectedKey)
     {
-        Func<string, string?> namespaces = Namespaces(("p", _Presentation), ("uri", "http://example.org/conditions"));
+        Func<string, string?> namespaces = Namespaces(("p", XamlNamespaces.Presentation), ("uri", "http://example.org/conditions"));
 
         XamlConditionQuery query = XamlConditionQuery.Create(condition, namespaces);
 
@@ -462,12 +462,14 @@ public sealed class XamlConditionServiceTests
             {
                 IsApiContractPresent = (name, major, minor) =>
                 {
-                    Calls.Add($"contract {name} {major}{(minor.HasValue ? "." + minor.Value : string.Empty)}");
+                    // The calls are compared with texts in the tests: the numbers are written the same way in every culture.
+                    string minorPart = minor.HasValue ? FormattableString.Invariant($".{minor.Value}") : string.Empty;
+                    Calls.Add(FormattableString.Invariant($"contract {name} {major}{minorPart}"));
                     return ContractAnswer(name, major, minor);
                 },
                 IsWindowsTypePresent = name =>
                 {
-                    Calls.Add("windows type " + name);
+                    Calls.Add($"windows type {name}");
                     return TypeAnswer(name);
                 },
                 IsWindowsPropertyPresent = (type, property) =>
@@ -477,7 +479,7 @@ public sealed class XamlConditionServiceTests
                 },
                 IsManagedTypePresent = name =>
                 {
-                    Calls.Add("managed type " + name);
+                    Calls.Add($"managed type {name}");
                     return TypeAnswer(name);
                 },
                 IsManagedPropertyPresent = (type, property) =>

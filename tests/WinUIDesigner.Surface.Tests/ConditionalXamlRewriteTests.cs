@@ -15,22 +15,20 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class ConditionalXamlRewriteTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _XamlLanguage = "http://schemas.microsoft.com/winfx/2006/xaml";
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
-    private const string _C7 = _Presentation + "?IsApiContractPresent(" + _Contract + ",7)";
-    private const string _C7N = _Presentation + "?IsApiContractNotPresent(" + _Contract + ",7)";
-    private const string _C99 = _Presentation + "?IsApiContractPresent(" + _Contract + ",99)";
-    private const string _C99N = _Presentation + "?IsApiContractNotPresent(" + _Contract + ",99)";
+    private const string _C7 = TestXamlNamespaces.Conditional;
+    private const string _C7N = TestXamlNamespaces.ConditionalNotPresent;
+    private const string _C99 = TestXamlNamespaces.ConditionalFuture;
+    private const string _C99N = TestXamlNamespaces.ConditionalFutureNotPresent;
 
-    private static readonly XNamespace _P = _Presentation;
-    private static readonly XNamespace _X = _XamlLanguage;
+    private static readonly XNamespace _P = XamlNamespaces.Presentation;
+    private static readonly XNamespace _X = XamlNamespaces.XamlLanguage;
 
     [TestMethod]
     public void ElementIsKeptAsAPlainElementOrRemovedWithItsCondition()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}">
               <c7:TextBlock Text="new" />
               <c99:TextBlock Text="future"><c99:TextBlock.Tag>x</c99:TextBlock.Tag></c99:TextBlock>
               <TextBlock Text="always" />
@@ -51,7 +49,7 @@ public sealed class ConditionalXamlRewriteTests
     [TestMethod]
     public void AttributeIsKeptAsAPlainAttributeOrRemovedWithItsCondition()
     {
-        string xaml = $"""<TextBlock xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}" c7:Text="new" c99:Tag="future" FontSize="12" />""";
+        string xaml = $"""<TextBlock xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}" c7:Text="new" c99:Tag="future" FontSize="12" />""";
 
         XDocument document = Rewrite(xaml, out XamlNamespaceRewriteResult result, out _);
 
@@ -66,7 +64,7 @@ public sealed class ConditionalXamlRewriteTests
     [DataRow("c99:Background=\"Red\" c99n:Background=\"Green\"", "c99n:Background=\"Green\" c99:Background=\"Red\"", "Background=Green")]
     public void ComplementaryAttributesGiveTheBranchThatHoldsInEitherOrder(string trueOrFalseFirst, string otherOrder, string expected)
     {
-        string declarations = $"xmlns=\"{_Presentation}\" xmlns:c7=\"{_C7}\" xmlns:c7n=\"{_C7N}\" xmlns:c99=\"{_C99}\" xmlns:c99n=\"{_C99N}\"";
+        string declarations = $"xmlns=\"{XamlNamespaces.Presentation}\" xmlns:c7=\"{_C7}\" xmlns:c7n=\"{_C7N}\" xmlns:c99=\"{_C99}\" xmlns:c99n=\"{_C99N}\"";
 
         XDocument first = Rewrite($"<Grid {declarations}><Border {trueOrFalseFirst} /></Grid>", out XamlNamespaceRewriteResult firstResult, out _);
         XDocument second = Rewrite($"<Grid {declarations}><Border {otherOrder} /></Grid>", out XamlNamespaceRewriteResult secondResult, out _);
@@ -90,11 +88,11 @@ public sealed class ConditionalXamlRewriteTests
     [DataRow("c99:Text=\"future\" Text=\"plain\"", "plain", false)]
     public void PlainAttributeAndConditionalAttributeOfOneProperty(string attributes, string expected, bool isSetTwice)
     {
-        string xaml = $"""<TextBlock xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}" {attributes} />""";
+        string xaml = $"""<TextBlock xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}" {attributes} />""";
 
         XDocument document = Rewrite(xaml, out XamlNamespaceRewriteResult result, out _);
 
-        CollectionAssert.AreEqual(new[] { "Text=" + expected }, PlainAttributes(document.Root!));
+        CollectionAssert.AreEqual(new[] { $"Text={expected}" }, PlainAttributes(document.Root!));
         Assert.AreEqual(1, result.DroppedAttributes);
 
         // Both apply only when the condition holds; then the later one is used and the clash is reported.
@@ -104,8 +102,8 @@ public sealed class ConditionalXamlRewriteTests
     [TestMethod]
     public void TwoConditionsThatHoldOnOnePropertyGiveTheLaterValueAndAWarning()
     {
-        string c6 = _Presentation + "?IsApiContractPresent(" + _Contract + ",6)";
-        string xaml = $"""<Border xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c6="{c6}" c7:CornerRadius="4" Tag="t" c6:CornerRadius="1" />""";
+        string c6 = $"{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},6)";
+        string xaml = $"""<Border xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c6="{c6}" c7:CornerRadius="4" Tag="t" c6:CornerRadius="1" />""";
 
         XDocument document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         var reports = new List<string>();
@@ -134,7 +132,7 @@ public sealed class ConditionalXamlRewriteTests
     [TestMethod]
     public void WarningGoesToTheRoutineMessagesWhenNobodyListensForWarnings()
     {
-        string xaml = $"""<TextBlock xmlns="{_Presentation}" xmlns:c7="{_C7}" Text="plain" c7:Text="new" />""";
+        string xaml = $"""<TextBlock xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" Text="plain" c7:Text="new" />""";
         XDocument document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         var reports = new List<string>();
 
@@ -152,7 +150,7 @@ public sealed class ConditionalXamlRewriteTests
     public void PropertyElementFollowsItsCondition()
     {
         string xaml = $"""
-            <Border xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}">
+            <Border xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}">
               <c7n:Border.Background><SolidColorBrush Color="Blue" /></c7n:Border.Background>
               <c7:Border.Background><SolidColorBrush Color="Red" /></c7:Border.Background>
             </Border>
@@ -171,7 +169,7 @@ public sealed class ConditionalXamlRewriteTests
     public void ConditionOnAClrNamespaceKeepsTheMembersInThatNamespace()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}"
+            <StackPanel xmlns="{XamlNamespaces.Presentation}"
                         xmlns:local7="using:My.App?IsApiContractPresent({_Contract},7)"
                         xmlns:local99="using:My.App?IsApiContractPresent({_Contract},99)">
               <local7:Card local7:Title="new" local7:Grid.Row="1" Tag="t" />
@@ -203,9 +201,9 @@ public sealed class ConditionalXamlRewriteTests
     public void XamlControlsResourcesInMergedDictionariesFollowsItsCondition(int contractVersion, int expectedDictionaries)
     {
         string xaml = $"""
-            <ResourceDictionary xmlns="{_Presentation}"
-                                xmlns:x="{_XamlLanguage}"
-                                xmlns:contractPresent="{_Presentation}?IsApiContractPresent({_Contract},{contractVersion})">
+            <ResourceDictionary xmlns="{XamlNamespaces.Presentation}"
+                                xmlns:x="{XamlNamespaces.XamlLanguage}"
+                                xmlns:contractPresent="{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},{contractVersion})">
               <ResourceDictionary.MergedDictionaries>
                 <contractPresent:XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
               </ResourceDictionary.MergedDictionaries>
@@ -235,7 +233,7 @@ public sealed class ConditionalXamlRewriteTests
     public void SettersFollowTheirConditions()
     {
         string xaml = $"""
-            <Style xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}" xmlns:c99="{_C99}" TargetType="Border">
+            <Style xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}" xmlns:c99="{_C99}" TargetType="Border">
               <Setter Property="Padding" Value="4" />
               <c7:Setter Property="CornerRadius" Value="8" />
               <c7n:Setter Property="CornerRadius" Value="0" />
@@ -256,7 +254,7 @@ public sealed class ConditionalXamlRewriteTests
     public void NestedDeclarationShadowsThePrefixOfAnOuterOne()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:c="{_C7}">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:c="{_C7}">
               <Grid xmlns:c="{_C99}">
                 <c:Border Tag="inner" />
               </Grid>
@@ -282,7 +280,7 @@ public sealed class ConditionalXamlRewriteTests
     public void PrefixUsedInAnAttributeValueStillResolves()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" xmlns:c7="{_C7}" xmlns:c99="{_C99}">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:c7="{_C7}" xmlns:c99="{_C99}">
               <Page.Resources>
                 <Style x:Key="Present" TargetType="c7:Button" />
                 <Style x:Key="Absent" TargetType="c99:Button" />
@@ -308,10 +306,10 @@ public sealed class ConditionalXamlRewriteTests
     public void CustomConditionDecidesElementsAttributesAndSetters()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}"
+            <StackPanel xmlns="{XamlNamespaces.Presentation}"
                         xmlns:cond="using:My.App"
-                        xmlns:newExp="{_Presentation}?cond:FeatureFlagCondition(NewExperience)"
-                        xmlns:legacy="{_Presentation}?cond:FeatureFlagCondition(LegacyMode)">
+                        xmlns:newExp="{XamlNamespaces.Presentation}?cond:FeatureFlagCondition(NewExperience)"
+                        xmlns:legacy="{XamlNamespaces.Presentation}?cond:FeatureFlagCondition(LegacyMode)">
               <StackPanel.Resources>
                 <Style TargetType="TextBlock">
                   <newExp:Setter Property="FontSize" Value="28" />
@@ -349,7 +347,7 @@ public sealed class ConditionalXamlRewriteTests
     {
         // The XAML reader ends the process on such a namespace, some of them even when the prefix is not used.
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:cond="using:My.App" xmlns:bad="{_Presentation}?{condition}" xmlns:unused="{_Presentation}?{condition}">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:cond="using:My.App" xmlns:bad="{XamlNamespaces.Presentation}?{condition}" xmlns:unused="{XamlNamespaces.Presentation}?{condition}">
               <bad:Border />
               <TextBlock bad:Text="x" Tag="kept" />
             </StackPanel>
@@ -359,8 +357,8 @@ public sealed class ConditionalXamlRewriteTests
 
         CollectionAssert.AreEqual(new[] { _P + "TextBlock" }, document.Root!.Elements().Select(element => element.Name).ToArray());
         CollectionAssert.AreEqual(new[] { "Tag=kept" }, PlainAttributes(document.Root.Elements().Single()));
-        Assert.AreEqual(_Presentation, (string?)document.Root.Attribute(XNamespace.Xmlns + "bad"));
-        Assert.AreEqual(_Presentation, (string?)document.Root.Attribute(XNamespace.Xmlns + "unused"));
+        Assert.AreEqual(XamlNamespaces.Presentation, (string?)document.Root.Attribute(XNamespace.Xmlns + "bad"));
+        Assert.AreEqual(XamlNamespaces.Presentation, (string?)document.Root.Attribute(XNamespace.Xmlns + "unused"));
         Assert.AreEqual(2, result.RepointedDeclarations);
         AssertNoConditionIsLeft(document);
 
@@ -376,13 +374,13 @@ public sealed class ConditionalXamlRewriteTests
     [DataRow("IsTypePresent(A,B)")]
     public void MalformedConditionCountsAsNotSatisfiedAndNeverReachesTheXamlReader(string condition)
     {
-        string xaml = $"""<StackPanel xmlns="{_Presentation}" xmlns:bad="{_Presentation}?{condition}"><bad:Border /><TextBlock bad:Text="x" /></StackPanel>""";
+        string xaml = $"""<StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:bad="{XamlNamespaces.Presentation}?{condition}"><bad:Border /><TextBlock bad:Text="x" /></StackPanel>""";
 
         XDocument document = Rewrite(xaml, out XamlNamespaceRewriteResult result, out Probes probes);
 
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(1, result.DroppedAttributes);
-        Assert.AreEqual(_Presentation, (string?)document.Root!.Attribute(XNamespace.Xmlns + "bad"));
+        Assert.AreEqual(XamlNamespaces.Presentation, (string?)document.Root!.Attribute(XNamespace.Xmlns + "bad"));
         AssertNoConditionIsLeft(document);
         Assert.HasCount(1, probes.Reports);
         Assert.Contains(condition, probes.Reports[0]);
@@ -392,7 +390,7 @@ public sealed class ConditionalXamlRewriteTests
     public void ConditionalNamespaceWithoutMembersIsStillDecided()
     {
         // The XAML reader interprets the condition of a declaration whether its prefix is used or not.
-        string xaml = $"""<StackPanel xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}"><TextBlock /></StackPanel>""";
+        string xaml = $"""<StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}"><TextBlock /></StackPanel>""";
 
         XDocument document = Rewrite(xaml, out XamlNamespaceRewriteResult result, out _);
 
@@ -405,7 +403,7 @@ public sealed class ConditionalXamlRewriteTests
     [TestMethod]
     public void NamespaceWithAnEmptyConditionIsUnconditional()
     {
-        string xaml = $"""<StackPanel xmlns="{_Presentation}" xmlns:e="{_Presentation}?"><e:Border e:Tag="t" /></StackPanel>""";
+        string xaml = $"""<StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:e="{XamlNamespaces.Presentation}?"><e:Border e:Tag="t" /></StackPanel>""";
 
         XDocument document = Rewrite(xaml, out XamlNamespaceRewriteResult result, out Probes probes);
 
@@ -421,7 +419,7 @@ public sealed class ConditionalXamlRewriteTests
     [TestMethod]
     public void EvaluatorThatThrowsLeavesTheNamespaceAloneAndIsReported()
     {
-        string xaml = $"""<StackPanel xmlns="{_Presentation}" xmlns:c7="{_C7}"><c7:Border c7:Tag="t" /></StackPanel>""";
+        string xaml = $"""<StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}"><c7:Border c7:Tag="t" /></StackPanel>""";
         XDocument document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
         string before = document.ToString(SaveOptions.DisableFormatting);
         var reported = new List<string>();
@@ -443,7 +441,7 @@ public sealed class ConditionalXamlRewriteTests
     public void DuplicateKeyAcrossComplementaryBranchesLeavesOneEntry()
     {
         string xaml = $"""
-            <ResourceDictionary xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}">
+            <ResourceDictionary xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}">
               <c7n:SolidColorBrush x:Key="Accent" Color="Blue" />
               <c7:SolidColorBrush x:Key="Accent" Color="Red" />
               <c7:Style x:Key="Card" TargetType="Border" />
@@ -466,7 +464,7 @@ public sealed class ConditionalXamlRewriteTests
     public void RootUnderAConditionalPrefixIsKeptAsAPlainElement(string prefix, bool conditionHolds)
     {
         // The XAML reader cannot load a root under a conditional prefix at all, so the root always becomes plain.
-        string xaml = $"""<{prefix}:Page xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}" {prefix}:Tag="t" Width="5"><TextBlock c99:Text="future" /></{prefix}:Page>""";
+        string xaml = $"""<{prefix}:Page xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c99="{_C99}" {prefix}:Tag="t" Width="5"><TextBlock c99:Text="future" /></{prefix}:Page>""";
 
         XDocument document = Rewrite(xaml, out XamlNamespaceRewriteResult result, out _);
 
@@ -488,7 +486,7 @@ public sealed class ConditionalXamlRewriteTests
     public void LineInformationOfSurvivingElementsIsKept()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}"
+            <Page xmlns="{XamlNamespaces.Presentation}"
                   xmlns:c7="{_C7}"
                   xmlns:c99="{_C99}">
               <c99:Border>
@@ -519,7 +517,7 @@ public sealed class ConditionalXamlRewriteTests
     public void AttributeKeepsAPrefixWhereNoDefaultNamespaceIsDeclared()
     {
         // The XAML reader ends the process on an attribute without a prefix in a document without a default namespace.
-        string xaml = $"""<p:StackPanel xmlns:p="{_Presentation}" xmlns:c7="{_C7}"><p:TextBlock c7:Tag="yes" c7:Grid.Row="1" /></p:StackPanel>""";
+        string xaml = $"""<p:StackPanel xmlns:p="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}"><p:TextBlock c7:Tag="yes" c7:Grid.Row="1" /></p:StackPanel>""";
 
         XDocument document = Rewrite(xaml, out XamlNamespaceRewriteResult result, out _);
 
@@ -537,12 +535,12 @@ public sealed class ConditionalXamlRewriteTests
     public void TypeAndPropertyConditionsAreEvaluated()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}"
-                        xmlns:picker="{_Presentation}?IsTypePresent(Microsoft.UI.Xaml.Controls.ColorPicker)"
-                        xmlns:noPicker="{_Presentation}?IsTypeNotPresent(Microsoft.UI.Xaml.Controls.ColorPicker)"
-                        xmlns:uwp="{_Presentation}?IsTypePresent(Windows.UI.Xaml.Controls.ColorPicker)"
-                        xmlns:radius="{_Presentation}?IsPropertyPresent(Microsoft.UI.Xaml.Controls.Control, CornerRadius)"
-                        xmlns:noSuch="{_Presentation}?IsPropertyPresent(Microsoft.UI.Xaml.Controls.Control,NoSuchProperty)">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}"
+                        xmlns:picker="{XamlNamespaces.Presentation}?IsTypePresent(Microsoft.UI.Xaml.Controls.ColorPicker)"
+                        xmlns:noPicker="{XamlNamespaces.Presentation}?IsTypeNotPresent(Microsoft.UI.Xaml.Controls.ColorPicker)"
+                        xmlns:uwp="{XamlNamespaces.Presentation}?IsTypePresent(Windows.UI.Xaml.Controls.ColorPicker)"
+                        xmlns:radius="{XamlNamespaces.Presentation}?IsPropertyPresent(Microsoft.UI.Xaml.Controls.Control, CornerRadius)"
+                        xmlns:noSuch="{XamlNamespaces.Presentation}?IsPropertyPresent(Microsoft.UI.Xaml.Controls.Control,NoSuchProperty)">
               <picker:ColorPicker />
               <noPicker:ComboBox />
               <uwp:TextBlock Text="the UWP type is not in this system" />
@@ -571,9 +569,9 @@ public sealed class ConditionalXamlRewriteTests
     public void ConditionIsProbedOnceHoweverOftenItIsUsed()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}" xmlns:again="{_C7}">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{_C7}" xmlns:c7n="{_C7N}" xmlns:again="{_C7}">
               <c7:Border c7:Tag="1" /><c7n:Border /><again:Border again:Tag="2" /><c7:Border />
-              <Grid xmlns:c7="{_Presentation}?IsApiContractPresent( {_Contract} , 7 )"><c7:Border /></Grid>
+              <Grid xmlns:c7="{XamlNamespaces.Presentation}?IsApiContractPresent( {_Contract} , 7 )"><c7:Border /></Grid>
             </StackPanel>
             """;
         var probes = new Probes();
@@ -593,10 +591,10 @@ public sealed class ConditionalXamlRewriteTests
         // prefixed members are passed through, and only members without a prefix get design-time replacements.
         string xaml = $"""
             <Page xmlns:_0="using:XSurfUwp"
-                xmlns="{_Presentation}"
-                xmlns:x="{_XamlLanguage}"
+                xmlns="{XamlNamespaces.Presentation}"
+                xmlns:x="{XamlNamespaces.XamlLanguage}"
                 xmlns:d="using:XSurfUwp"
-                xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
                 xmlns:c7="{_C7}"
                 xmlns:c7n="{_C7N}"
                 xmlns:c99="{_C99}"
@@ -730,7 +728,7 @@ public sealed class ConditionalXamlRewriteTests
                     },
                     IsWindowsTypePresent = name =>
                     {
-                        Calls.Add("windows type " + name);
+                        Calls.Add($"windows type {name}");
                         return name == "Windows.Foundation.Uri";
                     },
                     IsWindowsPropertyPresent = (type, property) =>
@@ -740,7 +738,7 @@ public sealed class ConditionalXamlRewriteTests
                     },
                     IsManagedTypePresent = name =>
                     {
-                        Calls.Add("managed type " + name);
+                        Calls.Add($"managed type {name}");
                         return name == "Microsoft.UI.Xaml.Controls.ColorPicker";
                     },
                     IsManagedPropertyPresent = (type, property) =>

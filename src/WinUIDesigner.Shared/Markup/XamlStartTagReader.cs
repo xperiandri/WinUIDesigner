@@ -33,7 +33,7 @@ internal readonly struct XamlAttributeName
     /// <inheritdoc/>
     public override string ToString()
     {
-        return Prefix.Length == 0 ? LocalName : Prefix + ":" + LocalName;
+        return Prefix.Length == 0 ? LocalName : $"{Prefix}:{LocalName}";
     }
 }
 

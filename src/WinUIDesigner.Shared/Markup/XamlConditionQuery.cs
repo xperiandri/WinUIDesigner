@@ -73,8 +73,9 @@ internal sealed class XamlConditionQuery
         }
 
         string? clrNamespace = GetClrNamespace(predicateNamespace);
-        string? typeName = clrNamespace is null ? null : clrNamespace + "." + parsed.Name;
-        string key = (predicateNamespace ?? "?" + parsed.Prefix) + "|" + parsed.PositiveKey;
+        string? typeName = clrNamespace is null ? null : $"{clrNamespace}.{parsed.Name}";
+        string predicate = predicateNamespace ?? $"?{parsed.Prefix}";
+        string key = $"{predicate}|{parsed.PositiveKey}";
         return new XamlConditionQuery(parsed, predicateNamespace, typeName, key);
     }
 
@@ -91,7 +92,7 @@ internal sealed class XamlConditionQuery
     private static XamlConditionQuery CreateBuiltIn(XamlCondition condition)
     {
         // A text that is not a condition is its own question: nothing else has the same answer.
-        string key = condition.Kind == XamlConditionKind.Unknown ? "!" + condition.Text : condition.PositiveKey;
+        string key = condition.Kind == XamlConditionKind.Unknown ? $"!{condition.Text}" : condition.PositiveKey;
         return new XamlConditionQuery(condition, predicateNamespace: null, typeName: null, key);
     }
 

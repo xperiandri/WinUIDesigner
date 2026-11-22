@@ -17,9 +17,9 @@ using WinUIDesigner.Protocol;
 public sealed class XamlConditionAnswersTests
 {
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
-    private const string _C7 = "IsApiContractPresent(" + _Contract + ",7)";
-    private const string _C7N = "IsApiContractNotPresent(" + _Contract + ",7)";
-    private const string _C99 = "IsApiContractPresent(" + _Contract + ",99)";
+    private const string _C7 = TestXamlNamespaces.Condition;
+    private const string _C7N = $"IsApiContractNotPresent({_Contract},7)";
+    private const string _C99 = $"IsApiContractPresent({_Contract},99)";
     private const string _NewExperience = "cond:FeatureFlagCondition(NewExperience)";
     private const string _LegacyMode = "cond:FeatureFlagCondition(LegacyMode)";
     private const string _ColorPicker = "IsTypePresent(Microsoft.UI.Xaml.Controls.ColorPicker)";
@@ -72,8 +72,8 @@ public sealed class XamlConditionAnswersTests
 
         // A malformed condition and an empty one need no surface.
         CollectionAssert.AreEquivalent(
-            new[] { _C7 + "|", _C99 + "|", _NewExperience + "|using:My.App", _LegacyMode + "|using:My.App", _ColorPicker + "|" },
-            surface.Requests[0].Conditions!.Zip(surface.Requests[0].PredicateNamespaces!, (condition, predicateNamespace) => condition + "|" + predicateNamespace).ToArray());
+            new[] { $"{_C7}|", $"{_C99}|", $"{_NewExperience}|using:My.App", $"{_LegacyMode}|using:My.App", $"{_ColorPicker}|" },
+            surface.Requests[0].Conditions!.Zip(surface.Requests[0].PredicateNamespaces!, (condition, predicateNamespace) => $"{condition}|{predicateNamespace}").ToArray());
 
         Assert.AreEqual(true, answers.Evaluate(_C7, Namespaces));
         Assert.AreEqual(false, answers.Evaluate(_C7N, Namespaces));

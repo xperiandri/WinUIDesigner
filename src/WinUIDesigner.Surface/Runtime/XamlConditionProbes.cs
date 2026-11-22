@@ -215,7 +215,7 @@ internal static class XamlConditionProbes
                 yield break;
             }
 
-            yield return namespaceName + _ProjectionAssemblySuffix;
+            yield return $"{namespaceName}{_ProjectionAssemblySuffix}";
         }
     }
 }
