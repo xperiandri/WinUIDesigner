@@ -136,7 +136,10 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
         return index == match.ScopeIndex ? "Application.Resources" : "the theme resources";
     }
 
-    /// <summary>The name of an element theme in <c>ThemeDictionaries</c>; <see langword="null"/> for the default.</summary>
+    /// <summary>
+    /// The name of an element theme in <see cref="ResourceDictionary.ThemeDictionaries"/>; <see langword="null"/> for the
+    /// default.
+    /// </summary>
     public static string? ToThemeName(ElementTheme theme) => theme switch
     {
         ElementTheme.Light => ThemeResourceThemes.Light,

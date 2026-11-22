@@ -10,8 +10,8 @@ namespace WinUIDesigner.Surface.Services;
 /// <summary>
 /// Evaluates the <c>{ThemeResource}</c> references of construction actions for the theme of their owner, and evaluates
 /// the properties set from them again when that theme changes: new artboard colours (the preview theme), another theme
-/// requested by the project's application, a <c>RequestedTheme</c> edited in the document, or content that comes
-/// under a surface. WinUI does the same for the references that its own XAML reader creates.
+/// requested by the project's application, a <see cref="FrameworkElement.RequestedTheme"/> edited in the document, or
+/// content that comes under a surface. WinUI does the same for the references that its own XAML reader creates.
 /// </summary>
 internal sealed partial class SurfaceService
 {
@@ -67,8 +67,8 @@ internal sealed partial class SurfaceService
 
     /// <summary>
     /// Keeps the registry in step with an executed action: a property set from a <c>{ThemeResource}</c> is remembered,
-    /// a property set otherwise or cleared is forgotten, and a new <c>RequestedTheme</c> has the references evaluated
-    /// again at the end of the batch.
+    /// a property set otherwise or cleared is forgotten, and a new <see cref="FrameworkElement.RequestedTheme"/> has
+    /// the references evaluated again at the end of the batch.
     /// </summary>
     private void TrackThemeResourceProperty(XamlAction action)
     {
