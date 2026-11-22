@@ -135,68 +135,6 @@ public sealed class StagedResourceLookupTests
     }
 
     [TestMethod]
-    public void FileCandidateWhoseFileDoesNotExistFallsThroughToTheNextOne()
-    {
-        // The copy of the application's PRI file below ProjectResources names files next to itself, where nothing is
-        // staged; the copy at the root names the staged file.
-        var missing = new Candidate(Staged("ProjectResources/Ecierge.Console/Assets/Images/back.scale-150.png"));
-        var staged = new Candidate(Staged("Assets/Images/back.scale-150.png"));
-
-        Candidate? found = StagedResourceLookup.FirstUsable<Candidate>(
-            [missing, null, staged],
-            candidate => candidate.FilePath,
-            path => path == staged.FilePath
-        );
-
-        Assert.AreSame(staged, found);
-    }
-
-    [TestMethod]
-    public void CandidateThatNamesNoFileIsUsedAsItIs()
-    {
-        // An XBF that the PRI file embeds.
-        var embedded = new Candidate(null);
-
-        Candidate? found = StagedResourceLookup.FirstUsable<Candidate>(
-            [null, embedded],
-            candidate => candidate.FilePath,
-            _ => throw new AssertFailedException("A candidate that names no file has no file to look for.")
-        );
-
-        Assert.AreSame(embedded, found);
-    }
-
-    [TestMethod]
-    public void NoUsableCandidateGivesNone()
-    {
-        Candidate? found = StagedResourceLookup.FirstUsable<Candidate>(
-            [null, new Candidate(Staged("AppX/Assets/missing.png")), null],
-            candidate => candidate.FilePath,
-            _ => false
-        );
-
-        Assert.IsNull(found);
-    }
-
-    [TestMethod]
-    public void CandidatesAfterTheUsableOneAreNotAsked()
-    {
-        // Each candidate is a lookup in a PRI file.
-        var asked = new List<int>();
-        IEnumerable<Candidate?> Lookups()
-        {
-            for (int index = 0; index < 4; index++)
-            {
-                asked.Add(index);
-                yield return index == 1 ? new Candidate(null) : null;
-            }
-        }
-
-        Assert.IsNotNull(StagedResourceLookup.FirstUsable(Lookups(), candidate => candidate.FilePath, _ => true));
-        CollectionAssert.AreEqual(new[] { 0, 1 }, asked);
-    }
-
-    [TestMethod]
     [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", "ms-appx:///Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]
     [DataRow("Resources/AppDisplayName", "Resources/AppDisplayName")]
     public void FileResourceIsShownByItsUri(string name, string expected)
@@ -212,6 +150,4 @@ public sealed class StagedResourceLookupTests
         Assert.AreEqual("Scale=150, Theme=Dark", StagedResourceLookup.DescribeQualifiers(qualifiers));
         Assert.AreEqual(string.Empty, StagedResourceLookup.DescribeQualifiers([]));
     }
-
-    private sealed record Candidate(string? FilePath);
 }

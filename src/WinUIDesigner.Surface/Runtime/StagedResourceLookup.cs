@@ -48,38 +48,6 @@ internal static class StagedResourceLookup
     }
 
     /// <summary>
-    /// The first of <paramref name="candidates"/> that can be used: one that names no file, or one whose file exists.
-    /// The candidates are taken one after another, and none after the one that is returned.
-    /// </summary>
-    public static T? FirstUsable<T>(IEnumerable<T?> candidates, Func<T, string?> getFilePath, Func<string, bool> fileExists)
-        where T : class
-    {
-        foreach (T? candidate in candidates)
-        {
-            // A PRI file that does not know the name.
-            if (candidate is null)
-            {
-                continue;
-            }
-
-            // Data or a string, such as an XBF that the PRI file embeds.
-            if (getFilePath(candidate) is not { } path)
-            {
-                return candidate;
-            }
-
-            // A file that is there. The same PRI file is staged in several folders (the root, AppX and one folder per
-            // project below ProjectResources), and most of its copies name files that were never staged next to them.
-            if (fileExists(path))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
     /// The path below <paramref name="root"/> that the file resource <paramref name="name"/> names, or
     /// <see langword="null"/> for a name that is no file resource or that would lead out of <paramref name="root"/>.
     /// The name comes from the XAML of the project, so nothing in it may reach another folder.
