@@ -17,8 +17,11 @@ internal sealed partial class DesignerSurface
     // What happened to the card of the dialog is logged once.
     private bool _loggedDialogCard;
 
-    // The brushes of the dialog are matched with the theme of the preview once for each theme that the preview has.
-    private ElementTheme? _themeTakenByDialog;
+    // Gives the dialog the brushes of the theme of the preview and remembers the ones that it wrote over those of the style.
+    private readonly ContentDialogBrushRetargeter _dialogBrushes = new();
+
+    // The theme of the preview and the theme of the application that the brushes of the dialog were chosen for last.
+    private (ElementTheme Preview, ApplicationTheme Application)? _dialogBrushThemes;
 
     // The pan and zoom of the artboard as Visual Studio sent them last. The dialog is not in the artboard (it is in the
     // popup layer of the island), so it is given them itself, see MoveDialogWithArtboard.
@@ -55,7 +58,7 @@ internal sealed partial class DesignerSurface
 
             dialog.XamlRoot = xamlRoot;
             _shownDialog = dialog;
-            _themeTakenByDialog = null;
+            _dialogBrushThemes = null;
             dialog.Loaded += OnShownDialogLoaded;
             dialog.SizeChanged += OnShownDialogSizeChanged;
             FitContentDialog();
@@ -208,8 +211,9 @@ internal sealed partial class DesignerSurface
     /// theme of the preview from the root as the content of the document does: it has the theme of the application
     /// (light unless the document says otherwise), as a white card around the dark content of a dark preview. The theme
     /// is set on the dialog, as the documentation of the control advises. That does not reach the brushes that a style
-    /// takes from the resources of the application (the style of Uno Material does), so once the template is there they
-    /// are matched with the brushes of the theme of the preview (<see cref="RetargetDialogBrushes"/>).
+    /// takes from the resources of the application (the style of Uno Material does), so once the template is there, and
+    /// whenever the theme of the preview or of the application changes, they are chosen for the theme of the preview
+    /// (<see cref="RetargetDialogBrushes"/>).
     /// </summary>
     private void SyncContentDialogTheme()
     {
@@ -226,11 +230,11 @@ internal sealed partial class DesignerSurface
 
         SyncSmokeLayerTheme(theme);
 
-
-        if (dialog.IsLoaded && theme != ElementTheme.Default && _themeTakenByDialog != theme)
+        ApplicationTheme applicationTheme = Application.Current.RequestedTheme;
+        if (dialog.IsLoaded && _dialogBrushThemes != (theme, applicationTheme))
         {
-            _themeTakenByDialog = theme;
-            RetargetDialogBrushes(dialog, theme);
+            _dialogBrushThemes = (theme, applicationTheme);
+            RetargetDialogBrushes(dialog, theme, applicationTheme);
         }
     }
 
@@ -264,33 +268,34 @@ internal sealed partial class DesignerSurface
 
     /// <summary>
     /// A style that takes a brush from the resources of the application takes the one of the theme of the application,
-    /// whatever the theme of the element is, and the theme of the application of this process is not the theme of the
-    /// preview. Each brush of the dialog is replaced by the one that <see cref="ContentDialogThemePolicy"/> chooses for the
-    /// theme of the preview from the theme dictionaries of the resources of the application.
+    /// whatever the theme of the element is, and the theme of the application of this process (the theme of the system) is
+    /// not always the theme of the preview. The brushes that come from the theme of the application are replaced by the ones
+    /// that <see cref="ContentDialogThemePolicy"/> chooses for the theme of the preview; the ones that the surface wrote for
+    /// another theme are taken back first, and a brush that the document sets on the dialog stays.
     /// </summary>
-    private static void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme)
+    private void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme, ApplicationTheme application)
     {
-        string previewTheme = theme == ElementTheme.Dark ? ContentDialogThemePolicy.Dark : ContentDialogThemePolicy.Light;
-        string applicationTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark ? ContentDialogThemePolicy.Dark : ContentDialogThemePolicy.Light;
+        string? previewTheme = theme switch
+        {
+            ElementTheme.Dark => ContentDialogThemePolicy.Dark,
+            ElementTheme.Light => ContentDialogThemePolicy.Light,
+            _ => null,
+        };
+        string applicationTheme = application == ApplicationTheme.Dark ? ContentDialogThemePolicy.Dark : ContentDialogThemePolicy.Light;
+
+        // Only the dictionaries of these two themes are read: the choice looks at no other.
+        string[] themeKeys = previewTheme is null ? [] : [.. ContentDialogThemePolicy.ThemeKeys(applicationTheme), .. ContentDialogThemePolicy.ThemeKeys(previewTheme)];
 
         try
         {
-            List<ThemeDictionarySet> dictionaries = CollectThemeDictionaries(Application.Current.Resources, [], 0);
-
-            if (RetargetedBrush(dialog.Background, previewTheme, applicationTheme, dictionaries) is { } background)
-            {
-                dialog.Background = background;
-            }
-
-            if (RetargetedBrush(dialog.BorderBrush, previewTheme, applicationTheme, dictionaries) is { } border)
-            {
-                dialog.BorderBrush = border;
-            }
-
-            if (RetargetedBrush(dialog.Foreground, previewTheme, applicationTheme, dictionaries) is { } foreground)
-            {
-                dialog.Foreground = foreground;
-            }
+            _dialogBrushes.Refresh(
+                new DialogBrushProperties(dialog),
+                previewTheme,
+                applicationTheme,
+                () => CollectThemeDictionaries(Application.Current.Resources, themeKeys, [], 0),
+                value => value is Brush brush ? DescribeThemeBrush(brush) : null,
+                LogDialogBrushChoice
+            );
         }
         catch (Exception exception)
         {
@@ -298,29 +303,22 @@ internal sealed partial class DesignerSurface
         }
     }
 
-    private static Brush? RetargetedBrush(Brush? current, string previewTheme, string applicationTheme, IReadOnlyList<ThemeDictionarySet> dictionaries)
+    private static void LogDialogBrushChoice(string property, ThemeBrush current, BrushChoice choice)
     {
-        if (current is null)
-        {
-            return null;
-        }
-
-        BrushChoice choice = ContentDialogThemePolicy.Choose(DescribeThemeBrush(current), setByDocument: false, previewTheme, applicationTheme, dictionaries);
-        if (choice.Brush is { Brush: Brush target })
-        {
-            WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is replaced by the one of the {previewTheme} theme, {DescribeBrush(target)}, found by {choice.Reason}.");
-            return target;
-        }
-
-        WinUIDesignerLogger.LogTrace("Surface", $"A brush of the ContentDialog, {DescribeBrush(current)}, is kept: {choice.Reason}.");
-        return null;
+        string brush = DescribeBrush(current.Brush as Brush);
+        WinUIDesignerLogger.LogTrace(
+            "Surface",
+            choice.Brush is { } target
+                ? $"The {property} of the ContentDialog, {brush}, is replaced by {DescribeBrush(target.Brush as Brush)}: {choice.Reason}."
+                : $"The {property} of the ContentDialog, {brush}, is kept: {choice.Reason}."
+        );
     }
 
     /// <summary>
-    /// The theme dictionaries of <paramref name="dictionary"/> and of the dictionaries that it merges, each with its brushes,
-    /// as <see cref="ContentDialogThemePolicy"/> takes them.
+    /// The theme dictionaries of <paramref name="dictionary"/> and of the dictionaries that it merges, with the brushes of the
+    /// themes that are named in <paramref name="themes"/>, as <see cref="ContentDialogThemePolicy"/> takes them.
     /// </summary>
-    private static List<ThemeDictionarySet> CollectThemeDictionaries(ResourceDictionary dictionary, List<ThemeDictionarySet> sets, int depth)
+    private static List<ThemeDictionarySet> CollectThemeDictionaries(ResourceDictionary dictionary, IReadOnlyCollection<string> themes, List<ThemeDictionarySet> sets, int depth)
     {
         if (depth > 12)
         {
@@ -329,24 +327,24 @@ internal sealed partial class DesignerSurface
 
         if (dictionary.ThemeDictionaries.Count > 0)
         {
-            Dictionary<string, IReadOnlyDictionary<string, ThemeBrush>> themes = new(StringComparer.Ordinal);
+            Dictionary<string, IReadOnlyDictionary<string, ThemeBrush>> brushesByTheme = new(StringComparer.Ordinal);
             foreach (KeyValuePair<object, object> themed in dictionary.ThemeDictionaries)
             {
                 // The keys are objects: they are not tested for being strings, but written as the strings that they are.
-                if (themed.Key?.ToString() is { } name && themed.Value is ResourceDictionary themeDictionary)
+                if (themed.Key?.ToString() is { } name && themes.Contains(name) && themed.Value is ResourceDictionary themeDictionary)
                 {
                     Dictionary<string, ThemeBrush> brushes = new(StringComparer.Ordinal);
                     CollectBrushes(themeDictionary, brushes, 0);
-                    themes[name] = brushes;
+                    brushesByTheme[name] = brushes;
                 }
             }
 
-            sets.Add(new ThemeDictionarySet(themes));
+            sets.Add(new ThemeDictionarySet(brushesByTheme));
         }
 
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
-            CollectThemeDictionaries(merged, sets, depth + 1);
+            CollectThemeDictionaries(merged, themes, sets, depth + 1);
         }
 
         return sets;
@@ -388,6 +386,30 @@ internal sealed partial class DesignerSurface
 
         Windows.UI.Color color = solid.Color;
         return new ThemeBrush(brush, ((uint)color.A << 24) | ((uint)color.R << 16) | ((uint)color.G << 8) | color.B, solid.Opacity);
+    }
+
+    /// <summary>The brush properties of a dialog, as <see cref="ContentDialogBrushRetargeter"/> takes them.</summary>
+    private sealed class DialogBrushProperties(ContentDialog dialog) : IDialogBrushProperties
+    {
+        public bool TryGetLocalValue(string property, out object? value)
+        {
+            value = dialog.ReadLocalValue(Property(property));
+            return !ReferenceEquals(value, DependencyProperty.UnsetValue);
+        }
+
+        public object? GetValue(string property) => dialog.GetValue(Property(property));
+
+        public void SetValue(string property, object value) => dialog.SetValue(Property(property), value);
+
+        public void ClearValue(string property) => dialog.ClearValue(Property(property));
+
+        private static DependencyProperty Property(string property) => property switch
+        {
+            nameof(Control.Background) => Control.BackgroundProperty,
+            nameof(Control.BorderBrush) => Control.BorderBrushProperty,
+            nameof(Control.Foreground) => Control.ForegroundProperty,
+            _ => throw new ArgumentOutOfRangeException(nameof(property), property, "Not a brush property of a ContentDialog."),
+        };
     }
 
     /// <summary>
@@ -476,6 +498,10 @@ internal sealed partial class DesignerSurface
     {
         ContentDialog? dialog = _shownDialog;
         _shownDialog = null;
+
+        // The brushes that the surface wrote belong to the dialog that goes.
+        _dialogBrushes.Forget();
+        _dialogBrushThemes = null;
 
         if (dialog is not null)
         {

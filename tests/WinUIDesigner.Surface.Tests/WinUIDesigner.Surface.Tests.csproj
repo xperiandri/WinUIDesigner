@@ -15,6 +15,7 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ObjectIdentityRegistry.cs" Link="ObjectIdentityRegistry.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DocumentScope.cs" Link="DocumentScope.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ContentDialogThemePolicy.cs" Link="ContentDialogThemePolicy.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ContentDialogBrushRetargeter.cs" Link="ContentDialogBrushRetargeter.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>

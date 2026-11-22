@@ -45,6 +45,123 @@ public sealed class ContentDialogThemePolicyTests
     }
 
     [TestMethod]
+    public void ALightPreviewOfALightApplicationKeepsTheBrushesOfTheStyle()
+    {
+        // Before: the object of the light dictionary was put aside, and its colour found TextFillColorInverseBrush, white text.
+        var resources = new ThemeResources(referencesFirst: true);
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(resources.LightTextPrimary, false, Light, Light, resources.All);
+
+        Assert.IsNull(choice.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void ADarkPreviewOfADarkApplicationKeepsTheBrushesOfTheStyle()
+    {
+        // Before: the white text of the dark theme found a white key of the light theme and took its dark brush.
+        var resources = new ThemeResources(referencesFirst: true);
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(resources.DarkTextPrimary, false, Dark, Dark, resources.All);
+
+        Assert.IsNull(choice.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    [DataRow(Dark, Light)]
+    [DataRow(Light, Dark)]
+    public void ABrushOfThePreviewThemeIsKeptWhenTheApplicationHasTheOtherTheme(string previewTheme, string applicationTheme)
+    {
+        // The style of WinUI follows the theme of the dialog, so its brushes are already those of the preview.
+        var resources = new ThemeResources(referencesFirst: true);
+        ThemeBrush current = previewTheme == Dark ? resources.DarkTextPrimary : resources.LightTextPrimary;
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(current, false, previewTheme, applicationTheme, resources.All);
+
+        Assert.IsNull(choice.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void ABrushOfTheApplicationThemeTakesTheBrushOfThePreviewThemeUnderItsKey()
+    {
+        var resources = new ThemeResources(referencesFirst: true);
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(resources.LightTextPrimary, false, Dark, Light, resources.All);
+
+        Assert.AreSame(resources.DarkTextPrimary.Brush, choice.Brush?.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void HighContrastIsNeverTheThemeThatABrushComesFrom()
+    {
+        // Before: the black of SurfaceStrokeColorFlyoutBrush in HighContrast gave its dark brush, #33000000, to black text.
+        var resources = new ThemeResources(referencesFirst: true);
+        ThemeBrush black = Solid(0xFF000000);
+        ThemeDictionarySet references = Set(("Default", "DialogText", black), ("Light", "DialogText", black));
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(black, false, Dark, Light, [resources.WinUI, references]);
+
+        Assert.IsNull(choice.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void ABrushThatNoThemeDictionaryHasIsKept()
+    {
+        // A colour that the style or the document gives, as Background="White": it is white in the running app in either theme.
+        var resources = new ThemeResources(referencesFirst: true);
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(Solid(0xFFFFFFFF), false, Dark, Light, resources.All);
+
+        Assert.IsNull(choice.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void ABrushThatTheDocumentSetsOnTheDialogIsKept()
+    {
+        // Also a brush of the theme of the application, as {StaticResource SurfaceBrush} on the dialog.
+        var resources = new ThemeResources(referencesFirst: true);
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(resources.LightSurface, true, Dark, Light, resources.All);
+
+        Assert.IsNull(choice.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void TheDarkMaterialCardOfADarkApplicationTakesTheLightSurfaceInALightPreview()
+    {
+        var resources = new ThemeResources(referencesFirst: true);
+        ThemeDictionarySet references = Set(("Default", "ContentDialogBackground", resources.DarkSurface), ("Light", "ContentDialogBackground", resources.DarkSurface));
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(resources.DarkSurface, false, Light, Dark, [resources.WinUI, references, resources.Palette]);
+
+        Assert.AreSame(resources.LightSurface.Brush, choice.Brush?.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void AReferenceThatOnlyThePreviewThemeHasIsMatchedByItsColour()
+    {
+        // A reference resolved for the light theme of the application under the dark key only, to a white brush that is not
+        // the object of the palette: its colour gives SurfaceBrush.
+        var resources = new ThemeResources(referencesFirst: true);
+        ThemeBrush white = Solid(0xFFFFFFFF);
+        ThemeDictionarySet references = Set(("Default", "ContentDialogBackground", white), ("Light", "Unrelated", resources.LightBase));
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(white, false, Dark, Light, [resources.WinUI, references, resources.Palette]);
+
+        Assert.AreSame(resources.DarkSurface.Brush, choice.Brush?.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    [DataRow(null, Light, false)]
+    [DataRow(Light, Light, false)]
+    [DataRow(Dark, Dark, false)]
+    [DataRow(Dark, Light, true)]
+    [DataRow(Light, Dark, true)]
+    public void OnlyAPreviewWithAnotherThemeThanTheApplicationNeedsOtherBrushes(string? previewTheme, string applicationTheme, bool differs)
+    {
+        Assert.AreEqual(differs, ContentDialogThemePolicy.PreviewThemeDiffers(previewTheme, applicationTheme));
+    }
+
+    [TestMethod]
     public void TheNameOfASurfaceComesFirstThenTheShortestName()
     {
         Assert.AreEqual("SurfaceBrush", ContentDialogThemePolicy.PreferredKey(["InfoBadgeForeground", "SurfaceVariantBrush", "SurfaceBrush", "Hub"]));
@@ -149,5 +266,16 @@ public sealed class ContentDialogThemePolicyTests
         public ThemeDictionarySet DialogReferences { get; }
 
         public IReadOnlyList<ThemeDictionarySet> All { get; }
+
+        /// <summary>The brush of the dictionaries whose object is <paramref name="value"/>, as the surface describes a brush.</summary>
+        public ThemeBrush? Describe(object value)
+        {
+            return All
+                .SelectMany(set => set.Themes.Values)
+                .SelectMany(theme => theme.Values)
+                .Where(brush => ReferenceEquals(brush.Brush, value))
+                .Select(brush => (ThemeBrush?)brush)
+                .FirstOrDefault();
+        }
     }
 }
