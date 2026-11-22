@@ -206,7 +206,9 @@ public sealed class GuardedClipboardTests
     }
 
     [TestMethod]
-    public void CopyingEndsAnOutage()
+    [DataRow(false, DisplayName = "SetDataObject(data)")]
+    [DataRow(true, DisplayName = "SetDataObject(data, copy)")]
+    public void CopyingEndsAnOutage(bool withCopyFlag)
     {
         var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure() };
         var reports = new List<Exception?>();
@@ -217,11 +219,37 @@ public sealed class GuardedClipboardTests
         var data = new DataObject();
         clipboard.Failure = null;
         clipboard.DataObject = data;
-        guarded.SetDataObject("element", true);
+
+        if (withCopyFlag)
+        {
+            guarded.SetDataObject("element", true);
+        }
+        else
+        {
+            guarded.SetDataObject("element");
+        }
 
         Assert.AreSame(data, guarded.GetDataObject());
         Assert.HasCount(2, reports);
         Assert.IsNull(reports[1]);
+    }
+
+    [TestMethod]
+    public void CopyThatFailsLeavesTheOutageInPlace()
+    {
+        var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure() };
+        var reports = new List<Exception?>();
+        var guarded = new GuardedClipboard(clipboard, reports.Add, () => TimeSpan.Zero);
+        guarded.GetDataObject();
+
+        // A write that fails has not opened the clipboard either, so it shows nothing about the outage.
+        Assert.ThrowsExactly<COMException>(() => guarded.SetDataObject("element"));
+        Assert.ThrowsExactly<COMException>(() => guarded.SetDataObject("element", true));
+
+        // The retry delay goes on: a read inside it still answers an empty clipboard without asking.
+        Assert.IsEmpty(guarded.GetDataObject().GetFormats());
+        Assert.AreEqual(1, clipboard.Opens);
+        Assert.HasCount(1, reports);
     }
 
     private static COMException CreateCannotOpenFailure() => new COMException("OpenClipboard Failed", _ClipboardCannotBeOpened);
