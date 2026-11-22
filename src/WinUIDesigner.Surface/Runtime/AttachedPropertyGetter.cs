@@ -23,7 +23,7 @@ internal static class AttachedPropertyGetter
     /// and takes one argument that accepts <paramref name="targetType"/>.
     /// </summary>
     /// <returns>The accessor for the most specific argument type, or <see langword="null"/> when there is none.</returns>
-    public static MethodInfo? Find(Type declaringType, string propertyName, Type targetType)
+    public static MethodInfo? Find(Type declaringType, ReadOnlySpan<char> propertyName, Type targetType)
     {
         string accessorName = $"Get{propertyName}";
         MethodInfo? accessor = null;
@@ -57,7 +57,7 @@ internal static class AttachedPropertyGetter
     /// accessor that <paramref name="declaringType"/> defines for it.
     /// </summary>
     /// <returns><see langword="false"/> when <paramref name="declaringType"/> defines no such accessor.</returns>
-    public static bool TryGetValue(Type declaringType, string propertyName, object target, out object? value)
+    public static bool TryGetValue(Type declaringType, ReadOnlySpan<char> propertyName, object target, out object? value)
     {
         MethodInfo? accessor = Find(declaringType, propertyName, target.GetType());
         if (accessor is null)

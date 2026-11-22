@@ -48,10 +48,7 @@ public sealed class UwpStandInsTests
     [DataRow("XSurfUwp.AdaptiveTriggers, UwpSurface")]
     // The protocol name of a resource reference is not a stand-in of the UWP surface.
     [DataRow("System.Windows.StaticResourceExtension")]
-    public void OtherNamesAreNoStandIns(string? serializedTypeName)
-    {
-        Assert.IsNull(UwpStandIns.GetRuntimeTypeName(serializedTypeName));
-    }
+    public void OtherNamesAreNoStandIns(string? serializedTypeName) => Assert.IsNull(UwpStandIns.GetRuntimeTypeName(serializedTypeName));
 
     [TestMethod]
     public void PreparedAdaptiveTriggerLoadsAsTheTriggerOfWinUI()

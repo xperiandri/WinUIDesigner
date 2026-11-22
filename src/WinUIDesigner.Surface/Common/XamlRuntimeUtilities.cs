@@ -704,7 +704,7 @@ internal static class XamlRuntimeUtilities
     {
         int propertySeparator = fullPropertyName.IndexOf(':');
         Type? declaringType = propertySeparator < 0 ? null : ResolveType(fullPropertyName[(propertySeparator + 1)..]);
-        return declaringType is not null && AttachedPropertyGetter.TryGetValue(declaringType, fullPropertyName[..propertySeparator], target, out object? value)
+        return declaringType is not null && AttachedPropertyGetter.TryGetValue(declaringType, fullPropertyName.AsSpan(0, propertySeparator), target, out object? value)
             ? value
             : null;
     }

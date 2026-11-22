@@ -89,12 +89,16 @@ internal sealed class ConstructionFallbacks
     /// <returns>The errors, or <see langword="null"/> when there is none.</returns>
     public string? TakeErrors(ActionError? laterFailure = null)
     {
+        // The objects that fallbacks took the place of come first, in the order of the actions.
         List<ActionError> errors = [.. TakeFailures()];
+
+        // The action that failed afterwards ended the batch and comes last.
         if (laterFailure is not null)
         {
             errors.Add(laterFailure);
         }
 
+        // Nothing to report when the batch needed no fallback and went through.
         return errors.Count == 0 ? null : ActionErrorJsonSerializer.Serialize(errors);
     }
 }
