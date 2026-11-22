@@ -523,10 +523,7 @@ public sealed class StagedResourceResolverTests
             _known[(priFile, name, qualifiers)] = candidate;
         }
 
-        public void Fails(int priFile, Exception exception)
-        {
-            _failures[priFile] = exception;
-        }
+        public void Fails(int priFile, Exception exception) => _failures[priFile] = exception;
 
         public string PlaceholderPath(string fileName) => Path.Combine(_Root, "placeholders", fileName);
 

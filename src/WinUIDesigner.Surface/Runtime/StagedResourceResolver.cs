@@ -171,8 +171,8 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
     // placeholder still answer.
     private PriAnswer AskStagedPris(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers, string request)
     {
-        // A resource can have candidates for one theme or one scale only, so a miss belongs to the qualifier values of the
-        // request: the same name is asked again for others.
+        // A miss of an earlier request. It belongs to the qualifier values of that request, because a resource can have
+        // candidates for one theme or one scale only: the same name is asked again for others.
         string key = $"{name}|{request}";
         lock (_misses)
         {
@@ -192,16 +192,20 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
             PriOutcome outcome = default;
             TCandidate? candidate = qualifiers.Count > 0 ? Ask(index, name, qualifiers, ref outcome) : null;
             candidate ??= Ask(index, name, null, ref outcome);
+
+            // This PRI file answers.
             if (candidate is not null)
             {
                 return new PriAnswer(candidate, host.PriFiles[index], 0, 0, null);
             }
 
+            // It does not: what it said is kept for the log.
             knownBy += outcome.UnusableFile is null ? 0 : 1;
             failed += outcome.Failed ? 1 : 0;
             firstUnusableFile ??= outcome.UnusableFile;
         }
 
+        // None of them answers: remembered, so that the PRI files are not asked again for these qualifier values.
         var miss = new PriAnswer(null, null, knownBy, failed, firstUnusableFile);
         lock (_misses)
         {
@@ -234,6 +238,7 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
         catch (Exception ex)
         {
+            // The PRI file is left out of this lookup, and reported once.
             outcome.Failed = true;
             string priFile = host.PriFiles[index];
             if (IsFirstReport($"failed-pri|{priFile}"))

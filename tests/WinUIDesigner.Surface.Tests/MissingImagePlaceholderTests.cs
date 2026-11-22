@@ -41,10 +41,7 @@ public sealed class MissingImagePlaceholderTests
     [DataRow("Files/Assets/photo.webp")]
     [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]
     [DataRow("Files/Assets/logo.SVG")]
-    public void ImagesAreRecognizedInAnyCase(string name)
-    {
-        Assert.IsTrue(MissingImagePlaceholder.IsImage(name));
-    }
+    public void ImagesAreRecognizedInAnyCase(string name) => Assert.IsTrue(MissingImagePlaceholder.IsImage(name));
 
     [TestMethod]
     [DataRow("Files/Ecierge.Uno.Controls/Styles.xbf")]

@@ -33,10 +33,7 @@ public sealed class StagedResourceLookupTests
     [DataRow("Assets/logo.png")]
     [DataRow("ms-appx:///Assets/logo.png")]
     [DataRow("")]
-    public void NamesOfOtherResourcesNameNoFile(string name)
-    {
-        Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
-    }
+    public void NamesOfOtherResourcesNameNoFile(string name) => Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
 
     [TestMethod]
     [DataRow("Files/../outside.png")]
@@ -68,10 +65,7 @@ public sealed class StagedResourceLookupTests
     [DataRow("Files/AppX/Assets/logo.png")]
     [DataRow("Files/appx/Ecierge.Console.UI/Styles.xbf")]
     [DataRow("Files/App%58/Assets/logo.png")]
-    public void TheStaleAppXLayoutIsNeverUsed(string name)
-    {
-        Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
-    }
+    public void TheStaleAppXLayoutIsNeverUsed(string name) => Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
 
     [TestMethod]
     public void ExistingStagedFileIsFound()
@@ -172,10 +166,7 @@ public sealed class StagedResourceLookupTests
     [DataRow("Files/Ecierge.Uno.Controls/Styles.xaml")]
     [DataRow("Files/Ecierge.Uno.Controls/themes/generic.XBF")]
     [DataRow("files/Themes/Generic.Xaml")]
-    public void CompiledAndPlainXamlIsMarkup(string name)
-    {
-        Assert.IsTrue(StagedResourceLookup.IsMarkup(name));
-    }
+    public void CompiledAndPlainXamlIsMarkup(string name) => Assert.IsTrue(StagedResourceLookup.IsMarkup(name));
 
     [TestMethod]
     [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]
@@ -194,10 +185,7 @@ public sealed class StagedResourceLookupTests
     [TestMethod]
     [DataRow("Files/Assets/Images/svg/theme-light/ecierge_waves_logo.svg", "ms-appx:///Assets/Images/svg/theme-light/ecierge_waves_logo.svg")]
     [DataRow("Resources/AppDisplayName", "Resources/AppDisplayName")]
-    public void FileResourceIsShownByItsUri(string name, string expected)
-    {
-        Assert.AreEqual(expected, StagedResourceLookup.ToAppUri(name));
-    }
+    public void FileResourceIsShownByItsUri(string name, string expected) => Assert.AreEqual(expected, StagedResourceLookup.ToAppUri(name));
 
     [TestMethod]
     public void QualifiersThatAreSetAreDescribedByName()
