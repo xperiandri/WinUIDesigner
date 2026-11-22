@@ -372,6 +372,10 @@ internal sealed partial class SurfaceService
                     && TryParseColor(request.CheckerboardColor2, out Windows.UI.Color color2))
                 {
                     surface.SetCheckerboardColors(color1, color2);
+
+                    // The colours decide the preview theme, for the documents and resources built from actions too.
+                    _lastPreviewTheme = surface.PreviewTheme;
+                    WinUIDesignerLogger.LogTrace("Surface", $"Artboard colours of document {request.DocumentId}: the preview theme is {_lastPreviewTheme}.");
                 }
 
                 return new ResponseWithError { HResult = 0 };

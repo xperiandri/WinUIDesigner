@@ -82,6 +82,7 @@ internal sealed partial class SurfaceService : IDisposable
         }
 
         _surfaces.Clear();
+        _lastPreviewTheme = null;
 
         foreach (var dictionary in _resourceDocuments.Values)
         {

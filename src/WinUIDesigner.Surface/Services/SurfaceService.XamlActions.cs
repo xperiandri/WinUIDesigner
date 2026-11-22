@@ -138,6 +138,7 @@ internal sealed partial class SurfaceService
     private object BuildDocument(CreateDocumentInfo document)
     {
         using var scope = _objectIdentity.EnterDocument(document.DocumentId);
+        using var themeResources = TraceThemeResourceEvaluations(document.DocumentId);
 
         object? root = null;
         var deferredSetterInsertions = new List<DeferredSetterInsertion>();
@@ -449,11 +450,20 @@ internal sealed partial class SurfaceService
     private object? ResolveActionValue(long handle, object owner)
     {
         object? value = ResolveObject(handle);
-        if (value is StaticResourceReference reference)
+        switch (value)
         {
             // The native UWP TAP replaces the reference's object state with its value.
-            value = _resourceScopes.ResolveStaticResource(owner, reference.ResourceKey);
-            _actionObjects[handle] = value;
+            case StaticResourceReference reference:
+                value = _resourceScopes.ResolveStaticResource(owner, reference.ResourceKey);
+                _actionObjects[handle] = value;
+                break;
+
+            // The same for a theme reference, evaluated for the theme of its owner. Visual Studio builds a new
+            // reference for every change of one (its builder rebuilds), so nothing addresses the old one again.
+            case ThemeResourceReference reference:
+                value = EvaluateThemeResource(owner, reference.ResourceKey);
+                _actionObjects[handle] = value;
+                break;
         }
 
         return value;

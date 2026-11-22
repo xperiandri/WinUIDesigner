@@ -47,9 +47,9 @@ internal static class XamlRuntimeUtilities
         // Shared VS action contracts can spell framework types with the UWP prefix;
         // translate that prefix before looking in the WinUI runtime assemblies.
         string candidate = serializedTypeName.Trim().Replace("Windows.UI.Xaml", "Microsoft.UI.Xaml", StringComparison.Ordinal);
-        if (candidate.Split(',')[0].Trim() == StaticResourceReference.ProtocolTypeName)
+        if (ResourceReferenceProtocol.GetReferenceType(candidate) is { } referenceType)
         {
-            return typeof(StaticResourceReference);
+            return referenceType;
         }
 
         if ((candidate.Split(',')[0].Trim() is "XSurfUwp.Fallback.FallbackControl" or "XSurfUwp.Fallback.LayoutFaultFallbackControl"))
