@@ -457,6 +457,23 @@ public sealed class StagedResourceResolverTests
     }
 
     [TestMethod]
+    public void EmptyNameIsNotAskedOfAnyPriFile()
+    {
+        // MRT Core rejects an empty name, which every PRI file would report as a failure of its own.
+        var host = new FakeHost("a.pri", "b.pri", "c.pri");
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.IsNull(resolver.Resolve(string.Empty, _NoQualifiers));
+        Assert.IsNull(resolver.Resolve(string.Empty, [new("Theme", "dark")]));
+
+        // Nothing is asked, and the name is one trace line, not a warning for each PRI file.
+        Assert.IsEmpty(host.Lookups);
+        Line line = Assert.ContainsSingle(host.Lines);
+        Assert.AreEqual(StagedResourceLogLevel.Trace, line.Level);
+        Assert.IsNull(line.Exception);
+    }
+
+    [TestMethod]
     public void FailureIsReportedOncePerName()
     {
         var host = new FakeHost("resources.pri");
@@ -536,6 +553,9 @@ public sealed class StagedResourceResolverTests
             lock (_gate)
             {
                 Lookups.Add($"{priFile} {name} {request ?? "defaults"}");
+
+                // MRT Core rejects an empty name, in every PRI file.
+                ArgumentException.ThrowIfNullOrEmpty(name);
                 return _failures.TryGetValue(priFile, out Exception? failure) ? throw failure : _known.GetValueOrDefault((priFile, name, request));
             }
         }

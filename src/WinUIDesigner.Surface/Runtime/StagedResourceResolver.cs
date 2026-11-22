@@ -171,6 +171,12 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
     // placeholder still answer.
     private PriAnswer AskStagedPris(string name, IReadOnlyList<KeyValuePair<string, string>> qualifiers, string request)
     {
+        // An empty name is no resource. MRT Core rejects it, which every PRI file would report as a failure of its own.
+        if (string.IsNullOrEmpty(name))
+        {
+            return new PriAnswer(null, null, 0, 0, null);
+        }
+
         // A miss of an earlier request. It belongs to the qualifier values of that request, because a resource can have
         // candidates for one theme or one scale only: the same name is asked again for others.
         string key = $"{name}|{request}";
