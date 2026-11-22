@@ -116,7 +116,7 @@ public sealed class WinUIPlatform : XamlPlatform
     {
         var viewModel = new UwpSceneViewModel(DesignerContext, document);
 
-        // Visual Studio reads the clipboard to enable its Paste command and does not expect that to fail.
+        // Visual Studio's paste fails the designer when the clipboard cannot be opened; the guard reads it as an empty one.
         viewModel.Clipboard = _Clipboard;
 
         var view = new WinUISceneView(viewModel);

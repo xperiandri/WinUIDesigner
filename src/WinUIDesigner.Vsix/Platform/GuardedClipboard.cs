@@ -14,10 +14,18 @@ namespace WinUIDesigner.Platform;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Visual Studio asks whether the clipboard holds something to paste whenever it refreshes the state of its
-/// commands. The clipboard cannot be opened while another process holds it or while the session is locked;
-/// the question then fails with <c>CLIPBRD_E_CANT_OPEN</c>, and Visual Studio handles that as an unhandled
-/// designer exception: it shows the exception in place of the design surface and ends the surface process.
+/// The clipboard cannot be opened while another process holds it or while the session is locked. The reads that
+/// open it (<see cref="GetDataObject"/>, <see cref="GetData"/> and <see cref="IsCurrent"/>) then keep the UI thread
+/// waiting for about a second in the retries of WPF and fail with <c>CLIPBRD_E_CANT_OPEN</c>. Visual Studio's paste
+/// does not survive that: <see cref="Microsoft.VisualStudio.DesignTools.Utility.Data.SafeDataObject.FromClipboard"/>
+/// turns the failure into <see langword="null"/>, which <c>PasteCommand.PasteData</c> then uses, and
+/// <c>DataObjectPasteHandler.Paste</c> does not catch it. Either way Visual Studio shows the exception in place of
+/// the design surface and ends the surface process.
+/// </para>
+/// <para>
+/// <see cref="ContainsData"/>, the question Visual Studio asks on every refresh of its Paste command, does not open
+/// the clipboard: WPF answers it with <c>IsClipboardFormatAvailable</c>. So it is never delayed, and its answer does
+/// not show that the clipboard can be opened again.
 /// </para>
 /// <para>
 /// Writing is passed through unchanged, because Visual Studio reports a failed copy to the user itself.
@@ -26,11 +34,11 @@ namespace WinUIDesigner.Platform;
 internal sealed class GuardedClipboard : IClipboard
 {
     /// <summary>
-    /// How long <see cref="ContainsData"/> answers without asking after the clipboard could not be read.
+    /// How long the reads that open the clipboard answer without asking after the clipboard could not be read.
     /// </summary>
     /// <remarks>
-    /// A read that fails has already kept the UI thread waiting for about a second in the retries of WPF,
-    /// and Visual Studio asks for several formats on every refresh.
+    /// A read that cannot open the clipboard has already kept the UI thread waiting for about a second in the retries
+    /// of WPF, and while text is edited in place Visual Studio reads the data object on every refresh of its commands.
     /// </remarks>
     internal static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
@@ -65,20 +73,14 @@ internal sealed class GuardedClipboard : IClipboard
         _getTime = getTime;
     }
 
+    // Within the retry delay, the reads that open the clipboard answer as an empty clipboard without asking.
+    private bool IsInRetryDelay => _isUnavailable && _getTime() < _retryTime;
+
     public bool ContainsData(string format)
     {
-        // This is the question Visual Studio repeats. The other reads happen when the user pastes,
-        // so they always ask.
-        if (_isUnavailable && _getTime() < _retryTime)
-        {
-            return false;
-        }
-
         try
         {
-            bool containsData = _clipboard.ContainsData(format);
-            MarkAvailable();
-            return containsData;
+            return _clipboard.ContainsData(format);
         }
         catch (Exception exception) when (IsClipboardFailure(exception))
         {
@@ -89,6 +91,11 @@ internal sealed class GuardedClipboard : IClipboard
 
     public object? GetData(string format)
     {
+        if (IsInRetryDelay)
+        {
+            return null;
+        }
+
         try
         {
             object? data = _clipboard.GetData(format);
@@ -104,6 +111,13 @@ internal sealed class GuardedClipboard : IClipboard
 
     public IDataObject GetDataObject()
     {
+        // Not null: some of Visual Studio's paste code uses the result without checking it.
+        // With an object that holds no format, pasting ends with the "cannot paste" message.
+        if (IsInRetryDelay)
+        {
+            return new DataObject();
+        }
+
         try
         {
             IDataObject data = _clipboard.GetDataObject();
@@ -113,15 +127,17 @@ internal sealed class GuardedClipboard : IClipboard
         catch (Exception exception) when (IsClipboardFailure(exception))
         {
             MarkUnavailable(exception);
-
-            // Not null: some of Visual Studio's paste code uses the result without checking it.
-            // With an object that holds no format, pasting ends with the "cannot paste" message.
             return new DataObject();
         }
     }
 
     public bool IsCurrent(IDataObject data)
     {
+        if (IsInRetryDelay)
+        {
+            return false;
+        }
+
         try
         {
             bool isCurrent = _clipboard.IsCurrent(data);

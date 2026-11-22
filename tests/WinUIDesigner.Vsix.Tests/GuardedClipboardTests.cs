@@ -1,6 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using Microsoft.VisualStudio.DesignTools.Utility.Clipboard;
@@ -32,15 +33,15 @@ public sealed class GuardedClipboardTests
     public void ClipboardThatCannotBeOpenedCountsAsEmpty()
     {
         var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure() };
-        var guarded = new GuardedClipboard(clipboard);
 
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Text));
-        Assert.IsNull(guarded.GetData(DataFormats.Text));
-        Assert.IsFalse(guarded.IsCurrent(new DataObject()));
+        // A guard for each read, so that none of them is answered by the retry delay another one started.
+        Assert.IsNull(new GuardedClipboard(clipboard).GetData(DataFormats.Text));
+        Assert.IsFalse(new GuardedClipboard(clipboard).IsCurrent(new DataObject()));
 
-        IDataObject data = guarded.GetDataObject();
+        IDataObject data = new GuardedClipboard(clipboard).GetDataObject();
         Assert.IsNotNull(data, "Visual Studio uses the data object without checking it.");
         Assert.AreEqual(0, data.GetFormats().Length);
+        Assert.AreEqual(3, clipboard.Opens);
     }
 
     [TestMethod]
@@ -49,13 +50,24 @@ public sealed class GuardedClipboardTests
         var clipboard = new FakeClipboard { Failure = new UnauthorizedAccessException() };
         var guarded = new GuardedClipboard(clipboard);
 
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Text));
+        Assert.IsEmpty(guarded.GetDataObject().GetFormats());
+    }
+
+    [TestMethod]
+    public void FormatQuestionThatFailsAnswersNo()
+    {
+        // WPF fails it only when Windows cannot register a format name it has not seen before.
+        var clipboard = new FakeClipboard { ContainsDataResult = true, ContainsDataFailure = new Win32Exception() };
+        var guarded = new GuardedClipboard(clipboard);
+
+        Assert.IsFalse(guarded.ContainsData("A format name"));
     }
 
     [TestMethod]
     public void OtherFailuresAreNotHidden()
     {
-        var clipboard = new FakeClipboard { Failure = new InvalidOperationException("not a clipboard failure") };
+        var failure = new InvalidOperationException("not a clipboard failure");
+        var clipboard = new FakeClipboard { Failure = failure, ContainsDataFailure = failure };
         var guarded = new GuardedClipboard(clipboard);
 
         Assert.ThrowsExactly<InvalidOperationException>(() => guarded.ContainsData(DataFormats.Text));
@@ -86,26 +98,29 @@ public sealed class GuardedClipboardTests
     }
 
     [TestMethod]
-    public void ContainsDataDoesNotAskAgainUntilTheRetryDelayHasPassed()
+    public void ReadsThatOpenTheClipboardDoNotAskAgainUntilTheRetryDelayHasPassed()
     {
         TimeSpan now = TimeSpan.Zero;
         var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure() };
         var guarded = new GuardedClipboard(clipboard, getTime: () => now);
 
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Text));
-        Assert.AreEqual(1, clipboard.Reads);
+        guarded.GetDataObject();
+        Assert.AreEqual(1, clipboard.Opens);
 
-        // Visual Studio asks for several formats on each refresh; only the first question waits for the clipboard.
+        // Each of these would wait for about a second in the retries of WPF, and while text is edited in place Visual
+        // Studio reads the data object on every refresh of its commands. A paste in this time gets the same answer.
         now = GuardedClipboard.RetryDelay - TimeSpan.FromMilliseconds(1);
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Bitmap));
-        Assert.IsFalse(guarded.ContainsData(DataFormats.FileDrop));
-        Assert.AreEqual(1, clipboard.Reads);
+        Assert.IsEmpty(guarded.GetDataObject().GetFormats());
+        Assert.IsNull(guarded.GetData(DataFormats.Text));
+        Assert.IsFalse(guarded.IsCurrent(new DataObject()));
+        Assert.AreEqual(1, clipboard.Opens);
 
+        var data = new DataObject();
         now = GuardedClipboard.RetryDelay;
         clipboard.Failure = null;
-        clipboard.ContainsDataResult = true;
-        Assert.IsTrue(guarded.ContainsData(DataFormats.Text));
-        Assert.AreEqual(2, clipboard.Reads);
+        clipboard.DataObject = data;
+        Assert.AreSame(data, guarded.GetDataObject());
+        Assert.AreEqual(2, clipboard.Opens);
     }
 
     [TestMethod]
@@ -115,35 +130,45 @@ public sealed class GuardedClipboardTests
         var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure() };
         var guarded = new GuardedClipboard(clipboard, getTime: () => now);
 
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Text));
+        guarded.GetDataObject();
 
         now = GuardedClipboard.RetryDelay;
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Text));
-        Assert.AreEqual(2, clipboard.Reads);
+        guarded.GetDataObject();
+        Assert.AreEqual(2, clipboard.Opens);
 
         now = GuardedClipboard.RetryDelay + GuardedClipboard.RetryDelay - TimeSpan.FromMilliseconds(1);
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Text));
-        Assert.AreEqual(2, clipboard.Reads);
+        guarded.GetDataObject();
+        Assert.AreEqual(2, clipboard.Opens);
     }
 
     [TestMethod]
-    public void PastingAsksTheClipboardEvenDuringTheRetryDelay()
+    public void FormatQuestionIsNotDelayed()
+    {
+        var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure(), ContainsDataResult = true };
+        var guarded = new GuardedClipboard(clipboard, getTime: () => TimeSpan.Zero);
+        guarded.GetDataObject();
+
+        // WPF answers it without opening the clipboard, so it neither waits nor fails, and the Paste command
+        // stays enabled while the designer's format is on the clipboard.
+        Assert.IsTrue(guarded.ContainsData(DataFormats.Text));
+        Assert.AreEqual(1, clipboard.Questions);
+    }
+
+    [TestMethod]
+    public void FormatQuestionDoesNotEndAnOutage()
     {
         TimeSpan now = TimeSpan.Zero;
-        var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure() };
-        var guarded = new GuardedClipboard(clipboard, getTime: () => now);
-        Assert.IsFalse(guarded.ContainsData(DataFormats.Text));
+        var clipboard = new FakeClipboard { Failure = CreateCannotOpenFailure(), ContainsDataResult = true };
+        var reports = new List<Exception?>();
+        var guarded = new GuardedClipboard(clipboard, reports.Add, () => now);
+        guarded.GetDataObject();
 
-        // The clipboard is free again and the user pastes straight away.
-        var data = new DataObject();
-        clipboard.Failure = null;
-        clipboard.DataObject = data;
+        // Windows tells which formats the clipboard holds even while another process keeps it open.
+        now = GuardedClipboard.RetryDelay;
+        guarded.ContainsData(DataFormats.Text);
+        guarded.GetDataObject();
 
-        Assert.AreSame(data, guarded.GetDataObject());
-
-        // That read showed the clipboard is back, so the next question is asked as well.
-        clipboard.ContainsDataResult = true;
-        Assert.IsTrue(guarded.ContainsData(DataFormats.Text));
+        Assert.HasCount(1, reports);
     }
 
     [TestMethod]
@@ -155,22 +180,21 @@ public sealed class GuardedClipboardTests
         var reports = new List<Exception?>();
         var guarded = new GuardedClipboard(clipboard, reports.Add, () => now);
 
-        guarded.ContainsData(DataFormats.Text);
         guarded.GetDataObject();
         now = GuardedClipboard.RetryDelay;
-        guarded.ContainsData(DataFormats.Text);
+        guarded.GetData(DataFormats.Text);
         Assert.AreEqual(1, reports.Count);
         Assert.AreSame(failure, reports[0]);
 
         clipboard.Failure = null;
         now += GuardedClipboard.RetryDelay;
-        guarded.ContainsData(DataFormats.Text);
-        guarded.ContainsData(DataFormats.Text);
+        guarded.GetDataObject();
+        guarded.GetDataObject();
         Assert.AreEqual(2, reports.Count);
         Assert.IsNull(reports[1]);
 
         clipboard.Failure = failure;
-        guarded.ContainsData(DataFormats.Text);
+        guarded.GetDataObject();
         Assert.AreEqual(3, reports.Count);
         Assert.AreSame(failure, reports[2]);
     }
@@ -180,9 +204,13 @@ public sealed class GuardedClipboardTests
         return new COMException("OpenClipboard Failed", _ClipboardCannotBeOpened);
     }
 
+    // Behaves like Visual Studio's OleClipboard over WPF: ContainsData asks Windows whether a format is available
+    // without opening the clipboard, so a clipboard that cannot be opened fails only the other reads and the writes.
     private sealed class FakeClipboard : IClipboard
     {
         public Exception? Failure { get; set; }
+
+        public Exception? ContainsDataFailure { get; set; }
 
         public bool ContainsDataResult { get; set; }
 
@@ -192,31 +220,39 @@ public sealed class GuardedClipboardTests
 
         public bool IsCurrentResult { get; set; }
 
-        public int Reads { get; private set; }
+        public int Questions { get; private set; }
+
+        public int Opens { get; private set; }
 
         public List<string> Written { get; } = [];
 
         public bool ContainsData(string format)
         {
-            Read();
+            Questions++;
+
+            if (ContainsDataFailure is not null)
+            {
+                throw ContainsDataFailure;
+            }
+
             return ContainsDataResult;
         }
 
         public object GetData(string format)
         {
-            Read();
+            Open();
             return Data!;
         }
 
         public IDataObject GetDataObject()
         {
-            Read();
+            Open();
             return DataObject!;
         }
 
         public bool IsCurrent(IDataObject data)
         {
-            Read();
+            Open();
             return IsCurrentResult;
         }
 
@@ -232,9 +268,9 @@ public sealed class GuardedClipboardTests
             Written.Add(copy ? $"{data} (copy)" : (string)data);
         }
 
-        private void Read()
+        private void Open()
         {
-            Reads++;
+            Opens++;
             ThrowIfFailing();
         }
 
