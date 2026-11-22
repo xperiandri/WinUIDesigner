@@ -108,7 +108,7 @@ public sealed class StagedResourceLookupTests
     }
 
     [TestMethod]
-    public void PriFilesAtTheRootComeFirstAndTheApplicationsFirstAmongThem()
+    public void PriFilesAtTheRootComeFirstTheApplicationsFirstAmongThemAndTheAppXLayoutLast()
     {
         string[] files =
         [
@@ -117,21 +117,54 @@ public sealed class StagedResourceLookupTests
             Staged("Microsoft.UI.Xaml.Controls.pri"),
             Staged("AppX/resources.pri"),
             Staged("resources.pri"),
+            Staged("ProjectResources/CommunityToolkit.WinUI.Animations/CommunityToolkit.WinUI.Animations.pri"),
             Staged("Ecierge.Console.UI.pri"),
         ];
 
+        // AppX is one folder deep, ProjectResources two, but AppX is the stale layout of an older deployment.
         CollectionAssert.AreEqual(
             new[]
             {
                 Staged("resources.pri"),
                 Staged("Ecierge.Console.UI.pri"),
                 Staged("Microsoft.UI.Xaml.Controls.pri"),
+                Staged("ProjectResources/Ecierge.Console/resources.pri"),
+                Staged("ProjectResources/CommunityToolkit.WinUI.Animations/CommunityToolkit.WinUI.Animations.pri"),
                 Staged("AppX/resources.pri"),
                 Staged("AppX/Microsoft.UI.Xaml.Controls.pri"),
-                Staged("ProjectResources/Ecierge.Console/resources.pri"),
             },
             StagedResourceLookup.OrderPriFiles(_Root, files)
         );
+    }
+
+    [TestMethod]
+    [DataRow("AppX/Assets/Images/back.scale-150.png")]
+    [DataRow("appx/Ecierge.Console.UI/Styles.xbf")]
+    [DataRow("AppX/resources.pri")]
+    public void FilesInTheAppXFolderOfTheRootAreInTheAppXLayout(string relativePath)
+    {
+        Assert.IsTrue(StagedResourceLookup.IsInAppXLayout(_Root, Staged(relativePath)));
+    }
+
+    [TestMethod]
+    [DataRow("Assets/Images/back.scale-150.png")]
+    [DataRow("Assets/AppX/logo.png")]
+    [DataRow("AppXtra/logo.png")]
+    [DataRow("ProjectResources/AppX/resources.pri")]
+    [DataRow("resources.pri")]
+    public void OtherFilesOfTheRootAreNotInTheAppXLayout(string relativePath)
+    {
+        // A file of the build output, a folder named AppX deeper down, a folder whose name only starts with AppX.
+        Assert.IsFalse(StagedResourceLookup.IsInAppXLayout(_Root, Staged(relativePath)));
+    }
+
+    [TestMethod]
+    public void AppXFolderOfAnotherRootIsNotTheAppXLayout()
+    {
+        string other = Path.Combine(Path.GetTempPath(), "WinUIDesigner.Surface.Tests", "12012598816x64DA", "AppX", "logo.png");
+
+        Assert.IsFalse(StagedResourceLookup.IsInAppXLayout(_Root, other));
+        Assert.IsFalse(StagedResourceLookup.IsInAppXLayout(_Root, $"{_Root}AppX{Path.DirectorySeparatorChar}logo.png"));
     }
 
     [TestMethod]

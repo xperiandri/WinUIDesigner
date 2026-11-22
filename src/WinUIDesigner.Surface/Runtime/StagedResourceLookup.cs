@@ -50,17 +50,39 @@ internal static class StagedResourceLookup
     /// The staged PRI files in the order in which they are asked. The files at the root of the content directory come
     /// first: a PRI file names its files by paths below its own folder, and only at the root are these the staged files.
     /// Among the files of one folder depth, the PRI file of the application comes first, because it answers nearly
-    /// every name.
+    /// every name. The PRI files of the stale AppX layout come last, after the ones below ProjectResources.
     /// </summary>
     public static List<string> OrderPriFiles(string root, IEnumerable<string> files)
     {
         return
         [
             .. files
-                .OrderBy(file => Path.GetRelativePath(root, file).AsSpan().Count(Path.DirectorySeparatorChar))
+                .OrderBy(file => IsInAppXLayout(root, file) ? 1 : 0)
+                .ThenBy(file => Path.GetRelativePath(root, file).AsSpan().Count(Path.DirectorySeparatorChar))
                 .ThenBy(file => Path.GetFileName(file.AsSpan()).Equals(_ApplicationPriFileName, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                 .ThenBy(file => file, StringComparer.OrdinalIgnoreCase),
         ];
+    }
+
+    /// <summary>
+    /// Whether <paramref name="path"/> is in the AppX folder of <paramref name="root"/>: the loose layout of an older
+    /// packaged deployment, whose files are stale. The PRI files staged there name files in it.
+    /// </summary>
+    public static bool IsInAppXLayout(string root, string path)
+    {
+        string prefix = GetRootPrefix(root);
+        ReadOnlySpan<char> fullPath = Path.GetFullPath(path).AsSpan();
+
+        // Another folder than the content directory.
+        if (!fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // The first folder below the content directory.
+        ReadOnlySpan<char> relative = fullPath[prefix.Length..];
+        int separator = relative.IndexOf(Path.DirectorySeparatorChar);
+        return separator > 0 && relative[..separator].Equals(_AppXFolderName, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -97,9 +119,8 @@ internal static class StagedResourceLookup
             return null;
         }
 
-        string fullRoot = Path.GetFullPath(root);
-        string path = Path.GetFullPath(Path.Combine([fullRoot, .. segments.AsSpan(1)]));
-        string prefix = Path.EndsInDirectorySeparator(fullRoot) ? fullRoot : $"{fullRoot}{Path.DirectorySeparatorChar}";
+        string prefix = GetRootPrefix(root);
+        string path = Path.GetFullPath(Path.Combine([prefix, .. segments.AsSpan(1)]));
 
         // Whatever the segments are, the file is below the root.
         return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? path : null;
@@ -131,5 +152,12 @@ internal static class StagedResourceLookup
                 .OrderBy(qualifier => qualifier.Key, StringComparer.Ordinal)
                 .Select(qualifier => $"{qualifier.Key}={qualifier.Value}")
         );
+    }
+
+    // The full path of the root with a separator at its end, which every path below it starts with.
+    private static string GetRootPrefix(string root)
+    {
+        string fullRoot = Path.GetFullPath(root);
+        return Path.EndsInDirectorySeparator(fullRoot) ? fullRoot : $"{fullRoot}{Path.DirectorySeparatorChar}";
     }
 }

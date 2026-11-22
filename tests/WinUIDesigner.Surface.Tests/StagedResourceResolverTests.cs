@@ -199,6 +199,48 @@ public sealed class StagedResourceResolverTests
     }
 
     [TestMethod]
+    public void FileThatAPriFileNamesInTheAppXFolderIsNeverUsed()
+    {
+        // AppX\resources.pri is older than the one at the root and names the files next to itself, which exist.
+        string stale = Staged("AppX/Assets/Images/back.scale-150.png");
+        var host = new FakeHost("resources.pri", Staged("AppX/resources.pri"));
+        host.Knows(1, "Files/Assets/Images/back.png", new Candidate(stale));
+        host.Files.Add(stale);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        // The stale file exists, but the image gets the placeholder.
+        Assert.AreEqual(new Candidate(host.PlaceholderPath("missing-image.png")), resolver.Resolve("Files/Assets/Images/back.png", _NoQualifiers));
+    }
+
+    [TestMethod]
+    public void FileAtTheRootWinsOverTheOneThatThePriFileOfAppXNames()
+    {
+        string fresh = Staged("Assets/Images/back.scale-150.png");
+        string stale = Staged("AppX/Assets/Images/back.scale-150.png");
+        var host = new FakeHost("resources.pri", Staged("AppX/resources.pri"));
+        host.Knows(0, "Files/Assets/Images/back.png", new Candidate(fresh));
+        host.Knows(1, "Files/Assets/Images/back.png", new Candidate(stale));
+        host.Files.Add(fresh);
+        host.Files.Add(stale);
+        var resolver = new StagedResourceResolver<Candidate>(_Root, host);
+
+        Assert.AreEqual(new Candidate(fresh), resolver.Resolve("Files/Assets/Images/back.png", _NoQualifiers));
+    }
+
+    [TestMethod]
+    public void FileThatAPriFileNamesIsUsedWhenItExistsWithoutAContentDirectory()
+    {
+        // There is no AppX folder to tell from.
+        string path = Staged("AppX/Assets/Images/back.scale-150.png");
+        var host = new FakeHost("resources.pri");
+        host.Knows(0, "Files/Assets/Images/back.png", new Candidate(path));
+        host.Files.Add(path);
+        var resolver = new StagedResourceResolver<Candidate>(null, host);
+
+        Assert.AreEqual(new Candidate(path), resolver.Resolve("Files/Assets/Images/back.png", _NoQualifiers));
+    }
+
+    [TestMethod]
     public void NoStagedFilesAreLookedForWithoutAContentDirectory()
     {
         var host = new FakeHost("resources.pri");

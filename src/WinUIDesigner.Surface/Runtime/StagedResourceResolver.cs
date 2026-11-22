@@ -222,9 +222,10 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         }
     }
 
-    // The candidate when it can be used: data, such as an XBF that the PRI file embeds, or a file that exists. The same
-    // PRI file is staged in several folders (the root, AppX and one folder per package below ProjectResources), and most
-    // of its copies name files that were never staged next to them.
+    // The candidate when it can be used: data, such as an XBF that the PRI file embeds, or a file that exists outside the
+    // AppX folder. The same PRI file is staged in several folders (the root, AppX and one folder per package below
+    // ProjectResources), and each copy names files next to itself: nothing but PRI files is staged below
+    // ProjectResources, and the files in AppX are older than the ones at the root.
     private TCandidate? GetUsable(TCandidate? candidate)
     {
         // A PRI file that does not know the name.
@@ -237,6 +238,12 @@ internal sealed class StagedResourceResolver<TCandidate>(string? contentDirector
         if (host.GetFilePath(candidate) is not { } path)
         {
             return candidate;
+        }
+
+        // A file of the stale AppX layout.
+        if (contentDirectory is not null && StagedResourceLookup.IsInAppXLayout(contentDirectory, path))
+        {
+            return null;
         }
 
         // A file that is there.
