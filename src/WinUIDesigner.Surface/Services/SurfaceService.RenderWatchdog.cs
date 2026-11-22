@@ -111,7 +111,7 @@ internal sealed partial class SurfaceService
                     // The framework has stopped drawing.
                     case RenderWatchStep.Stalled:
                         _renderWatchArmed = false;
-                        ReportRenderStall(exception, shownIds, framesWhileRendering);
+                        ReportRenderStall(exception, framesWhileRendering);
                         break;
                 }
             }
@@ -135,7 +135,7 @@ internal sealed partial class SurfaceService
             && current.IsHostVisible;
     }
 
-    private void ReportRenderStall(Exception exception, int[] shownDocumentIds, string framesWhileRendering)
+    private void ReportRenderStall(Exception exception, string framesWhileRendering)
     {
         // The text is also how the extension knows that nothing in this process draws any more, and restarts the process;
         // a framework that stopped at the first frame of the process stops the same way in a new one.
@@ -146,12 +146,12 @@ internal sealed partial class SurfaceService
         RenderFrames.Counter.Stop();
 
         WinUIDesignerLogger.LogError("Surface", $"{_renderStall.Message} A render of one pixel did not complete ({framesWhileRendering} meanwhile). Surface context: {IdentifySurfaceContext()}. {DescribeState()}", exception);
-        foreach (int documentId in shownDocumentIds)
+
+        // The documents that are shown now, not the ones that were shown when the render was asked for: a document that was
+        // created or shown while it ran asked before the stall was decided, and was told nothing.
+        foreach ((int documentId, DesignerSurface surface) in _surfaces.Where(pair => pair.Value.IsHostVisible).ToArray())
         {
-            if (_surfaces.TryGetValue(documentId, out DesignerSurface? surface))
-            {
-                TellRenderStall(documentId, surface);
-            }
+            TellRenderStall(documentId, surface);
         }
     }
 
