@@ -23,6 +23,7 @@ namespace WinUIDesigner.Surface.Runtime;
 /// rules of the metadata, measured against the reader in an application with Windows App SDK 2.5.1: a type is
 /// present when it is a Windows Runtime type, and a property is present on the type that declares it, not on
 /// derived types. A type that is only managed code, such as a class of the previewed project, is not present.
+/// Where the projection differs from the metadata, <see cref="ProjectionMetadataRules"/> closes the gap.
 /// </para>
 /// <para>
 /// The methods are safe to call from any thread, except <see cref="EvaluateCustom"/>.
@@ -64,7 +65,9 @@ internal static class XamlConditionProbes
     public static bool IsManagedTypePresent(string typeName)
     {
         // Metadata that can be read is the authority, as it is for the XAML reader.
-        return ApiInformation.IsTypePresent(typeName) || FindProjectedType(typeName) is not null;
+        return ApiInformation.IsTypePresent(typeName)
+            || ProjectionMetadataRules.IsTypeWithoutProjection(typeName)
+            || FindProjectedType(typeName) is not null;
     }
 
     /// <summary>
@@ -77,8 +80,14 @@ internal static class XamlConditionProbes
             return true;
         }
 
+        // The projection has no type for some types of the metadata.
+        if (ProjectionMetadataRules.IsTypeWithoutProjection(typeName))
+        {
+            return ProjectionMetadataRules.DeclaresPropertyWithoutProjection(typeName, propertyName);
+        }
+
         Type? type = FindProjectedType(typeName);
-        return type is not null && DeclaresProperty(type, propertyName);
+        return type is not null && ProjectionMetadataRules.DeclaresProperty(type, propertyName, IsWindowsRuntimeType);
     }
 
     /// <summary>
@@ -117,31 +126,10 @@ internal static class XamlConditionProbes
     internal static Type? FindProjectedType(string typeName)
     {
         Type? type = FindType(typeName, loadProjections: true);
-        return type is not null && type.IsDefined(typeof(WinRT.WindowsRuntimeTypeAttribute), inherit: false) ? type : null;
+        return type is not null && IsWindowsRuntimeType(type) ? type : null;
     }
 
-    /// <summary>
-    /// Returns whether <paramref name="type"/> itself declares a property, the way Windows Runtime metadata
-    /// records it: inherited properties belong to the base type, events are no properties, and the members
-    /// of a structure are fields.
-    /// </summary>
-    internal static bool DeclaresProperty(Type type, string propertyName)
-    {
-        if (type.IsValueType)
-        {
-            return false;
-        }
-
-        try
-        {
-            const BindingFlags declared = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-            return type.GetProperty(propertyName, declared) is not null;
-        }
-        catch (AmbiguousMatchException)
-        {
-            return true;
-        }
-    }
+    private static bool IsWindowsRuntimeType(Type type) => type.IsDefined(typeof(WinRT.WindowsRuntimeTypeAttribute), inherit: false);
 
     /// <summary>
     /// Finds a type by its full name: among the loaded assemblies, in the staged project, and optionally in
