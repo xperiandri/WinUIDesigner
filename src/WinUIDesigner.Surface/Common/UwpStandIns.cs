@@ -67,18 +67,16 @@ internal static class UwpStandIns
     }
 
     /// <summary>
-    /// Renames, in place, the elements of prepared XAML that Visual Studio's cleaner wrote as stand-ins of its UWP
-    /// surface to the names under which the WinUI XAML reader knows them (<see cref="GetRuntimeElementName"/>).
+    /// Renames, in place, an element of prepared XAML that Visual Studio's cleaner wrote as a stand-in of its UWP
+    /// surface to the name under which the WinUI XAML reader knows it (<see cref="GetRuntimeElementName"/>). Any other
+    /// element keeps its name.
     /// </summary>
-    /// <param name="root">The root of the prepared XAML, which is renamed too when it is a stand-in.</param>
-    public static void RenameStandIns(XElement root)
+    /// <param name="element">An element of prepared XAML; the caller walks the tree.</param>
+    public static void RenameStandIn(XElement element)
     {
-        foreach (XElement element in root.DescendantsAndSelf())
+        if (GetRuntimeElementName(element.Name) is { } runtimeName)
         {
-            if (GetRuntimeElementName(element.Name) is { } runtimeName)
-            {
-                element.Name = runtimeName;
-            }
+            element.Name = runtimeName;
         }
     }
 }

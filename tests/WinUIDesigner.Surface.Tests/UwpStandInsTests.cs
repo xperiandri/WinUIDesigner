@@ -92,7 +92,7 @@ public sealed class UwpStandInsTests
             """
         );
 
-        UwpStandIns.RenameStandIns(document.Root!);
+        RenameStandIns(document);
 
         string xaml = document.ToString(SaveOptions.DisableFormatting);
         Assert.Contains("<AdaptiveTrigger MinWindowWidth=\"700\" />", xaml);
@@ -100,13 +100,14 @@ public sealed class UwpStandInsTests
     }
 
     [TestMethod]
-    public void RootThatIsAStandInIsRenamedToo()
+    public void StandInIsRenamedInPlaceAndKeepsItsAttributes()
     {
-        var root = XElement.Parse("""<xsurf:AdaptiveTrigger xmlns:xsurf="using:XSurfUwp" MinWindowHeight="630" />""");
+        var element = XElement.Parse("""<xsurf:AdaptiveTrigger xmlns:xsurf="using:XSurfUwp" MinWindowHeight="630" />""");
 
-        UwpStandIns.RenameStandIns(root);
+        UwpStandIns.RenameStandIn(element);
 
-        Assert.AreEqual(XName.Get("AdaptiveTrigger", "http://schemas.microsoft.com/winfx/2006/xaml/presentation"), root.Name);
+        Assert.AreEqual(XName.Get("AdaptiveTrigger", "http://schemas.microsoft.com/winfx/2006/xaml/presentation"), element.Name);
+        Assert.AreEqual("630", (string?)element.Attribute("MinWindowHeight"));
     }
 
     [TestMethod]
@@ -124,8 +125,17 @@ public sealed class UwpStandInsTests
         );
         string expected = document.ToString(SaveOptions.DisableFormatting);
 
-        UwpStandIns.RenameStandIns(document.Root!);
+        RenameStandIns(document);
 
         Assert.AreEqual(expected, document.ToString(SaveOptions.DisableFormatting));
+    }
+
+    // Walks the prepared XAML the way BuildDocumentAsync does, one element at a time.
+    private static void RenameStandIns(XDocument document)
+    {
+        foreach (XElement element in document.Root!.DescendantsAndSelf())
+        {
+            UwpStandIns.RenameStandIn(element);
+        }
     }
 }
