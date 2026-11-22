@@ -39,15 +39,19 @@ internal static class DesignTimeOptionsResolver
     public static DesignTimeOptions Resolve(string? userOverride, string? targetPlatformProperty, string? windowsVersionProperty)
     {
         DesignTimeOptions defaults = ResolveDefaults(targetPlatformProperty, windowsVersionProperty);
+
+        // No override, or one in no known format: the project file decides both options.
         if (!DesignTimeOptions.TryReadFields(userOverride, out string? targetPlatformId, out string? contractVersion))
         {
             return defaults;
         }
 
+        // The override names a known target, or leaves the target to the project file.
         DesignTimeTargetPlatform targetPlatform = DesignTimeTargetPlatform.TryParse(targetPlatformId, out DesignTimeTargetPlatform chosen)
             ? chosen
             : defaults.TargetPlatform;
 
+        // The override asks for the installed Windows, names a contract version, or leaves the version to the project file.
         int? contract = defaults.ContractVersion;
         if (IsInstalledWindows(contractVersion))
         {
@@ -71,7 +75,8 @@ internal static class DesignTimeOptionsResolver
         DesignTimeTargetPlatform.TryParse(targetPlatformProperty, out DesignTimeTargetPlatform targetPlatform);
         return new DesignTimeOptions(
             targetPlatform,
-            WindowsVersionCatalog.TryParse(windowsVersionProperty, out int contractVersion) ? contractVersion : null);
+            WindowsVersionCatalog.TryParse(windowsVersionProperty, out int contractVersion) ? contractVersion : null
+        );
     }
 
     /// <summary>

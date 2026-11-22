@@ -38,8 +38,7 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
     private const string _VersionField = "v";
     private const string _TargetField = "target";
     private const string _ContractField = "contract";
-
-    private static readonly char[] _FieldSeparators = { ';' };
+    private const char _FieldSeparator = ';';
 
     public DesignTimeOptions(DesignTimeTargetPlatform? targetPlatform, int? contractVersion)
     {
@@ -73,15 +72,9 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
     /// </summary>
     public bool IsDefault => Equals(Default);
 
-    public static bool operator ==(DesignTimeOptions? left, DesignTimeOptions? right)
-    {
-        return left is null ? right is null : left.Equals(right);
-    }
+    public static bool operator ==(DesignTimeOptions? left, DesignTimeOptions? right) => left is null ? right is null : left.Equals(right);
 
-    public static bool operator !=(DesignTimeOptions? left, DesignTimeOptions? right)
-    {
-        return !(left == right);
-    }
+    public static bool operator !=(DesignTimeOptions? left, DesignTimeOptions? right) => !(left == right);
 
     /// <summary>
     /// Reads the text form written by <see cref="Serialize"/>.
@@ -102,7 +95,8 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
 
         options = new DesignTimeOptions(
             DesignTimeTargetPlatform.FromId(targetPlatformId),
-            TryParseContractVersion(contractVersion, out int version) ? version : null);
+            TryParseContractVersion(contractVersion, out int version) ? version : null
+        );
         return true;
     }
 
@@ -118,18 +112,12 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
     /// Returns a copy of these options that evaluates conditional XAML against <paramref name="contractVersion"/>.
     /// </summary>
     /// <param name="contractVersion">The contract version, or <see langword="null"/> for the installed Windows.</param>
-    public DesignTimeOptions WithContractVersion(int? contractVersion)
-    {
-        return new DesignTimeOptions(TargetPlatform, contractVersion);
-    }
+    public DesignTimeOptions WithContractVersion(int? contractVersion) => new DesignTimeOptions(TargetPlatform, contractVersion);
 
     /// <summary>
     /// Returns the text form, for example <c>v=1;target=android;contract=7</c>.
     /// </summary>
-    public string Serialize()
-    {
-        return Format(TargetPlatformId, ContractVersion?.ToString(CultureInfo.InvariantCulture));
-    }
+    public string Serialize() => Format(TargetPlatformId, ContractVersion?.ToString(CultureInfo.InvariantCulture));
 
     public bool Equals(DesignTimeOptions? other)
     {
@@ -138,10 +126,7 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
             && ContractVersion == other.ContractVersion;
     }
 
-    public override bool Equals(object? obj)
-    {
-        return Equals(obj as DesignTimeOptions);
-    }
+    public override bool Equals(object? obj) => Equals(obj as DesignTimeOptions);
 
     public override int GetHashCode()
     {
@@ -151,10 +136,7 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
         }
     }
 
-    public override string ToString()
-    {
-        return Serialize();
-    }
+    public override string ToString() => Serialize();
 
     /// <summary>
     /// Writes the text form from raw field values; a <see langword="null"/> field is left out.
@@ -165,12 +147,12 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
         text.Append(_VersionField).Append('=').Append(FormatVersion.ToString(CultureInfo.InvariantCulture));
         if (targetPlatformId is not null)
         {
-            text.Append(_FieldSeparators[0]).Append(_TargetField).Append('=').Append(targetPlatformId);
+            text.Append(_FieldSeparator).Append(_TargetField).Append('=').Append(targetPlatformId);
         }
 
         if (contractVersion is not null)
         {
-            text.Append(_FieldSeparators[0]).Append(_ContractField).Append('=').Append(contractVersion);
+            text.Append(_FieldSeparator).Append(_ContractField).Append('=').Append(contractVersion);
         }
 
         return text.ToString();
@@ -195,28 +177,36 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
         bool hasVersion = false;
         string? target = null;
         string? contract = null;
-        foreach (string field in text.Split(_FieldSeparators))
+
+        // The text is read in place; only the values that are kept become strings.
+        ReadOnlySpan<char> rest = text.AsSpan();
+        while (!rest.IsEmpty)
         {
+            int end = rest.IndexOf(_FieldSeparator);
+            ReadOnlySpan<char> field = end < 0 ? rest : rest.Slice(0, end);
+            rest = end < 0 ? ReadOnlySpan<char>.Empty : rest.Slice(end + 1);
+
             int separator = field.IndexOf('=');
             if (separator <= 0)
             {
                 continue;
             }
 
-            string name = field.Substring(0, separator).Trim();
-            string value = field.Substring(separator + 1).Trim();
-            if (name.Equals(_VersionField, StringComparison.OrdinalIgnoreCase))
+            ReadOnlySpan<char> name = field.Slice(0, separator).Trim();
+            ReadOnlySpan<char> value = field.Slice(separator + 1).Trim();
+            if (name.Equals(_VersionField.AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
-                // Any later version is read as well; it can only have added fields.
-                hasVersion = int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int version) && version >= 1;
+                // Any later version is read as well; it can only have added fields. The number becomes a string
+                // because .NET Framework parses numbers only from strings.
+                hasVersion = int.TryParse(value.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out int version) && version >= 1;
             }
-            else if (name.Equals(_TargetField, StringComparison.OrdinalIgnoreCase))
+            else if (name.Equals(_TargetField.AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
-                target = value;
+                target = value.ToString();
             }
-            else if (name.Equals(_ContractField, StringComparison.OrdinalIgnoreCase))
+            else if (name.Equals(_ContractField.AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
-                contract = value;
+                contract = value.ToString();
             }
         }
 

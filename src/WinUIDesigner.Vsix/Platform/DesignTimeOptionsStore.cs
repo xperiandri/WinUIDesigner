@@ -69,21 +69,25 @@ internal sealed class DesignTimeOptionsStore
         }));
 
         // A value nobody can read is ignored by the resolver; say so, because the user probably mistyped it.
+        // The override stored for the project is not in the text form of the options.
         if (!IsUnset(userOverride) && !DesignTimeOptions.TryParse(userOverride, out _))
         {
             WinUIDesignerLogger.LogWarning(_Category, $"The stored design-time options '{userOverride}' of project '{settingsProject}' are not understood and are ignored.");
         }
 
+        // The target platform property names no known target.
         if (!IsUnset(targetPlatform) && !DesignTimeTargetPlatform.TryParse(targetPlatform, out _))
         {
             WinUIDesignerLogger.LogWarning(_Category, $"{DesignTimeOptionsResolver.TargetPlatformPropertyName} '{targetPlatform}' of project '{settingsProject}' is not a known target platform and is ignored.");
         }
 
+        // The Windows version property names no known contract version, build or release.
         if (!IsUnset(windowsVersion) && !WindowsVersionCatalog.TryParse(windowsVersion, out _))
         {
             WinUIDesignerLogger.LogWarning(_Category, $"{DesignTimeOptionsResolver.WindowsVersionPropertyName} '{windowsVersion}' of project '{settingsProject}' is not a known Windows version and is ignored.");
         }
 
+        // Where the options came from, for the log line of the surface start; without a project only the defaults apply.
         source = settingsProject is null
             ? "no project to read them from"
             : $"user override {Describe(userOverride)}, {DesignTimeOptionsResolver.TargetPlatformPropertyName} {Describe(targetPlatform)}, "
@@ -140,7 +144,7 @@ internal sealed class DesignTimeOptionsStore
 
     private static string? TryReadBuildProperty(IHostProject project, string propertyName)
     {
-        return TryRead("reading " + propertyName, () => ReadBuildProperty(project, propertyName));
+        return TryRead($"reading {propertyName}", () => ReadBuildProperty(project, propertyName));
     }
 
     // HostProject.GetProperty answers from a cache that outlives an edit of the project file. This is the read
@@ -173,15 +177,9 @@ internal sealed class DesignTimeOptionsStore
             : null;
     }
 
-    private static bool IsUnset(string? value)
-    {
-        return value is null || value.Trim().Length == 0;
-    }
+    private static bool IsUnset(string? value) => string.IsNullOrWhiteSpace(value);
 
-    private static string Describe(string? value)
-    {
-        return IsUnset(value) ? "not set" : "'" + value + "'";
-    }
+    private static string Describe(string? value) => IsUnset(value) ? "not set" : $"'{value}'";
 
     private static void Guard(string action, Action call)
     {

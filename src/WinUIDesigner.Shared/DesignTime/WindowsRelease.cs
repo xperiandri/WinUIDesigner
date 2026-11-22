@@ -1,7 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
-using System.Globalization;
+using System;
 
 namespace WinUIDesigner.DesignTime;
 
@@ -42,10 +42,7 @@ internal sealed class WindowsRelease
     /// <summary>
     /// Gets the version in the form MSBuild uses for <c>TargetPlatformVersion</c>, for example <c>10.0.17763.0</c>.
     /// </summary>
-    public string Version => "10.0." + Build.ToString(CultureInfo.InvariantCulture) + ".0";
+    public string Version => FormattableString.Invariant($"10.0.{Build}.0");
 
-    public override string ToString()
-    {
-        return DisplayName;
-    }
+    public override string ToString() => DisplayName;
 }
