@@ -68,18 +68,33 @@ internal sealed class ConstructionFallbacks
     public void Clear() => _failures.Clear();
 
     /// <summary>
-    /// Returns the recorded failures in Visual Studio's <c>ActionError</c> JSON and forgets them.
+    /// Returns the recorded failures, in the order of the actions, and forgets them.
     /// </summary>
-    /// <returns>The errors, or <see langword="null"/> when no fallback took the place of an object.</returns>
-    public string? TakeErrors()
+    /// <returns>The failures; none when no fallback took the place of an object.</returns>
+    public IList<ActionError> TakeFailures()
     {
-        if (_failures.Count == 0)
+        ActionError[] failures = [.. _failures];
+        _failures.Clear();
+        return failures;
+    }
+
+    /// <summary>
+    /// Returns the recorded failures in the JSON of Visual Studio's <see cref="ActionError"/>, followed by
+    /// <paramref name="laterFailure"/>, and forgets them.
+    /// </summary>
+    /// <param name="laterFailure">
+    /// The error of the action that failed after the fallbacks took their places, or <see langword="null"/> when the
+    /// actions went on to their end. Visual Studio shows why the fallbacks were needed together with it.
+    /// </param>
+    /// <returns>The errors, or <see langword="null"/> when there is none.</returns>
+    public string? TakeErrors(ActionError? laterFailure = null)
+    {
+        List<ActionError> errors = [.. TakeFailures()];
+        if (laterFailure is not null)
         {
-            return null;
+            errors.Add(laterFailure);
         }
 
-        string errors = ActionErrorJsonSerializer.Serialize(_failures);
-        _failures.Clear();
-        return errors;
+        return errors.Count == 0 ? null : ActionErrorJsonSerializer.Serialize(errors);
     }
 }

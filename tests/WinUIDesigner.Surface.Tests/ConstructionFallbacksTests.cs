@@ -3,6 +3,7 @@
 
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Shared;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WinUIDesigner.Surface.Common;
 using WinUIDesigner.Surface.Runtime;
 
 [TestClass]
@@ -16,6 +17,18 @@ public sealed class ConstructionFallbacksTests
             FallbackTypeName = "XSurfUwp.Fallback.FallbackControl, UwpSurface",
         };
     }
+
+    // Another control of the project, with the same fallback.
+    private static CreateInstanceAction CreateSideBar()
+    {
+        return new(-41, "Ecierge.Console.Components.SideBar, Ecierge.Console.UI")
+        {
+            FallbackTypeName = "XSurfUwp.Fallback.FallbackControl, UwpSurface",
+        };
+    }
+
+    // The error of an action that fails after the fallbacks took their places.
+    private static ActionError CreateLaterFailure() => new() { XamlAction = new SetSurfaceContentAction(42, 123), Error = "later failure" };
 
     [TestMethod]
     public void ConstructionThatSucceedsKeepsItsObjectAndReportsNothing()
@@ -66,6 +79,78 @@ public sealed class ConstructionFallbacksTests
 
         // The errors are taken once.
         Assert.IsNull(fallbacks.TakeErrors());
+    }
+
+    [TestMethod]
+    public void FailuresAreTakenInTheOrderOfTheActionsAndForgotten()
+    {
+        var fallbacks = new ConstructionFallbacks();
+        fallbacks.Construct<object?>(CreateTitleBar(), () => throw new InvalidOperationException("title bar failure"), () => new object());
+        fallbacks.Construct<object?>(CreateSideBar(), () => throw new InvalidOperationException("side bar failure"), () => new object());
+
+        IList<ActionError> failures = fallbacks.TakeFailures();
+
+        Assert.HasCount(2, failures);
+        Assert.AreEqual(-39, Assert.IsInstanceOfType<CreateInstanceAction>(failures[0].XamlAction).LiveHandle);
+        Assert.Contains("title bar failure", failures[0].Error);
+        Assert.AreEqual(-41, Assert.IsInstanceOfType<CreateInstanceAction>(failures[1].XamlAction).LiveHandle);
+        Assert.Contains("side bar failure", failures[1].Error);
+        Assert.IsEmpty(fallbacks.TakeFailures());
+    }
+
+    [TestMethod]
+    public void FailureOfALaterActionOfAnEditIsReportedAfterTheReplacedElement()
+    {
+        var fallbacks = new ConstructionFallbacks();
+        fallbacks.Construct<object?>(CreateTitleBar(), () => throw new InvalidOperationException("constructor failure"), () => new object());
+
+        // A property of the original type fails on the fallback that replaced it, and stops the batch.
+        string? errors = fallbacks.TakeErrors(CreateLaterFailure());
+
+        Assert.IsNotNull(errors);
+        IList<ActionError> decoded = ActionErrorJsonSerializer.Deserialize(errors);
+        Assert.HasCount(2, decoded);
+        // The reason for the replacement first, so that Visual Studio shows it on the element, then the later failure.
+        Assert.IsInstanceOfType<CreateInstanceAction>(decoded[0].XamlAction);
+        Assert.Contains("constructor failure", decoded[0].Error);
+        Assert.IsInstanceOfType<SetSurfaceContentAction>(decoded[1].XamlAction);
+        Assert.AreEqual("later failure", decoded[1].Error);
+        Assert.IsNull(fallbacks.TakeErrors());
+    }
+
+    [TestMethod]
+    public void FailureOfALaterActionOfAnEditIsReportedAloneWhenNoFallbackWasNeeded()
+    {
+        var fallbacks = new ConstructionFallbacks();
+
+        string? errors = fallbacks.TakeErrors(CreateLaterFailure());
+
+        Assert.IsNotNull(errors);
+        IList<ActionError> decoded = ActionErrorJsonSerializer.Deserialize(errors);
+        Assert.HasCount(1, decoded);
+        Assert.AreEqual("later failure", decoded[0].Error);
+    }
+
+    [TestMethod]
+    public void FailureOfADocumentCarriesTheReplacedElementsBeforeTheFailedAction()
+    {
+        var fallbacks = new ConstructionFallbacks();
+        fallbacks.Construct<object?>(CreateTitleBar(), () => throw new InvalidOperationException("constructor failure"), () => new object());
+
+        var failure = new DocumentConstructionException(
+            new InvalidOperationException("later failure"),
+            new SetSurfaceContentAction(42, 123),
+            fallbacks.TakeFailures()
+        );
+
+        // The document is not built, so this message is all that Visual Studio learns about the replaced element.
+        IList<ActionError> decoded = ActionErrorJsonSerializer.Deserialize(failure.SerializedErrors);
+        Assert.HasCount(2, decoded);
+        Assert.IsInstanceOfType<CreateInstanceAction>(decoded[0].XamlAction);
+        Assert.Contains("constructor failure", decoded[0].Error);
+        Assert.IsInstanceOfType<SetSurfaceContentAction>(decoded[1].XamlAction);
+        Assert.Contains("later failure", decoded[1].Error);
+        Assert.IsEmpty(fallbacks.TakeFailures());
     }
 
     [TestMethod]

@@ -111,7 +111,11 @@ internal sealed partial class SurfaceService
             return new ResponseWithError()
             {
                 HResult = ex.HResult != 0 ? ex.HResult : Marshal.GetHRForException(ex),
-                Error = failedAction is null ? ex.ToString() : ActionErrorJsonSerializer.Serialize([new() { XamlAction = failedAction, Error = ex.ToString() },]),
+                // The objects that fallbacks replaced before the failure are reported with it: Visual Studio shows why
+                // they were replaced on their elements, not only the error of the action that failed afterwards.
+                Error = failedAction is null
+                    ? ex.ToString()
+                    : _constructionFallbacks.TakeErrors(new ActionError { XamlAction = failedAction, Error = ex.ToString() }),
             };
         }
     }
@@ -176,7 +180,9 @@ internal sealed partial class SurfaceService
                     WinUIDesignerLogger.LogTrace("Surface", $"BuildDocument ({document.DocumentId}) failed at action[{index}]: {serializedActions[index]}", ex);
                 }
 #endif
-                throw new DocumentConstructionException(ex, action);
+                // The objects that fallbacks replaced so far are reported with the failure: Visual Studio shows why
+                // they were replaced on their elements, not only the error of the action that failed afterwards.
+                throw new DocumentConstructionException(ex, action, _constructionFallbacks.TakeFailures());
             }
         }
 
@@ -188,7 +194,7 @@ internal sealed partial class SurfaceService
             }
             catch (Exception ex)
             {
-                throw new DocumentConstructionException(ex, insertion.Action);
+                throw new DocumentConstructionException(ex, insertion.Action, _constructionFallbacks.TakeFailures());
             }
         }
 
