@@ -36,6 +36,9 @@ internal static class ProjectRuntimeResolver
     // Failures of the project's metadata providers already written to the log; XAML asks the same questions again and again.
     private static readonly HashSet<string> _ReportedFailures = new(StringComparer.Ordinal);
 
+    // The assemblies the surface carries itself.
+    private static readonly SurfaceAssemblies _SurfaceAssemblies = new(AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string, ReadAssemblyVersion);
+
     [ThreadStatic] private static HashSet<string>? _resolving;
 
     public static void Initialize(string directory)
@@ -300,44 +303,10 @@ internal static class ProjectRuntimeResolver
     {
         try
         {
-            // The assemblies the surface itself carries, by simple name.
-            var surfaceAssemblies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string trusted)
-            {
-                foreach (string path in trusted.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-                {
-                    surfaceAssemblies.TryAdd(Path.GetFileNameWithoutExtension(path), path);
-                }
-            }
-
-            var versions = new Dictionary<string, Version?>(StringComparer.OrdinalIgnoreCase);
-            Version? GetSurfaceVersion(string name)
-            {
-                if (!versions.TryGetValue(name, out Version? version))
-                {
-                    version = null;
-                    if (surfaceAssemblies.TryGetValue(name, out string? path))
-                    {
-                        try
-                        {
-                            version = AssemblyName.GetAssemblyName(path).Version;
-                        }
-                        catch (Exception ex) when (ex is IOException or BadImageFormatException)
-                        {
-                            // Not a managed assembly, or not readable: it cannot be compared.
-                        }
-                    }
-
-                    versions[name] = version;
-                }
-
-                return version;
-            }
-
             var findings = new List<UnsatisfiedAssemblyReference>();
             foreach ((string assembly, List<AssemblyReferenceInfo> references) in staged)
             {
-                findings.AddRange(AssemblyReferenceCompatibility.FindUnsatisfied(assembly, references, GetSurfaceVersion));
+                findings.AddRange(AssemblyReferenceCompatibility.FindUnsatisfied(assembly, references, _SurfaceAssemblies.GetVersion));
             }
 
             foreach (string line in AssemblyReferenceCompatibility.Describe(findings))
@@ -348,6 +317,19 @@ internal static class ProjectRuntimeResolver
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             WinUIDesignerLogger.LogTrace("Surface", "Checking the assembly references of the project failed.", ex);
+        }
+    }
+
+    private static Version? ReadAssemblyVersion(string path)
+    {
+        try
+        {
+            return AssemblyName.GetAssemblyName(path).Version;
+        }
+        catch (Exception ex) when (ex is IOException or BadImageFormatException)
+        {
+            // Not a managed assembly, or not readable: it cannot be compared.
+            return null;
         }
     }
 }

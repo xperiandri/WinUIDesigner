@@ -64,14 +64,14 @@ public sealed class AssemblyReferenceCompatibilityTests
     [TestMethod]
     public void NamesAreComparedWithoutCase()
     {
-        var references = new[] { new AssemblyReferenceInfo("microsoft.windows.sdk.net", new Version(10, 0, 28000, 87)) };
+        // The file of the surface's copy is spelled differently from the name in the reference.
+        var surface = new SurfaceAssemblies(@"C:\Surface\microsoft.windows.sdk.net.dll", _ => new Version(10, 0, 19041, 38));
+        var references = new[] { new AssemblyReferenceInfo("Microsoft.Windows.SDK.NET", new Version(10, 0, 28000, 87)) };
 
-        IReadOnlyList<UnsatisfiedAssemblyReference> findings = AssemblyReferenceCompatibility.FindUnsatisfied(
-            "Ecierge.Uno.App",
-            references,
-            Surface(("Microsoft.Windows.SDK.NET", "10.0.19041.38")));
+        IReadOnlyList<UnsatisfiedAssemblyReference> findings = AssemblyReferenceCompatibility.FindUnsatisfied("Ecierge.Uno.App", references, surface.GetVersion);
 
-        Assert.ContainsSingle(findings);
+        UnsatisfiedAssemblyReference finding = Assert.ContainsSingle(findings);
+        Assert.AreEqual(new Version(10, 0, 19041, 38), finding.Available);
     }
 
     [TestMethod]

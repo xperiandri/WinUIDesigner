@@ -16,6 +16,7 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DocumentScope.cs" Link="DocumentScope.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/AssemblyReferenceCompatibility.cs" Link="AssemblyReferenceCompatibility.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/AssemblyLoadFailures.cs" Link="AssemblyLoadFailures.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/SurfaceAssemblies.cs" Link="SurfaceAssemblies.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>
