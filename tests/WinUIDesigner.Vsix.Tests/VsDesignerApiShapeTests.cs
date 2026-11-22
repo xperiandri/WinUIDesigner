@@ -15,7 +15,6 @@ public sealed class VsDesignerApiShapeTests
 {
     private const string _DesignerInstanceManager = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.DesignerInstanceManager";
     private const string _SurfaceProcessContext = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.SurfaceProcessContext";
-    private const string _UwpInstanceBuilderPlatform = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp.UwpInstanceBuilderPlatform";
     private const string _UwpDesignerInstanceBuilderPlatform = "Microsoft.VisualStudio.DesignTools.UwpSurfaceDesigner.SurfaceIsolation.UwpDesignerInstanceBuilderPlatform";
     private const string _SurfaceProcessMarkupProvider = "Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents.SurfaceProcessMarkupProvider";
     private const string _XamlCleaner = "Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents.XamlModify.XamlCleaner";
@@ -50,10 +49,12 @@ public sealed class VsDesignerApiShapeTests
     }
 
     [TestMethod]
-    public void InstanceBuilderPlatformLetsDerivedClassesChooseTheBuilder()
+    public void DesignerInstanceBuilderPlatformLetsDerivedClassesChooseTheBuilder()
     {
+        // The extension derives from the designer platform, so its override binds to the declaration nearest to
+        // that class, which is the one the lookup returns first; the base class is reached when there is none.
         MethodDefinition method = RequireMethod(
-            _UwpInstanceBuilderPlatform,
+            _UwpDesignerInstanceBuilderPlatform,
             "GetInstanceBuilder",
             "IInstanceBuilderContext", "DocumentNode");
 
