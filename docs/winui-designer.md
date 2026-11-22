@@ -63,7 +63,7 @@ Implementation: [scene-view activation](../src/WinUIDesigner.Vsix/Platform/WinUI
 
 ## Communicating with the surface
 
-The surface uses the existing private protocol types and adds a pipe bridge compatible with the host's initialization data. Its frame reader assembles complete messages even when reads return partial data. WinUI operations are marshalled to the UI dispatcher; the receive thread does not directly mutate XAML objects. Service observers are registered before protocol startup so an early request can be handled.
+The surface uses the existing private protocol types and adds a pipe bridge compatible with the host's initialization data. Its frame reader assembles complete messages even when reads return partial data. WinUI operations are marshalled to the UI dispatcher; the receive thread does not directly mutate XAML objects. Service observers are registered before protocol startup so an early request can be handled. Work on a document waits for the UI thread as long as it takes and ends only with the protocol or the dispatcher queue; the synchronous requests of Visual Studio give up after 30 seconds and are answered without the UI thread.
 
 Implementation: [pipe bridge](../src/WinUIDesigner.Surface/Transport/SurfacePipeDataBridge.cs), [frame reader](../src/WinUIDesigner.Surface/Transport/MessageFrameReader.cs), and [service initialization](../src/WinUIDesigner.Surface/App.xaml.cs).
 
@@ -224,7 +224,7 @@ Failures can occur before the surface starts, while the connection initializes, 
 | Platform and staging | Reject missing private contracts, unsupported project/runtime architectures, missing payloads, and detected WinUI runtime version mismatches. |
 | Startup and communication | Log startup exceptions and child-process exits; bound frame sizes and fail incomplete messages. |
 | Document construction | Attempt the action-based loading alternative, then return construction failure information and publish error notifications. |
-| Runtime operations | Return contract-specific failure results or notifications. Work on a document waits for the UI thread as long as it takes and ends only with the protocol or the dispatcher queue; the synchronous requests of Visual Studio give up after 30 seconds and are answered without the UI thread. |
+| Runtime operations | Return contract-specific failure results or notifications; dispatcher work observes cancellation and timeouts. |
 | Shutdown | Cancel pending protocol work, release document services and native windows, and dispose the connection. |
 
 ```mermaid
