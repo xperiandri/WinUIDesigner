@@ -11,6 +11,24 @@ using Microsoft.VisualStudio.DesignTools.Utility;
 namespace WinUIDesigner.DesignerHost;
 
 /// <summary>
+/// A project as <see cref="WinUIProjectRequirements"/> sees it: the platform identity of its active target and the
+/// WinUI runtime it references.
+/// </summary>
+internal interface IWinUIRequirementsProject
+{
+    /// <summary>
+    /// Gets the platform identity of the project's active target.
+    /// </summary>
+    PlatformIdentifier? PlatformIdentifier { get; }
+
+    /// <summary>
+    /// Gets the file version of the Microsoft.WinUI.dll the project references, an empty string when the file carries
+    /// no version, or <see langword="null"/> when the project has no such reference to verify.
+    /// </summary>
+    string? WinUIRuntimeFileVersion { get; }
+}
+
+/// <summary>
 /// Describes what a project must provide for the bundled WinUI surface to preview it.
 /// </summary>
 /// <remarks>
@@ -93,7 +111,11 @@ internal static class WinUIProjectRequirements
         return null;
     }
 
-    private static string? GetWinUIRuntimeFileVersion(IEnumerable<string?>? referencePaths)
+    /// <summary>
+    /// Reads the file version of the Microsoft.WinUI.dll among the project's reference paths, with the meaning of
+    /// <see cref="IWinUIRequirementsProject.WinUIRuntimeFileVersion"/>.
+    /// </summary>
+    public static string? GetWinUIRuntimeFileVersion(IEnumerable<string?>? referencePaths)
     {
         string? path = FindWinUIRuntimePath(referencePaths);
         if (path is null || !File.Exists(path))

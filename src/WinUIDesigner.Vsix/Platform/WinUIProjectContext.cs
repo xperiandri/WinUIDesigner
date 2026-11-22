@@ -2,6 +2,7 @@
 // Licensed under MIT License.
 
 using System;
+using System.Linq;
 using Microsoft.VisualStudio.DesignTools.DesignerContract;
 using Microsoft.VisualStudio.DesignTools.SurfaceDesigner;
 using Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.Project;
@@ -10,6 +11,7 @@ using Microsoft.VisualStudio.DesignTools.SurfaceDesigner.UI.PropertyInspector;
 using Microsoft.VisualStudio.DesignTools.UwpSurfaceDesigner.UI.PropertyInspector;
 using Microsoft.VisualStudio.DesignTools.Utility;
 using Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents;
+using WinUIDesigner.DesignerHost;
 
 namespace WinUIDesigner.Platform;
 
@@ -49,22 +51,29 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
     protected override SurfaceProcessContext CreateSurfaceProcessContextCore(ISurfaceProcessContext applicationSurfaceContext)
     {
         // A library shares the surface process of the application that references it, but only when that
-        // application can launch a WinUI surface itself. Visual Studio picks the application by target framework
-        // family alone, so the candidate can be an Uno app head whose active target is Android or Skia;
-        // its project context has no process host, and launching the surface through it fails.
-        if (applicationSurfaceContext is WinUISurfaceProcessContext context
-            && GetSurfaceLaunchBlocker(context.ProjectContext) is null)
-        {
-            WinUIDesignerLogger.LogInformation("Platform", $"Project '{ProjectName}' uses the surface process of '{context.ProjectContext?.ProjectName}'.");
-
-            return context;
-        }
-
+        // application can launch a WinUI surface itself and meets the project requirements, because the process
+        // runs the application's WinUI runtime. Visual Studio picks the application by target framework family
+        // alone, so the candidate can be an Uno app head whose active target is Android or Skia; its project
+        // context has no process host, and launching the surface through it fails.
         if (applicationSurfaceContext is not null)
         {
+            string? blocker = applicationSurfaceContext is WinUISurfaceProcessContext
+                ? GetSharingBlocker(applicationSurfaceContext.ProjectContext)
+                : "Its surface process belongs to another XAML platform.";
+
+            // The application's surface process can preview the documents of the library.
+            if (blocker is null)
+            {
+                WinUIDesignerLogger.LogInformation("Platform", $"Project '{ProjectName}' uses the surface process of '{applicationSurfaceContext.ProjectContext?.ProjectName}'.");
+
+                return (WinUISurfaceProcessContext)applicationSurfaceContext;
+            }
+
+            // The application cannot, so the library starts a surface process of its own.
             WinUIDesignerLogger.LogInformation(
                 "Platform",
-                $"Project '{ProjectName}' does not share the surface process of '{applicationSurfaceContext.ProjectContext?.ProjectName}' ('{applicationSurfaceContext.ProjectContext?.PlatformIdentifier?.Identifier}'); starting its own.");
+                $"Project '{ProjectName}' does not share the surface process of '{applicationSurfaceContext.ProjectContext?.ProjectName}' ('{applicationSurfaceContext.ProjectContext?.PlatformIdentifier?.Identifier}') and starts its own: {blocker}"
+            );
         }
 
         // Creates the surface-process context used to create and preview this project's documents.
@@ -92,6 +101,22 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
         return WinUISurfaceLaunch.GetBlocker(projectContext is null ? null : new SurfaceLaunchContext(projectContext));
     }
 
+    private static string? GetSharingBlocker(IProjectContext? applicationContext)
+    {
+        try
+        {
+            return WinUISurfaceLaunch.GetSharingBlocker(applicationContext is null ? null : new SurfaceLaunchContext(applicationContext));
+        }
+        catch (Exception exception)
+        {
+            // Like the designer pane, do not decide on a reference that cannot be inspected: share the process as
+            // before, and let the shadow-copy worker factory repeat the check when the process is prepared.
+            WinUIDesignerLogger.LogWarning("Platform", $"The requirements of '{applicationContext?.ProjectName}' could not be verified.", exception);
+
+            return null;
+        }
+    }
+
     // A project context as WinUISurfaceLaunch sees it.
     private sealed class SurfaceLaunchContext(IProjectContext projectContext) : ISurfaceLaunchContext
     {
@@ -107,5 +132,10 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
         public bool HasMetadata => projectContext.Metadata is not null;
 
         public bool HasPlatformMetadata => projectContext.Metadata?.PlatformMetadata is not null;
+
+        public string? WinUIRuntimeFileVersion
+            => WinUIProjectRequirements.GetWinUIRuntimeFileVersion(HostProject?.References?.Select(reference => reference.Path));
+
+        private IHostProject? HostProject => (projectContext as ProjectContextBase)?.HostProject;
     }
 }

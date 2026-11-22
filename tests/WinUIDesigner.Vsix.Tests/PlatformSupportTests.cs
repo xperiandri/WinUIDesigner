@@ -187,6 +187,34 @@ public sealed class PlatformSupportTests
         AssertExplains("platform metadata", WinUISurfaceLaunch.GetBlocker(new FakeProject { HasPlatformMetadata = false }));
     }
 
+    [TestMethod]
+    public void LibrarySharesTheSurfaceProcessOfAnApplicationThatMeetsTheRequirements()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        Assert.IsNull(WinUISurfaceLaunch.GetSharingBlocker(new FakeProject()));
+    }
+
+    [TestMethod]
+    public void LibraryDoesNotShareTheSurfaceProcessOfAnApplicationOnAnotherWinUIRuntime()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        // The process would run the application's Microsoft.WinUI.dll, here the one of Windows App SDK 2.4.0,
+        // and the shadow-copy worker factory refuses to prepare it.
+        AssertExplains("3.0.0.2608", WinUISurfaceLaunch.GetSharingBlocker(new FakeProject { WinUIRuntimeFileVersion = "3.0.0.2608" }));
+    }
+
+    [TestMethod]
+    public void LibraryDoesNotShareTheSurfaceProcessOfAnApplicationThatCannotLaunchOne()
+    {
+        WinUIPlatformSupport.Configure(_DesktopWinUI);
+
+        // An Uno app head whose active target is Android.
+        AssertExplains("no WinUI process host", WinUISurfaceLaunch.GetSharingBlocker(new FakeProject { PlatformIdentifier = AndroidTarget }));
+        AssertExplains("no project context", WinUISurfaceLaunch.GetSharingBlocker(null));
+    }
+
     // Asserts that a reason is given and that it contains the expected text.
     private static void AssertExplains(string expected, string? reason)
     {
@@ -194,7 +222,8 @@ public sealed class PlatformSupportTests
         Assert.Contains(expected, reason);
     }
 
-    // A complete project context of a hosted Windows target; each test changes what it is about.
+    // A complete project context of a hosted Windows target on the verified WinUI runtime; each test changes what
+    // it is about.
     private sealed class FakeProject : ISurfaceLaunchContext
     {
         public string? ProjectName { get; set; } = "App";
@@ -208,5 +237,7 @@ public sealed class PlatformSupportTests
         public bool HasMetadata { get; set; } = true;
 
         public bool HasPlatformMetadata { get; set; } = true;
+
+        public string? WinUIRuntimeFileVersion { get; set; } = WinUIProjectRequirements.VerifiedWinUIRuntimeFileVersion;
     }
 }

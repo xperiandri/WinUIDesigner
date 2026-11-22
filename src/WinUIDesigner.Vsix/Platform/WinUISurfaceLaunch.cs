@@ -1,14 +1,14 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
-using Microsoft.VisualStudio.DesignTools.Utility;
+using WinUIDesigner.DesignerHost;
 
 namespace WinUIDesigner.Platform;
 
 /// <summary>
 /// A project context as <see cref="WinUISurfaceLaunch"/> sees it.
 /// </summary>
-internal interface ISurfaceLaunchContext
+internal interface ISurfaceLaunchContext : IWinUIRequirementsProject
 {
     /// <summary>
     /// Gets the name of the project, for messages.
@@ -24,11 +24,6 @@ internal interface ISurfaceLaunchContext
     /// Gets whether the context is attached to its project in Visual Studio.
     /// </summary>
     bool HasHostProject { get; }
-
-    /// <summary>
-    /// Gets the platform identity of the project's active target.
-    /// </summary>
-    PlatformIdentifier? PlatformIdentifier { get; }
 
     /// <summary>
     /// Gets whether the context has its designer metadata.
@@ -95,5 +90,21 @@ internal static class WinUISurfaceLaunch
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Explains why a library cannot use the surface process of <paramref name="application"/>, or returns
+    /// <see langword="null"/> when it can.
+    /// </summary>
+    /// <remarks>
+    /// That process runs the output and the WinUI runtime of the application, so the application must also meet
+    /// <see cref="WinUIProjectRequirements"/> itself. Otherwise the shadow-copy worker factory refuses to prepare the
+    /// process, although the library could be previewed in a surface process of its own.
+    /// </remarks>
+    public static string? GetSharingBlocker(ISurfaceLaunchContext? application)
+    {
+        // GetBlocker reports a missing application, so the requirements are only checked for an existing one.
+        return GetBlocker(application)
+            ?? WinUIProjectRequirements.GetUnsupportedReason(application!.PlatformIdentifier, application.WinUIRuntimeFileVersion);
     }
 }
