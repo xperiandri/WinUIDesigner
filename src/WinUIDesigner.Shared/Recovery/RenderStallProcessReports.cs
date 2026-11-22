@@ -20,7 +20,7 @@ internal sealed class RenderStallProcessReports
     /// What to do about an unhandled-exception message of the process: null when there is nothing to do, or nothing new
     /// to say.
     /// </summary>
-    public RenderStallRestart? Decide(RenderStallRestartPolicy policy, string? message, DateTime now, bool contextDisposed)
+    public RenderStallRestart? Decide(RenderStallRestartPolicy policy, string? message, string? callStack, DateTime now, bool contextDisposed)
     {
         // Not a render stall, a process that is being restarted already, or a context that can restart nothing any more.
         if (!RenderStallReport.IsReport(message) || _restarting || contextDisposed)
@@ -29,7 +29,7 @@ internal sealed class RenderStallProcessReports
         }
 
         // The first report that the policy allows restarts the process.
-        RenderStallRestart decision = policy.Decide(now);
+        RenderStallRestart decision = policy.Decide(RenderStallReport.ReadContext(callStack), RenderStallReport.IsFirstFrameReport(message), now);
         if (decision == RenderStallRestart.Restart)
         {
             _restarting = true;

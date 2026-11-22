@@ -19,6 +19,9 @@ internal sealed partial class SurfaceService
     private readonly RenderStallReports _renderStall = new();
     private bool _renderWatchArmed;
 
+    // App.xaml as the surface last built it: with the staged files, what every process of the project starts from.
+    private string? _applicationXaml;
+
     // A timer that nothing refers to is collected, and does not fire.
     private DispatcherQueueTimer? _renderWatchTimer;
 
@@ -108,13 +111,15 @@ internal sealed partial class SurfaceService
 
     private void ReportRenderStall(Exception exception, int[] shownDocumentIds, string framesWhileRendering)
     {
-        // The text is also how the extension knows that nothing in this process draws any more, and restarts the process.
-        _renderStall.Stalled(RenderStallReport.Message, exception.ToString());
+        // The text is also how the extension knows that nothing in this process draws any more, and restarts the process;
+        // a framework that stopped at the first frame of the process stops the same way in a new one.
+        bool stoppedAtFirstFrame = RenderStall.StoppedAtFirstFrame(RenderFrames.Counter.FirstIslandFrames);
+        _renderStall.Stalled(RenderStallReport.MessageFor(stoppedAtFirstFrame), exception.ToString());
 
         // Nothing in this process draws again: there is nothing left to count.
         RenderFrames.Counter.Stop();
 
-        WinUIDesignerLogger.LogError("Surface", $"{_renderStall.Message} A render of one pixel did not complete ({framesWhileRendering} meanwhile). {DescribeState()}", exception);
+        WinUIDesignerLogger.LogError("Surface", $"{_renderStall.Message} A render of one pixel did not complete ({framesWhileRendering} meanwhile). Surface context: {IdentifySurfaceContext()}. {DescribeState()}", exception);
         foreach (int documentId in shownDocumentIds)
         {
             if (_surfaces.TryGetValue(documentId, out DesignerSurface? surface))
@@ -135,13 +140,21 @@ internal sealed partial class SurfaceService
             return;
         }
 
-        // Visual Studio shows the error on the view of the document that it names, and ignores one that names none.
+        // Visual Studio shows the error on the view of the document that it names, and ignores one that names none. The
+        // context is named anew each time: a report after a change of App.xaml or of the staged files may restart again.
         _protocolHandler.PostMessage((int)DesignerMessageId.UnhandledException, new UnhandledExceptionResponse()
         {
             DocumentId = documentId,
             Message = _renderStall.Message,
-            CallStack = _renderStall.Details,
+            CallStack = RenderStallReport.WithContext(IdentifySurfaceContext(), _renderStall.Details),
             IsArtboardException = true,
         });
+    }
+
+    private string IdentifySurfaceContext()
+    {
+        string directory = Program.ContentDirectory;
+
+        return SurfaceContext.Identify(directory, SurfaceContext.DescribeStagedFiles(directory), _applicationXaml);
     }
 }

@@ -39,7 +39,8 @@ internal sealed partial class WinUISurfaceProcessContext
                 if (RenderStallReport.IsReport(message))
                 {
                     // On the thread of the protocol: the restart is Visual Studio's business on its own thread.
-                    _ = _renderStallDispatcher.InvokeAsync(() => RestartAfterRenderStall(reports, message));
+                    string? callStack = response?.CallStack;
+                    _ = _renderStallDispatcher.InvokeAsync(() => RestartAfterRenderStall(reports, message, callStack));
                 }
             });
         }
@@ -61,17 +62,22 @@ internal sealed partial class WinUISurfaceProcessContext
         base.Dispose(disposing);
     }
 
-    private void RestartAfterRenderStall(RenderStallProcessReports reports, string? message)
+    private void RestartAfterRenderStall(RenderStallProcessReports reports, string? message, string? callStack)
     {
         // Visual Studio makes a new context for the project when its designers are opened again; the policy outlives it.
         RenderStallRestartPolicy policy = RenderStallRestartPolicy.ForProject(ProjectContext?.ProjectPath, _MaximumRenderStallRestarts, _RenderStallRestartWindow);
         string project = ProjectContext?.ProjectName ?? "a project";
-        switch (reports.Decide(policy, message, DateTime.UtcNow, _isDisposedWhileWatchingRenderStalls))
+        switch (reports.Decide(policy, message, callStack, DateTime.UtcNow, _isDisposedWhileWatchingRenderStalls))
         {
             // The first report of the process that the policy allows.
             case RenderStallRestart.Restart:
                 WinUIDesignerLogger.LogWarning("Platform", $"The surface of '{project}' has stopped drawing; its process is restarted.");
                 RestartAfter(MediumDelay);
+                break;
+
+            // A new process stopped at its first frame again, with the same staged files and App.xaml.
+            case RenderStallRestart.StopsAtFirstFrame:
+                WinUIDesignerLogger.LogWarning("Platform", $"The surface of '{project}' has stopped drawing at its first frame again after a restart. The cause is in what the document or App.xaml loads; the surface is not restarted for it until App.xaml or the build of the project changes.");
                 break;
 
             // Restarted too often: the process stays, and the stall that it reports for a document loaded later is

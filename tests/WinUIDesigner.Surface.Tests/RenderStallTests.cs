@@ -30,6 +30,26 @@ public sealed class RenderStallTests
     }
 
     [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    public void AFirstIslandThatDrewAtMostOneFrameStoppedAtTheFirstFrame(int frames)
+    {
+        Assert.IsTrue(RenderStall.StoppedAtFirstFrame(frames));
+    }
+
+    [TestMethod]
+    public void AFirstIslandThatDrewStoppedLater()
+    {
+        Assert.IsFalse(RenderStall.StoppedAtFirstFrame(FrameCounter.FramesOfAnIslandThatDraws));
+    }
+
+    [TestMethod]
+    public void FramesThatWereNotCountedSayNothingAboutTheFirstFrame()
+    {
+        Assert.IsFalse(RenderStall.StoppedAtFirstFrame(null));
+    }
+
+    [TestMethod]
     public async Task ARenderThatCompletesDraws()
     {
         Assert.IsTrue(await RenderStall.CompletesAsync(Task.CompletedTask, _Short, _Short));

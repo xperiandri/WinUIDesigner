@@ -101,6 +101,7 @@ internal sealed partial class SurfaceService
                 if (requestInfo.Application is not null)
                 {
                     string? appXaml = TryReadPreparedXaml(requestInfo.Application) ?? requestInfo.Application.InitialXamlContent;
+                    _applicationXaml = appXaml;
                     XDocument? appDocument = string.IsNullOrWhiteSpace(appXaml) ? null : XDocument.Parse(appXaml);
 
                     _hasXamlControlsResources = appDocument?.Root?.DescendantsAndSelf()

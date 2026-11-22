@@ -19,6 +19,13 @@ internal static class RenderStall
     public static bool ShouldLookAgain(int shownSurfaces, bool anySurfaceFrozen) => shownSurfaces == 0 || anySurfaceFrozen;
 
     /// <summary>
+    /// Whether the framework stopped at the first frame of the first island of the process, by the frames that island
+    /// drew (<see cref="FrameCounter.FirstIslandFrames"/>): the cause is then in what the document or App.xaml loads, which
+    /// every new process loads again.
+    /// </summary>
+    public static bool StoppedAtFirstFrame(int? firstIslandFrames) => firstIslandFrames < FrameCounter.FramesOfAnIslandThatDraws;
+
+    /// <summary>
     /// Whether a render that the framework was asked for completes: within the timeout, or within the grace that follows
     /// once the waiting thread is free again. The thread of the user interface can be busy for longer than the timeout,
     /// building a document for example, and a render waits for it; a framework that has stopped drawing never completes

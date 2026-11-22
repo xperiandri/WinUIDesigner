@@ -32,6 +32,42 @@ public sealed class RenderStallRecoveryTests
     }
 
     [TestMethod]
+    public void TheReportOfAStallAtTheFirstFrameIsRecognized()
+    {
+        Assert.IsTrue(RenderStallReport.IsReport(RenderStallReport.FirstFrameMessage));
+        Assert.IsTrue(RenderStallReport.IsFirstFrameReport(RenderStallReport.FirstFrameMessage));
+        Assert.IsFalse(RenderStallReport.IsFirstFrameReport(RenderStallReport.Message));
+        Assert.IsFalse(RenderStallReport.IsFirstFrameReport(null));
+    }
+
+    [TestMethod]
+    public void TheReportOfAStallAtTheFirstFrameDoesNotAdviseAReload()
+    {
+        // Every new process stops at the same frame: a reload does not help, and the text must not say it does.
+        Assert.AreEqual(RenderStallReport.FirstFrameMessage, RenderStallReport.MessageFor(stoppedAtFirstFrame: true));
+        Assert.AreEqual(RenderStallReport.Message, RenderStallReport.MessageFor(stoppedAtFirstFrame: false));
+        Assert.DoesNotContain("Reload the designer", RenderStallReport.FirstFrameMessage);
+    }
+
+    [TestMethod]
+    public void TheContextOfTheSurfaceTravelsOnTheFirstLineOfTheCallStack()
+    {
+        string callStack = RenderStallReport.WithContext("3F2A9C1B7E4D5A60", "System.Runtime.InteropServices.COMException (0x80004005): Unspecified error");
+
+        Assert.AreEqual("3F2A9C1B7E4D5A60", RenderStallReport.ReadContext(callStack));
+        Assert.AreEqual("3F2A9C1B7E4D5A60", RenderStallReport.ReadContext(RenderStallReport.WithContext("3F2A9C1B7E4D5A60", string.Empty)));
+    }
+
+    [TestMethod]
+    public void ACallStackWithoutAContextNamesNone()
+    {
+        Assert.IsNull(RenderStallReport.ReadContext(null));
+        Assert.IsNull(RenderStallReport.ReadContext(string.Empty));
+        Assert.IsNull(RenderStallReport.ReadContext("System.Runtime.InteropServices.COMException (0x80004005): Unspecified error"));
+        Assert.IsNull(RenderStallReport.ReadContext(RenderStallReport.WithContext(" ", "details")));
+    }
+
+    [TestMethod]
     public void TheLimiterAllowsTheMaximumInTheWindowAndRefusesTheNext()
     {
         RestartLimiter limiter = new(3, TimeSpan.FromMinutes(2));
