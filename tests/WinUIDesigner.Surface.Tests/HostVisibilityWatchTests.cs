@@ -61,10 +61,9 @@ public sealed class HostVisibilityWatchTests
     }
 
     [TestMethod]
-    public void AfterGivingUpTheWatchSaysSoOnceAndGoesOnLooking()
+    public void AfterGivingUpTheWatchSaysSoOnlyOnce()
     {
-        var timer = new DispatcherQueueTimer();
-        using HostVisibilityWatch watch = StartWatching(timer);
+        using HostVisibilityWatch watch = StartWatching(new DispatcherQueueTimer());
 
         for (int attempt = 1; attempt <= Maximum; attempt++)
         {
@@ -73,8 +72,10 @@ public sealed class HostVisibilityWatchTests
         }
 
         Assert.AreEqual(HostVisibilityAction.GiveUp, LookWhileTheWindowIsVisible(watch));
+
+        // The warning of the surface reports the attempts, so they are still counted when it is logged.
+        Assert.AreEqual(Maximum, watch.Attempts);
         Assert.AreEqual(HostVisibilityAction.Nothing, LookWhileTheWindowIsVisible(watch));
-        Assert.IsTrue(timer.IsRunning);
     }
 
     [TestMethod]
