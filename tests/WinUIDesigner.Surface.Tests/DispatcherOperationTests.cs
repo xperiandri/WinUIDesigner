@@ -13,6 +13,9 @@ using Action = System.Action;
 [TestClass]
 public sealed class DispatcherOperationTests
 {
+    // A task that has not completed after this much real time never will: its test fails instead of hanging the run.
+    private static readonly TimeSpan s_patience = TimeSpan.FromSeconds(10);
+
     [TestMethod]
     public async Task DocumentStepWaitsForABusyUIThreadLongerThanTheInteractiveLimit()
     {
@@ -26,7 +29,7 @@ public sealed class DispatcherOperationTests
 
         Assert.IsFalse(step.IsCompleted);
         queued!();
-        Assert.AreEqual(42, await step);
+        Assert.AreEqual(42, await Promptly(step));
         Assert.AreEqual(TimeSpan.FromMinutes(10), Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.Step, Step)).Duration);
         Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.GaveUp, Step));
     }
@@ -53,9 +56,33 @@ public sealed class DispatcherOperationTests
             protocol.Cancel();
         }
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => step);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => Promptly(step));
         queued!();
         Assert.IsFalse(changed);
+    }
+
+    [TestMethod]
+    public async Task StepsAreQueuedInTheOrderOfTheCallsBeforeTheCallReturns()
+    {
+        var time = new ManualTimeProvider();
+        var queued = new List<Action>();
+        var order = new List<string>();
+        var queue = new DispatcherQueue(action => { queued.Add(action); return true; });
+
+        Task<int> first = DispatcherOperation.RunAsync(queue, $"{nameof(StepsAreQueuedInTheOrderOfTheCallsBeforeTheCallReturns)} 1", () => { order.Add("first"); return 1; }, time, default);
+        Task<int> second = DispatcherOperation.RunAsync(queue, $"{nameof(StepsAreQueuedInTheOrderOfTheCallsBeforeTheCallReturns)} 2", () => { order.Add("second"); return 2; }, time, default);
+
+        // Both steps are in the queue when RunAsync returns, so nothing that a handler does next can overtake them:
+        // SetFreezeState relies on it for the order of a freeze and the unfreeze after it.
+        Assert.HasCount(2, queued);
+        foreach (Action action in queued)
+        {
+            action();
+        }
+
+        Assert.AreEqual(1, await Promptly(first));
+        Assert.AreEqual(2, await Promptly(second));
+        CollectionAssert.AreEqual(new[] { "first", "second" }, order);
     }
 
     [TestMethod]
@@ -72,7 +99,7 @@ public sealed class DispatcherOperationTests
         Assert.IsFalse(pending.IsCompleted);
 
         time.Advance(TimeSpan.FromTicks(1));
-        await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => Promptly(pending));
         queued!();
 
         Assert.IsFalse(changed);
@@ -103,7 +130,7 @@ public sealed class DispatcherOperationTests
         {
             Assert.IsTrue(started.Wait(TimeSpan.FromSeconds(10)));
             time.Advance(DispatcherOperation.InteractiveTimeout);
-            await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+            await Assert.ThrowsExactlyAsync<TimeoutException>(() => Promptly(pending));
             time.Advance(TimeSpan.FromSeconds(5));
         }
         finally
@@ -132,7 +159,7 @@ public sealed class DispatcherOperationTests
         await time.WaitForTimerAsync();
         time.Advance(timeout);
 
-        Assert.IsFalse(await answered);
+        Assert.IsFalse(await Promptly(answered));
         queued!();
         Assert.IsFalse(changed);
         Assert.IsInstanceOfType<TimeoutException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, request)).Exception);
@@ -150,7 +177,7 @@ public sealed class DispatcherOperationTests
         await time.WaitForTimerAsync();
         queue.BeginShutdown();
 
-        Assert.IsFalse(await answered);
+        Assert.IsFalse(await Promptly(answered));
         queued!();
         Assert.IsFalse(changed);
     }
@@ -209,7 +236,7 @@ public sealed class DispatcherOperationTests
         Assert.IsFalse(waiting.IsCompleted);
         gate.SetResult(true);
 
-        Assert.IsTrue(await waiting);
+        Assert.IsTrue(await Promptly(waiting));
         Assert.AreEqual(TimeSpan.FromSeconds(45), Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.LongWait, What)).Duration);
     }
 
@@ -224,7 +251,20 @@ public sealed class DispatcherOperationTests
         time.Advance(DispatcherOperation.InteractiveTimeout);
         gate.SetResult(true);
 
-        Assert.IsTrue(await waiting);
+        Assert.IsTrue(await Promptly(waiting));
         Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.LongWait, What));
+    }
+
+    private static async Task<T> Promptly<T>(Task<T> task)
+    {
+        try
+        {
+            return await task.WaitAsync(s_patience);
+        }
+        catch (TimeoutException) when (!task.IsCompleted)
+        {
+            Assert.Fail($"The task did not complete within {s_patience.TotalSeconds} s of real time.");
+            throw;
+        }
     }
 }
