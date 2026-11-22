@@ -239,7 +239,9 @@ internal sealed partial class DesignerSurface : IDisposable
             _xamlSource = new DesktopWindowXamlSource();
             _xamlSource.Initialize(Win32Interop.GetWindowIdFromWindow(_hostWindow));
             _xamlSource.Content = _viewportRoot;
-            RenderFrames.EnsureStarted();
+
+            // The log of a framework error tells how far the first island of the process got.
+            RenderFrames.Counter.MeasureFirstIsland();
             if (_viewportRoot.XamlRoot is { } root)
             {
                 root.Changed += OnXamlRootChanged;
