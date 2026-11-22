@@ -137,15 +137,30 @@ public sealed class ContentDialogThemePolicyTests
     }
 
     [TestMethod]
-    public void AReferenceThatOnlyThePreviewThemeHasIsMatchedByItsColour()
+    public void ABrushThatOnlyThePreviewThemeHasIsKept()
     {
-        // A reference resolved for the light theme of the application under the dark key only, to a white brush that is not
+        // Only the dark dictionary has ContentDialogBackground, so the light theme of the application did not give the brush to
+        // the style: it is a brush of the preview. Before, it was matched by its colour (the one of the light SurfaceBrush) and
+        // became the dark SurfaceBrush.
+        var resources = new ThemeResources(referencesFirst: true);
+        ThemeBrush white = Solid(0xFFFFFFFF);
+        ThemeDictionarySet previewOnly = Set(("Default", "ContentDialogBackground", white), ("Light", "Unrelated", resources.LightBase));
+
+        BrushChoice choice = ContentDialogThemePolicy.Choose(white, false, Dark, Light, [resources.WinUI, previewOnly, resources.Palette]);
+
+        Assert.IsNull(choice.Brush, choice.Reason);
+    }
+
+    [TestMethod]
+    public void AReferenceThatOnlyTheApplicationThemeHasIsMatchedByItsColour()
+    {
+        // A reference resolved for the light theme of the application under the light key only, to a white brush that is not
         // the object of the palette: its colour gives SurfaceBrush.
         var resources = new ThemeResources(referencesFirst: true);
         ThemeBrush white = Solid(0xFFFFFFFF);
-        ThemeDictionarySet references = Set(("Default", "ContentDialogBackground", white), ("Light", "Unrelated", resources.LightBase));
+        ThemeDictionarySet applicationOnly = Set(("Light", "ContentDialogBackground", white), ("Default", "Unrelated", resources.DarkBase));
 
-        BrushChoice choice = ContentDialogThemePolicy.Choose(white, false, Dark, Light, [resources.WinUI, references, resources.Palette]);
+        BrushChoice choice = ContentDialogThemePolicy.Choose(white, false, Dark, Light, [resources.WinUI, applicationOnly, resources.Palette]);
 
         Assert.AreSame(resources.DarkSurface.Brush, choice.Brush?.Brush, choice.Reason);
     }

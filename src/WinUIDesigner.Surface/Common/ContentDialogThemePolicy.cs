@@ -115,7 +115,7 @@ internal static class ContentDialogThemePolicy
 
         ThemeEvidence evidence = Examine(current, previewTheme, applicationTheme, dictionaries);
 
-        // The brush of the theme of the preview under a key that the theme of the application has another brush under.
+        // The brush of the theme of the preview under a key that the theme of the application has another brush under, or none.
         if (evidence.OfPreviewTheme is { } previewKey)
         {
             return BrushChoice.Keep($"it is the brush of the {previewTheme} theme under '{previewKey}'");
@@ -134,8 +134,9 @@ internal static class ContentDialogThemePolicy
             return BrushChoice.Keep($"both themes draw '{alikeKey}' alike");
         }
 
-        // A reference that both themes have the same object under, or that one theme has alone, was resolved for the theme of
-        // the application (a reference to a brush of a theme dictionary of another file): its colour tells the key.
+        // A reference that both themes have the same object under, or that only the theme of the application has, was resolved
+        // for the theme of the application (a reference to a brush of a theme dictionary of another file): its colour tells the
+        // key.
         if (evidence.Reference is { } reference)
         {
             return ChooseByColour(current, previewTheme, applicationTheme, dictionaries, reference);
@@ -260,7 +261,7 @@ internal static class ContentDialogThemePolicy
     /// <summary>The keys that the theme dictionaries have the object of a brush under, by what each of them says.</summary>
     private sealed class ThemeEvidence(ThemeBrush current)
     {
-        /// <summary>A key of the theme of the preview that the theme of the application has another brush under.</summary>
+        /// <summary>A key of the theme of the preview that the theme of the application has another brush under, or none.</summary>
         public string? OfPreviewTheme { get; private set; }
 
         /// <summary>The keys of the theme of the application, with the brush of the theme of the preview under each.</summary>
@@ -269,14 +270,31 @@ internal static class ContentDialogThemePolicy
         /// <summary>A key that the other theme has a brush under that draws alike.</summary>
         public string? DrawnAlike { get; private set; }
 
-        /// <summary>A key that both themes have the same object under, or that the other theme does not have.</summary>
+        /// <summary>A key that both themes have the same object under, or that only the theme of the application has.</summary>
         public string? Reference { get; private set; }
 
         /// <summary>The object is under <paramref name="key"/> in one theme; <paramref name="other"/> is the dictionary of the other theme.</summary>
         public void Add(string key, IReadOnlyDictionary<string, ThemeBrush> other, bool isPreviewTheme)
         {
-            // The other theme has the same object under the key, or no brush at all: a reference resolved for one theme.
-            if (!other.TryGetValue(key, out ThemeBrush otherBrush) || ReferenceEquals(otherBrush.Brush, current.Brush))
+            // The other theme has no brush under the key.
+            if (!other.TryGetValue(key, out ThemeBrush otherBrush))
+            {
+                if (isPreviewTheme)
+                {
+                    // Only the theme of the preview has it: the theme of the application did not give it to the style.
+                    OfPreviewTheme ??= key;
+                }
+                else
+                {
+                    // Only the theme of the application has it: a reference resolved for that theme.
+                    Reference ??= key;
+                }
+
+                return;
+            }
+
+            // The other theme has the same object under the key: a reference resolved for one theme.
+            if (ReferenceEquals(otherBrush.Brush, current.Brush))
             {
                 Reference ??= key;
                 return;
