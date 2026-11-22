@@ -20,6 +20,18 @@
 		-->
 		<WindowsSdkPackageVersion Condition="$(WinUIDesignerSurfaceTargetFramework.StartsWith('net10.0'))">10.0.28000.87</WindowsSdkPackageVersion>
 		<WindowsSdkPackageVersion Condition="$(WinUIDesignerSurfaceTargetFramework.StartsWith('net8.0'))">10.0.26100.57</WindowsSdkPackageVersion>
+		<!--
+			The surface carries its own Microsoft.Web.WebView2.Core.Projection, the projection of the WebView2 SDK, under
+			the same rule: the runtime binds a project's reference to it only when it is not older than the referenced
+			version. The Windows App SDK asks only for WebView2 SDK 1.0.3719.77, while an app can use a newer one, and
+			central package management with transitive pinning does that for a whole solution. A library whose XAML
+			uses the WebView2 control names CoreWebView2 in the type table of its XAML metadata provider, which then
+			fails for every type it is asked for. The projection of 1.0.3967.48 references the same WinRT.Runtime 2.1,
+			Windows SDK projection 10.0.17763 and System.* 8.0 assemblies as the one of 1.0.3719.77, so both surfaces
+			carry it; the native Microsoft.Web.WebView2.Core.dll comes from the same package. The build fails when the
+			projection it resolves is older than this version.
+		-->
+		<WinUIDesignerWebView2Version>1.0.3967.48</WinUIDesignerWebView2Version>
 		<OutputType>Exe</OutputType>
 		<AssemblyName>WinUISurface</AssemblyName>
 		<RootNamespace>WinUIDesigner.Surface</RootNamespace>
@@ -39,6 +51,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+		<PackageReference Include="Microsoft.Web.WebView2" Version="$(WinUIDesignerWebView2Version)" />
 		<Content Include="$(DiagnosticsTapOutputDir)\WinUIDesigner.DiagnosticsTap.dll">
 			<Visible>false</Visible>
 			<Link>WinUIDesigner.DiagnosticsTap.dll</Link>
@@ -71,5 +84,23 @@
 	</ItemGroup>
 
 	<Import Project="..\WinUIDesigner.Shared\WinUIDesigner.Shared.projitems" Label="Shared" />
+
+	<!--
+		The WebView2 projection the surface carries must not be older than WinUIDesignerWebView2Version, as it would
+		be if the package reference above were removed and the Windows App SDK's minimum came back.
+	-->
+	<Target Name="CheckWinUIDesignerWebView2Projection" AfterTargets="ResolveAssemblyReferences">
+		<ItemGroup>
+			<_WinUIDesignerWebView2Projection Include="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'Microsoft.Web.WebView2.Core.Projection'" />
+		</ItemGroup>
+		<Error Condition="'@(_WinUIDesignerWebView2Projection)' == ''" Text="The design surface references no Microsoft.Web.WebView2.Core.Projection, but it must carry version $(WinUIDesignerWebView2Version) (WinUIDesignerWebView2Version)." />
+		<GetAssemblyIdentity AssemblyFiles="@(_WinUIDesignerWebView2Projection)">
+			<Output TaskParameter="Assemblies" ItemName="_WinUIDesignerWebView2ProjectionIdentity" />
+		</GetAssemblyIdentity>
+		<PropertyGroup>
+			<_WinUIDesignerWebView2ProjectionVersion>@(_WinUIDesignerWebView2ProjectionIdentity->'%(Version)')</_WinUIDesignerWebView2ProjectionVersion>
+		</PropertyGroup>
+		<Error Condition="$([MSBuild]::VersionLessThan('$(_WinUIDesignerWebView2ProjectionVersion)', '$(WinUIDesignerWebView2Version)'))" Text="The design surface references Microsoft.Web.WebView2.Core.Projection $(_WinUIDesignerWebView2ProjectionVersion), but it must carry version $(WinUIDesignerWebView2Version) (WinUIDesignerWebView2Version) or later." />
+	</Target>
 
 </Project>
