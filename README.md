@@ -15,7 +15,8 @@ Download and open a vsix file from Visual Studio Marketplace. WinUI 3 designer w
 - x86 is not supported.
 - `Window` and its subclasses cannot be previewed; only `FrameworkElement` subclasses are supported.
 - Windows App SDK 2.5.1 is required.
-- A project is previewed only when the Windows SDK it targets is not newer than the one the designer carries: 10.0.28000 on Visual Studio 18 and 10.0.26100 on Visual Studio 17.14. The log names a reference that cannot be satisfied.
+- The designer carries its own copies of the projections of the Windows SDK (`Microsoft.Windows.SDK.NET`) and of WebView2 (`Microsoft.Web.WebView2.Core.Projection`), and the runtime binds a project's reference to them only when the designer's copy is not older than the referenced assembly version. The Windows SDK projection is 10.0.28000.86 in the .NET 10 surface of an extension built with Visual Studio 18, and 10.0.26100.38 in the .NET 8 surface of an extension built with Visual Studio 17.14, such as the Marketplace build: the Visual Studio that built the extension decides, not the one it runs in. WebView2 is 1.0.3967.48 in both.
+- A project that references a newer version of such a projection is previewed with the designer's copy, so its code that uses a type or member that only the newer version has fails. A newer reference to another assembly that the designer carries, such as `WinRT.Runtime`, fails wherever it is needed. The log names each reference that the designer cannot satisfy.
 
 ## Structure
 
