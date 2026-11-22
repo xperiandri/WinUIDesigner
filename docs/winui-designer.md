@@ -108,6 +108,15 @@ The surface records stable runtime identities and source information, and report
 
 Implementation: [document preparation](../src/WinUIDesigner.Vsix/Platform/WinUIDesignerInstanceManager.cs), [construction and tree notifications](../src/WinUIDesigner.Surface/Services/SurfaceService.cs), and [project type/resource resolution](../src/WinUIDesigner.Surface/Runtime/ProjectRuntimeResolver.cs).
 
+### Metadata of the project's types
+
+When XAML sets a property, it asks the application for the metadata of the property's type by the type itself (`IXamlMetadataProvider.GetXamlType(Type)`). The surface answers from the metadata that the XAML compiler generated for the surface, and then from the metadata providers that it generated for the project and its libraries.
+
+- Each provider is asked about the type as it is, and the type is looked up by name only when no provider knows it. A provider knows a nested type by a name with a dot, such as `Uno.Toolkit.UI.SafeArea.InsetMask`, where `Type.FullName` has a plus sign (`Uno.Toolkit.UI.SafeArea+InsetMask`), so the name is asked for with a dot. Without the metadata of its type a property cannot be set from XAML, and the framework reports that as a resource it cannot find: `utu:SafeArea.Insets="VisibleBounds"`, which the Uno Platform template sets on its first page, failed with "Cannot find a Resource with the Name/Key" and a different color of the Material theme on each try.
+- The providers are code of the project, and XAML asks them from inside its own code, where an exception that leaves ends the process. A provider that throws when it is asked about a type, for example because it was compiled against a newer version of an assembly than the surface carries, is written to the log once as a warning and skipped.
+
+Implementation: [lookup by type](../src/WinUIDesigner.Surface/Runtime/XamlTypeLookup.cs), [providers that fail](../src/WinUIDesigner.Surface/Runtime/MetadataProviderFailures.cs), and [the providers of the project](../src/WinUIDesigner.Surface/Runtime/ProjectRuntimeResolver.cs).
+
 ## Embedding the surface
 
 The extension hosts the document in `DesktopWindowXamlSource` and attaches its window beneath the designer overlay. This diagram expands the WinUI display adapter after document construction.
