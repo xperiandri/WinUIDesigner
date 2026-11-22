@@ -26,8 +26,8 @@ internal sealed partial class DesignerSurface
     /// framework says that the host is hidden, the window is looked at four times a second, and when it is visible it is
     /// hidden and shown again, which tells the framework. A window that really is hidden, or whose top-level window is
     /// minimized, is left alone: the message that shows it comes with the show. When three attempts do not help, the window
-    /// is only looked at: a hide and a show by Visual Studio (another tab and back), or a new position or size of the
-    /// surface, start the attempts again.
+    /// is only looked at: the attempts start again after a look that finds the window hidden by Visual Studio (another tab
+    /// and back; a round trip that is over before the next look is not seen), and after a new position or size of the surface.
     /// </summary>
     /// <param name="startAgain">
     /// Visual Studio has just placed the surface (<see cref="SetSurfacePosition"/>: created, moved or resized): earlier

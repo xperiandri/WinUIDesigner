@@ -64,8 +64,8 @@ internal sealed class HostVisibilityWatch : IDisposable
 
     /// <summary>
     /// What to do after a look at the window (<see cref="HostVisibilityPolicy.Decide"/>, with the attempts counted here).
-    /// <see cref="HostVisibilityAction.GiveUp"/> comes once, and the window is still looked at afterwards, so that a hide and a
-    /// show by Visual Studio (another tab and back) start the attempts again.
+    /// <see cref="HostVisibilityAction.GiveUp"/> comes once, and the window is still looked at afterwards, so that a look that
+    /// finds the window hidden by Visual Studio, and the show after it (another tab and back), start the attempts again.
     /// </summary>
     public HostVisibilityAction Decide(bool frameworkSaysHostIsVisible, bool windowIsVisible, bool topLevelWindowIsMinimized)
     {
