@@ -388,18 +388,11 @@ internal sealed partial class SurfaceService
                     // The colours decide the preview theme, for the documents and resources built from actions too.
                     _lastPreviewTheme = surface.PreviewTheme;
                     WinUIDesignerLogger.LogTrace("Surface", $"Artboard colours of document {request.DocumentId}: the preview theme is {_lastPreviewTheme}.");
-                    if (ReapplyThemeReferences($"the artboard colours of document {request.DocumentId}"))
-                    {
-                        try
-                        {
-                            CompleteActionBatch();
-                        }
-                        catch (Exception layoutError)
-                        {
-                            // The colours are applied: a layout that fails after them must not turn the response into an error.
-                            WinUIDesignerLogger.LogWarning("Surface", "Layout after the artboard colours also failed.", layoutError);
-                        }
-                    }
+                    ThemeResourcePass.ReapplyThenComplete(
+                        () => ReapplyThemeReferences($"the artboard colours of document {request.DocumentId}"),
+                        CompleteActionBatch,
+                        layoutError => WinUIDesignerLogger.LogWarning("Surface", "Layout after the artboard colours also failed.", layoutError)
+                    );
                 }
 
                 return new ResponseWithError { HResult = 0 };
