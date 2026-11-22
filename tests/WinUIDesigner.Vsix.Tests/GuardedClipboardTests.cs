@@ -54,13 +54,19 @@ public sealed class GuardedClipboardTests
     }
 
     [TestMethod]
-    public void FormatQuestionThatFailsAnswersNo()
+    public void FormatQuestionThatFailsAnswersNoAndStartsNoOutage()
     {
         // WPF fails it only when Windows cannot register a format name it has not seen before.
-        var clipboard = new FakeClipboard { ContainsDataResult = true, ContainsDataFailure = new Win32Exception() };
-        var guarded = new GuardedClipboard(clipboard);
+        var data = new DataObject();
+        var clipboard = new FakeClipboard { ContainsDataResult = true, ContainsDataFailure = new Win32Exception(), DataObject = data };
+        var reports = new List<Exception?>();
+        var guarded = new GuardedClipboard(clipboard, reports.Add, () => TimeSpan.Zero);
 
         Assert.IsFalse(guarded.ContainsData("A format name"));
+
+        // That says nothing about opening the clipboard: no outage starts, so the next read asks for the data.
+        Assert.IsEmpty(reports);
+        Assert.AreSame(data, guarded.GetDataObject());
     }
 
     [TestMethod]

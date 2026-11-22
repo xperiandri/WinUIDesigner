@@ -26,7 +26,8 @@ namespace WinUIDesigner.Platform;
 /// <para>
 /// <see cref="ContainsData"/>, the question Visual Studio asks on every refresh of its Paste command, does not open
 /// the clipboard: WPF answers it with <c>IsClipboardFormatAvailable</c>. So it is never delayed, and its answer does
-/// not show that the clipboard can be opened again.
+/// not show that the clipboard can be opened again. WPF fails it only when Windows cannot register the name of a
+/// format; that is answered with no and starts no outage, because it says nothing about opening the clipboard.
 /// </para>
 /// <para>
 /// Writing is passed through unchanged, because Visual Studio reports a failed copy to the user itself. A write that
@@ -88,8 +89,8 @@ internal sealed class GuardedClipboard : IClipboard
         }
         catch (Exception exception) when (IsClipboardFailure(exception))
         {
-            // WPF fails it only when Windows cannot register a format name it has not seen before.
-            MarkUnavailable(exception);
+            // WPF fails it only when Windows cannot register a format name it has not seen before. That says nothing
+            // about opening the clipboard, so the answer is no and no outage starts.
             return false;
         }
     }
