@@ -117,6 +117,7 @@ internal sealed class ContentDialogBrushRetargeter
                 chosen?.Invoke(property, current, choice);
             }
 
+            // The choice is another brush: it is set on the dialog and remembered, so that it can be taken back.
             if (choice.Brush is { } target)
             {
                 dialog.SetValue(property, target.Brush);
