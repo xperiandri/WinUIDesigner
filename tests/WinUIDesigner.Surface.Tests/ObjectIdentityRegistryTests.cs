@@ -25,7 +25,7 @@ public sealed class ObjectIdentityRegistryTests
 
         HashSet<object> released = registry.ReleaseDocument(7);
 
-        Assert.IsFalse(released.Contains(application), "The application is not part of any document.");
+        Assert.DoesNotContain(application, released, "The application is not part of any document.");
         Assert.IsTrue(registry.TryGetObject(_ApplicationHandle, out object? resolved));
         Assert.AreSame(application, resolved);
         Assert.AreEqual(0, registry.GetDocumentId(application));
@@ -68,7 +68,7 @@ public sealed class ObjectIdentityRegistryTests
 
         HashSet<object> released = registry.ReleaseDocument(7);
 
-        Assert.IsTrue(released.Contains(element));
+        Assert.Contains(element, released);
         Assert.IsFalse(registry.TryGetObject(handle, out _));
     }
 
@@ -89,10 +89,12 @@ public sealed class ObjectIdentityRegistryTests
             registry.Track(shared);
         }
 
-        Assert.AreEqual(0, registry.ReleaseDocument(7).Count);
+        // The first release leaves the object to the document that still uses it.
+        Assert.IsEmpty(registry.ReleaseDocument(7));
         Assert.IsTrue(registry.TryGetObject(handle, out _));
 
-        Assert.IsTrue(registry.ReleaseDocument(8).Contains(shared));
+        // The release of the last document that used it forgets it.
+        Assert.Contains(shared, registry.ReleaseDocument(8));
         Assert.IsFalse(registry.TryGetObject(handle, out _));
     }
 
@@ -112,6 +114,6 @@ public sealed class ObjectIdentityRegistryTests
             registry.RegisterHandle(_ApplicationHandle, application);
         }
 
-        Assert.IsTrue(registry.ReleaseDocument(7).Contains(application));
+        Assert.Contains(application, registry.ReleaseDocument(7));
     }
 }

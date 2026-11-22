@@ -46,6 +46,7 @@ internal sealed partial class ObjectIdentityRegistry
 
     public void Track(object value)
     {
+        // Nothing is owned outside a document, and no document owns an object of the process.
         if (_currentDocument == 0 || _processObjects.Contains(value))
         {
             return;
