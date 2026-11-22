@@ -95,7 +95,7 @@ public sealed class ResourceReferenceProtocolTests
     {
         // The surface replaces the handle of a reference by its value, so Visual Studio must never address it again. That
         // holds while its builder rebuilds: ResourceReferenceBuilder derives from RebuildBuilder, whose Invalidate
-        // returns Rebuild whatever changed.
+        // returns Rebuild whatever changed, and declares no Invalidate of its own that could answer otherwise.
         using var runtimeHost = new RuntimeHostMetadata();
         TypeDefinitionHandle builder = runtimeHost.FindUwpBuilder("ResourceReferenceBuilder");
         TypeDefinitionHandle rebuildBuilder = runtimeHost.FindUwpBuilder("RebuildBuilder");
@@ -103,6 +103,10 @@ public sealed class ResourceReferenceProtocolTests
         EntityHandle baseType = runtimeHost.Metadata.GetTypeDefinition(builder).BaseType;
         Assert.AreEqual(HandleKind.TypeDefinition, baseType.Kind);
         Assert.AreEqual(rebuildBuilder, (TypeDefinitionHandle)baseType);
+
+        // The first line shows that the list of methods names an Invalidate where there is one.
+        Assert.Contains("Invalidate", runtimeHost.GetMethodNames(rebuildBuilder));
+        Assert.DoesNotContain("Invalidate", runtimeHost.GetMethodNames(builder));
 
         // ldc.i4.<Rebuild>; ret, without the nops of a debug build.
         byte[] body = runtimeHost.GetMethodBody(rebuildBuilder, "Invalidate").Where(opcode => opcode != 0x00).ToArray();
@@ -149,6 +153,14 @@ public sealed class ResourceReferenceProtocolTests
                 .Single(candidate => Metadata.GetString(candidate.Name) == fieldName);
             Constant constant = Metadata.GetConstant(field.GetDefaultValue());
             return Metadata.GetBlobReader(constant.Value).ReadConstant(constant.TypeCode) as string;
+        }
+
+        public IReadOnlyList<string> GetMethodNames(TypeDefinitionHandle type)
+        {
+            return Metadata.GetTypeDefinition(type).GetMethods()
+                .Select(Metadata.GetMethodDefinition)
+                .Select(method => Metadata.GetString(method.Name))
+                .ToList();
         }
 
         public byte[] GetMethodBody(TypeDefinitionHandle type, string methodName)
