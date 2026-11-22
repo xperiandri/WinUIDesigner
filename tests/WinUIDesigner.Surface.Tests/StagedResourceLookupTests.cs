@@ -41,6 +41,7 @@ public sealed class StagedResourceLookupTests
     [TestMethod]
     [DataRow("Files/../outside.png")]
     [DataRow("Files/Assets/../../outside.png")]
+    [DataRow("Files/Assets/../logo.png")]
     [DataRow("Files/Assets/%2e%2e/%2E%2E/outside.png")]
     [DataRow("Files/Assets%2F..%2F..%2Foutside.png")]
     [DataRow("Files/Assets%5C..%5C..%5Coutside.png")]
@@ -58,8 +59,8 @@ public sealed class StagedResourceLookupTests
     [DataRow("Files/logo%00.png")]
     public void NamesThatLeaveTheRootOrNameNoFileAreRefused(string name)
     {
-        // Parent and current folders, also escaped; escaped separators; empty segments; rooted segments; a stream;
-        // characters that no file name has.
+        // Parent and current folders, also escaped and also when the path would stay below the root; escaped
+        // separators; empty segments; rooted segments; a stream; characters that no file name has.
         Assert.IsNull(StagedResourceLookup.GetStagedPath(_Root, name));
     }
 
