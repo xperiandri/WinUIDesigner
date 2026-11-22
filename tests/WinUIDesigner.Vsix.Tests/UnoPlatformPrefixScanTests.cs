@@ -68,6 +68,10 @@ public sealed class UnoPlatformPrefixScanTests
         Assert.IsTrue(scan.HasPlatformNamespaces);
         Assert.IsFalse(scan.HasPlatformPrefixedObjectElements);
         Assert.IsTrue(XamlNamespacePolicies.MayAffect(scan, UnoPlatformPrefixes.DefaultTargetPlatform, evaluateCondition: null));
+
+        // Nothing is replaced, so the page keeps its prepared XAML and needs no second preparation.
+        Assert.AreEqual(PlatformElementsBuild.PreparedXaml, UnoPlatformPrefixes.ChooseBuild(scan, reprepareRawElements: false, FailWhenCalled));
+        Assert.AreEqual(PlatformElementsBuild.PreparedXaml, UnoPlatformPrefixes.ChooseBuild(scan, reprepareRawElements: true, FailWhenCalled));
     }
 
     [TestMethod]
@@ -81,10 +85,71 @@ public sealed class UnoPlatformPrefixScanTests
         Assert.IsFalse(scan.HasPlatformNamespaces);
         Assert.IsFalse(scan.HasPlatformPrefixedObjectElements);
         Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(scan).Count);
+        Assert.AreEqual(PlatformElementsBuild.PreparedXaml, UnoPlatformPrefixes.ChooseBuild(scan, reprepareRawElements: true, FailWhenCalled));
     }
 
     [TestMethod]
-    public void PlatformNamespaceThatIsMissingFromIgnorableIsReportedWithItsPosition()
+    public void PageThatOnlyDeclaresAPlatformNamespaceKeepsItsPreparedXaml()
+    {
+        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"http://uno.ui/android\" />";
+
+        XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
+
+        Assert.IsTrue(scan.HasPlatformNamespaces);
+        Assert.AreEqual(PlatformElementsBuild.PreparedXaml, UnoPlatformPrefixes.ChooseBuild(scan, reprepareRawElements: true, FailWhenCalled));
+    }
+
+    [TestMethod]
+    public void PageWithAnObjectElementUnderAPlatformPrefixIsBuiltFromConstructionActions()
+    {
+        // The XAML cleaner replaced the element, and the second preparation is off: nothing is asked of it.
+        XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(_IssuePage);
+
+        Assert.AreEqual(PlatformElementsBuild.ConstructionActions, UnoPlatformPrefixes.ChooseBuild(scan, reprepareRawElements: false, FailWhenCalled));
+    }
+
+    [TestMethod]
+    public void PageWithAnObjectElementUnderAPlatformPrefixIsPreparedAgainWhenThatWorks()
+    {
+        XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(_IssuePage);
+        int calls = 0;
+
+        PlatformElementsBuild build = UnoPlatformPrefixes.ChooseBuild(
+            scan,
+            reprepareRawElements: true,
+            () =>
+            {
+                calls++;
+                return true;
+            }
+        );
+
+        Assert.AreEqual(PlatformElementsBuild.PreparedAgain, build);
+        Assert.AreEqual(1, calls);
+    }
+
+    [TestMethod]
+    public void PageThatCannotBePreparedAgainIsBuiltFromConstructionActions()
+    {
+        XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(_IssuePage);
+        int calls = 0;
+
+        PlatformElementsBuild build = UnoPlatformPrefixes.ChooseBuild(
+            scan,
+            reprepareRawElements: true,
+            () =>
+            {
+                calls++;
+                return false;
+            }
+        );
+
+        Assert.AreEqual(PlatformElementsBuild.ConstructionActions, build);
+        Assert.AreEqual(1, calls);
+    }
+
+    [TestMethod]
+    public void PlatformNamespaceThatIsMissingFromIgnorableIsFoundWithItsPosition()
     {
         const string xaml = """
             <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -113,6 +178,59 @@ public sealed class UnoPlatformPrefixScanTests
     }
 
     [TestMethod]
+    public void WarningNamesTheDocumentThePositionAndTheDeclaration()
+    {
+        const string xaml = """
+            <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:not_win="http://uno.ui/not_win#using:My.App"
+                  mc:Ignorable="d">
+              <not_win:Border />
+            </Page>
+            """;
+        XamlNamespaceDeclaration declaration = UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml)).Single();
+
+        string message = UnoPlatformPrefixes.DescribeMissingIgnorable(@"C:\App\Page.xaml", declaration, reprepareRawElements: false);
+
+        Assert.StartsWith($@"C:\App\Page.xaml(3,{declaration.LinePosition}): ", message);
+        Assert.Contains("xmlns:not_win=\"http://uno.ui/not_win#using:My.App\" is an Uno platform namespace that is not listed in mc:Ignorable", message);
+        Assert.Contains("so the Windows XAML compiler cannot resolve it", message);
+    }
+
+    [TestMethod]
+    public void WarningSaysWhatBecomesOfTheMembersOfAPlatformPrefixInEachMode()
+    {
+        var declaration = new XamlNamespaceDeclaration("not_win", XamlNamespaceUri.Parse("http://uno.ui/not_win"), depth: 0, lineNumber: 1, linePosition: 1);
+
+        // By default the object elements of the prefix reach the surface as construction actions.
+        string byDefault = UnoPlatformPrefixes.DescribeMissingIgnorable(null, declaration, reprepareRawElements: false);
+        Assert.Contains("drops its attributes and property elements regardless", byDefault);
+        Assert.Contains("its object elements appear as elements of an unknown type", byDefault);
+        Assert.Contains("unless WINUIDESIGNER_REPREPARE_RAW_PLATFORM_ELEMENTS=1 is set", byDefault);
+        Assert.DoesNotContain("applies the platform prefix regardless", byDefault);
+
+        // Prepared a second time, the surface drops everything under the prefix.
+        string prepared = UnoPlatformPrefixes.DescribeMissingIgnorable(null, declaration, reprepareRawElements: true);
+        Assert.Contains("The designer applies the platform prefix regardless.", prepared);
+        Assert.DoesNotContain("unknown type", prepared);
+    }
+
+    [TestMethod]
+    public void WarningLeavesTheMembersOfAPrefixTheTableDoesNotKnowAsWritten()
+    {
+        var declaration = new XamlNamespaceDeclaration("legacy", XamlNamespaceUri.Parse("http://uno.ui/legacy"), depth: 0, lineNumber: 1, linePosition: 1);
+
+        foreach (bool reprepareRawElements in new[] { false, true })
+        {
+            string message = UnoPlatformPrefixes.DescribeMissingIgnorable(null, declaration, reprepareRawElements);
+
+            Assert.Contains("Its members are left as written for the XAML reader to reject.", message);
+            Assert.DoesNotContain("regardless", message);
+        }
+    }
+
+
+    [TestMethod]
     [DataRow("win", "http://schemas.microsoft.com/winfx/2006/xaml/presentation", false, "win", "Keep")]
     [DataRow("win", "http://schemas.microsoft.com/winfx/2006/xaml/presentation", false, "android", "Drop")]
     [DataRow("android", "http://uno.ui/android", true, "win", "Drop")]
@@ -132,4 +250,6 @@ public sealed class UnoPlatformPrefixScanTests
 
         Assert.AreEqual((XamlPrefixDisposition)Enum.Parse(typeof(XamlPrefixDisposition), expected), actual);
     }
+
+    private static bool FailWhenCalled() => throw new AssertFailedException("The page needs no second preparation.");
 }

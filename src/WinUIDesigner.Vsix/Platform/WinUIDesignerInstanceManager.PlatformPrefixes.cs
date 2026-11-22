@@ -12,12 +12,6 @@ namespace WinUIDesigner.Platform;
 internal sealed partial class WinUIDesignerInstanceManager
 {
     /// <summary>
-    /// The environment variable that turns <see cref="_ReprepareRawPlatformElements"/> on when it is set
-    /// to <c>1</c> or <c>true</c> before Visual Studio starts.
-    /// </summary>
-    internal const string ReprepareRawPlatformElementsVariable = "WINUIDESIGNER_REPREPARE_RAW_PLATFORM_ELEMENTS";
-
-    /// <summary>
     /// Whether a document with elements under an Uno platform prefix is cleaned a second time, so that those
     /// elements reach the surface in the prepared XAML and the namespace policies decide about them there.
     /// </summary>
@@ -25,9 +19,11 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// Off by default: loading a document this way was confirmed in Visual Studio 18.13, but editing it
     /// afterwards and Visual Studio 17.14 have not been checked. While it is off, such a document is built
     /// from construction actions, which are generated from a document model that leaves out the members of
-    /// an ignorable namespace nothing resolves.
+    /// an ignorable namespace nothing resolves. The environment variable
+    /// <see cref="UnoPlatformPrefixes.ReprepareRawElementsVariable"/> turns it on when it is set to <c>1</c> or
+    /// <c>true</c> before Visual Studio starts.
     /// </remarks>
-    private static readonly bool _ReprepareRawPlatformElements = IsSwitchOn(ReprepareRawPlatformElementsVariable);
+    private static readonly bool _ReprepareRawPlatformElements = IsSwitchOn(UnoPlatformPrefixes.ReprepareRawElementsVariable);
 
     // The documents whose prepared XAML lost its platform elements. Only touched while a request is created.
     private readonly HashSet<int> _documentsBuiltFromActions = [];
@@ -90,35 +86,33 @@ internal sealed partial class WinUIDesignerInstanceManager
         int documentId = document.DocumentId;
         try
         {
-            // The scan is cached per text version, and a document without Uno namespaces ends here.
+            // The scan is cached per text version, and a document without Uno namespaces needs nothing further.
             XamlNamespaceScanResult namespaces = _memberDispositions.GetNamespaces(document.Document);
-            if (!namespaces.HasPlatformNamespaces)
-            {
-                _documentsBuiltFromActions.Remove(documentId);
-                return;
-            }
-
             string? path = document.Document?.DocumentContext?.DocumentPath;
-            ReportPrefixesMissingFromIgnorable(namespaces, path);
-
-            // Attributes and property elements under a platform prefix pass through the XAML cleaner as they
-            // are written. Object elements do not: the cleaner cannot resolve their type and replaces each of
-            // them with a fallback control without its children.
-            if (!namespaces.HasPlatformPrefixedObjectElements)
+            if (namespaces.HasPlatformNamespaces)
             {
-                _documentsBuiltFromActions.Remove(documentId);
-                return;
+                ReportPrefixesMissingFromIgnorable(namespaces, path);
             }
 
-            if (_ReprepareRawPlatformElements && TryReprepareRawPlatformElements(document))
+            switch (UnoPlatformPrefixes.ChooseBuild(namespaces, _ReprepareRawPlatformElements, () => TryReprepareRawPlatformElements(document)))
             {
-                _documentsBuiltFromActions.Remove(documentId);
-                WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) was prepared again to keep its Uno platform elements.");
-                return;
-            }
+                // The prepared XAML lost the elements: the document is built from construction actions.
+                case PlatformElementsBuild.ConstructionActions:
+                    _documentsBuiltFromActions.Add(documentId);
+                    WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) has elements under an Uno platform prefix; it is built from construction actions.");
+                    break;
 
-            _documentsBuiltFromActions.Add(documentId);
-            WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) has elements under an Uno platform prefix; it is built from construction actions.");
+                // The prepared XAML was made again and keeps the elements.
+                case PlatformElementsBuild.PreparedAgain:
+                    _documentsBuiltFromActions.Remove(documentId);
+                    WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) was prepared again to keep its Uno platform elements.");
+                    break;
+
+                // The prepared XAML has everything the surface needs.
+                default:
+                    _documentsBuiltFromActions.Remove(documentId);
+                    break;
+            }
         }
         catch (Exception ex)
         {
@@ -145,14 +139,7 @@ internal sealed partial class WinUIDesignerInstanceManager
         IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(namespaces);
         for (int index = 0; index < missing.Count; index++)
         {
-            XamlNamespaceDeclaration declaration = missing[index];
-            string consequence = UnoPlatformPrefixes.TryParse(declaration.Prefix, out _, out _)
-                ? "The designer applies the platform prefix regardless."
-                : "Its members are left as written for the XAML reader to reject.";
-            WinUIDesignerLogger.LogWarning(
-                "Platform",
-                $"{path}({declaration.LineNumber},{declaration.LinePosition}): xmlns:{declaration.Prefix}=\"{declaration.Uri.Original}\" is an Uno platform namespace that is not listed in mc:Ignorable, " +
-                $"so the Windows XAML compiler cannot resolve it. {consequence}");
+            WinUIDesignerLogger.LogWarning("Platform", UnoPlatformPrefixes.DescribeMissingIgnorable(path, missing[index], _ReprepareRawPlatformElements));
         }
     }
 

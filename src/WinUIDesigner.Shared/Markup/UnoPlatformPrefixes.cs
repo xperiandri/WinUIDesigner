@@ -34,6 +34,13 @@ internal static class UnoPlatformPrefixes
     /// </summary>
     public const string DefaultTargetPlatform = _Windows;
 
+    /// <summary>
+    /// The environment variable of the Visual Studio extension that turns on preparing a document a second time,
+    /// so that its object elements under platform prefixes reach the surface. The warning for a namespace that is
+    /// missing from <c>mc:Ignorable</c> names it, because the setting changes what becomes of those elements.
+    /// </summary>
+    public const string ReprepareRawElementsVariable = "WINUIDESIGNER_REPREPARE_RAW_PLATFORM_ELEMENTS";
+
     private const string _Windows = "win";
     private const string _NegationPrefix = "not_";
     private const string _ClrNamespaceScheme = "clr-namespace:";
@@ -178,7 +185,7 @@ internal static class UnoPlatformPrefixes
     /// <summary>
     /// Returns the declarations of <paramref name="scan"/> that bind a prefix to an Uno platform namespace
     /// without listing the prefix in <c>mc:Ignorable</c>. The Windows XAML compiler cannot resolve such a
-    /// namespace and rejects the document; the designer applies a platform prefix regardless.
+    /// namespace and rejects the document; the namespace policies classify a platform prefix regardless.
     /// </summary>
     public static IReadOnlyList<XamlNamespaceDeclaration> FindMissingIgnorable(XamlNamespaceScanResult scan)
     {
@@ -196,6 +203,71 @@ internal static class UnoPlatformPrefixes
         }
 
         return missing ?? (IReadOnlyList<XamlNamespaceDeclaration>)Array.Empty<XamlNamespaceDeclaration>();
+    }
+
+    /// <summary>
+    /// Describes a declaration found by <see cref="FindMissingIgnorable"/> for the log: where it is, what is wrong
+    /// with it, and what the designer makes of the members under its prefix.
+    /// </summary>
+    /// <param name="path">The path of the document, or <see langword="null"/> when it has none.</param>
+    /// <param name="declaration">The declaration that is missing from <c>mc:Ignorable</c>.</param>
+    /// <param name="reprepareRawElements">
+    /// Whether documents are prepared a second time, so that the object elements under platform prefixes reach the
+    /// surface (<see cref="ReprepareRawElementsVariable"/>).
+    /// </param>
+    public static string DescribeMissingIgnorable(string? path, XamlNamespaceDeclaration declaration, bool reprepareRawElements)
+    {
+        string consequence;
+        if (!TryParse(declaration.Prefix, out _, out _))
+        {
+            // The table does not know the prefix, so nothing classifies it unless it is ignorable.
+            consequence = "Its members are left as written for the XAML reader to reject.";
+        }
+        else if (reprepareRawElements)
+        {
+            // The prepared XAML keeps the raw elements, and the surface drops every member of the prefix.
+            consequence = "The designer applies the platform prefix regardless.";
+        }
+        else
+        {
+            // Attributes and property elements are dropped on both paths, but an object element reaches the
+            // surface as construction actions, where Visual Studio makes it a node of an unknown type.
+            consequence = $"The designer drops its attributes and property elements regardless, but its object elements appear as elements of an unknown type unless {ReprepareRawElementsVariable}=1 is set.";
+        }
+
+        return $"{path}({declaration.LineNumber},{declaration.LinePosition}): xmlns:{declaration.Prefix}=\"{declaration.Uri.Original}\" is an Uno platform namespace that is not listed in mc:Ignorable, " +
+            $"so the Windows XAML compiler cannot resolve it. {consequence}";
+    }
+
+    /// <summary>
+    /// Decides how a document reaches the surface, from what a scan of its text found.
+    /// </summary>
+    /// <param name="scan">The namespace facts of the document.</param>
+    /// <param name="reprepareRawElements">
+    /// Whether a document may be prepared a second time to keep its object elements under platform prefixes.
+    /// </param>
+    /// <param name="tryReprepare">
+    /// Prepares the document a second time and returns whether its prepared XAML now has those elements. It is only
+    /// called for a document that has them, and only when <paramref name="reprepareRawElements"/> is set.
+    /// </param>
+    public static PlatformElementsBuild ChooseBuild(XamlNamespaceScanResult scan, bool reprepareRawElements, Func<bool> tryReprepare)
+    {
+        // Attributes and property elements under a platform prefix pass through the XAML cleaner as they are
+        // written. Object elements do not: the cleaner cannot resolve their type and replaces each of them with a
+        // fallback control without its children.
+        if (!scan.HasPlatformNamespaces || !scan.HasPlatformPrefixedObjectElements)
+        {
+            return PlatformElementsBuild.PreparedXaml;
+        }
+
+        // The second preparation keeps those elements in the prepared XAML, when it works.
+        if (reprepareRawElements && tryReprepare())
+        {
+            return PlatformElementsBuild.PreparedAgain;
+        }
+
+        // The document model that construction actions are generated from leaves them out.
+        return PlatformElementsBuild.ConstructionActions;
     }
 
     private static KeyValuePair<string, string[]> Platform(string prefix, params string[] targets)
