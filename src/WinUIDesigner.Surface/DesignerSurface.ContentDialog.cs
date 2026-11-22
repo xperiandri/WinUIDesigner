@@ -366,12 +366,30 @@ internal sealed partial class DesignerSurface
         // The first time for this theme: the brush of the resources, or else the colour of the framework.
         if (!_smokeFills.TryGetValue(theme, out Brush? fill))
         {
-            fill = FindThemeBrush(Application.Current.Resources, ContentDialogThemePolicy.SmokeBrushKey, theme, 0)
-                ?? new SolidColorBrush(ToColor(ContentDialogThemePolicy.SmokeColor(theme)));
+            fill = FindSmokeBrush(theme) ?? new SolidColorBrush(ToColor(ContentDialogThemePolicy.SmokeColor(theme)));
             _smokeFills[theme] = fill;
         }
 
         return fill;
+    }
+
+    /// <summary>
+    /// The brush that the resources of the application have for the layer of smoke in a theme, or <see langword="null"/> where
+    /// they have none or cannot be read. It is called from the events of the dialog, where an exception ends the process, so
+    /// it ends here.
+    /// </summary>
+    private static Brush? FindSmokeBrush(string theme)
+    {
+        try
+        {
+            return FindThemeBrush(Application.Current.Resources, ContentDialogThemePolicy.SmokeBrushKey, theme, 0);
+        }
+        catch (Exception exception)
+        {
+            // The resources could not be read: the layer takes the colour of the framework.
+            WinUIDesignerLogger.LogTrace("Surface", $"The brush of the smoke layer of the ContentDialog could not be read from the resources: {exception.Message}");
+            return null;
+        }
     }
 
     /// <summary>
