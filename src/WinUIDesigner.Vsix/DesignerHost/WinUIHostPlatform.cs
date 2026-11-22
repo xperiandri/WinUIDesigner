@@ -194,6 +194,11 @@ public sealed class WinUIHostPlatform : WpfHostPlatform
         public PlatformIdentifier? PlatformIdentifier => project.PlatformIdentifier;
 
         public string? WinUIRuntimeFileVersion
-            => WinUIProjectRequirements.GetWinUIRuntimeFileVersion(project.References?.Select(reference => reference.Path));
+        {
+            get
+            {
+                return WinUIProjectRequirements.GetWinUIRuntimeFileVersion(project.References?.Select(reference => reference.Path));
+            }
+        }
     }
 }

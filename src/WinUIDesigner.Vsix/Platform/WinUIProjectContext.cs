@@ -136,7 +136,12 @@ public sealed class WinUIProjectContext : XamlProjectContext, IProjectContext
         public bool HasPlatformMetadata => projectContext.Metadata?.PlatformMetadata is not null;
 
         public string? WinUIRuntimeFileVersion
-            => WinUIProjectRequirements.GetWinUIRuntimeFileVersion(HostProject?.References?.Select(reference => reference.Path));
+        {
+            get
+            {
+                return WinUIProjectRequirements.GetWinUIRuntimeFileVersion(HostProject?.References?.Select(reference => reference.Path));
+            }
+        }
 
         private IHostProject? HostProject => (projectContext as ProjectContextBase)?.HostProject;
     }
