@@ -107,8 +107,9 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// </summary>
     /// <remarks>
     /// The document model keeps one value per property: of <c>c7:CornerRadius="4" c7n:CornerRadius="0"</c>
-    /// only the last attribute is in it. When that one is dropped, the value of the attribute that applies
-    /// is gone and the property stays unset. Prepared XAML does not have this problem.
+    /// only the last attribute is in it, and of <c>&lt;c7:Border.Background&gt;</c> followed by
+    /// <c>&lt;c7n:Border.Background&gt;</c> only the last property element. When that one is dropped, the value
+    /// of the member that applies is gone and the property stays unset. Prepared XAML does not have this problem.
     /// </remarks>
     private void ReportValueLostToDroppedProperty(DocumentCompositeNode parentNode, IProperty property)
     {
@@ -132,38 +133,30 @@ internal sealed partial class WinUIDesignerInstanceManager
                 return;
             }
 
-            XamlSourceAttribute dropped = XamlSourcePrefixReader.ReadAttribute(parentNode, property);
+            XamlSourceMember dropped = XamlSourcePrefixReader.ReadMember(parentNode, property);
             if (!dropped.IsKnown)
             {
                 return;
             }
 
-            foreach (XamlAttributeName sibling in dropped.ElementAttributes)
+            XamlAttributeName? lost = XamlLostValueFinder.Find(
+                dropped.Name,
+                dropped.Members,
+                prefix => dropped.ResolvePrefix(prefix) is { Namespace: not null } resolved ? resolved.Uri.BaseUri : null,
+                prefix => _memberDispositions.Classify(dropped.ResolvePrefix(prefix))
+            );
+            if (lost is not null)
             {
-                if (!string.Equals(sibling.LocalName, dropped.Name.LocalName, StringComparison.Ordinal)
-                    || string.Equals(sibling.Prefix, dropped.Name.Prefix, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                // An attribute without a prefix always applies; one with a prefix applies unless it is dropped as well.
-                if (sibling.Prefix.Length != 0
-                    && _memberDispositions.Classify(dropped.ResolvePrefix(sibling.Prefix)) == XamlPrefixDisposition.Drop)
-                {
-                    continue;
-                }
-
                 WinUIDesignerLogger.LogWarning(
                     "Platform",
-                    $"The value of {sibling} on <{parentNode.Type.Name}> is lost while the document is built from construction actions: "
+                    $"The value of {lost} on <{parentNode.Type.Name}> is lost while the document is built from construction actions: "
                     + $"{dropped.Name} follows it and does not apply, and Visual Studio's document model keeps only the last value written for a property. "
-                    + "The property stays unset in the preview. Writing the attribute that applies last avoids this.");
-                return;
+                    + "The property stays unset in the preview. Writing the member that applies last avoids this.");
             }
         }
         catch (Exception ex)
         {
-            WinUIDesignerLogger.LogTrace("Platform", $"Looking for a value lost to a dropped attribute failed: {ex}");
+            WinUIDesignerLogger.LogTrace("Platform", $"Looking for a value lost to a dropped member failed: {ex}");
         }
     }
 

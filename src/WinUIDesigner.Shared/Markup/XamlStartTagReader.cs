@@ -1,12 +1,13 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System;
 using System.Collections.Generic;
 
 namespace WinUIDesigner.Markup;
 
 /// <summary>
-/// The qualified name of an attribute as it is written in XAML text.
+/// The qualified name of an attribute, or of an element, as it is written in XAML text.
 /// </summary>
 internal readonly struct XamlAttributeName
 {
@@ -37,11 +38,13 @@ internal readonly struct XamlAttributeName
 }
 
 /// <summary>
-/// Reads the attribute names of an element start tag from its text, without building a document model.
+/// Reads the attribute names of an element start tag, and the property elements in the content of an element,
+/// from their text, without building a document model.
 /// </summary>
 /// <remarks>
 /// The designer's document model keeps one value per property. When a property is written twice under
-/// different prefixes, as an if/else pair of conditional attributes is, only the text still shows both.
+/// different prefixes, as an if/else pair of conditional attributes or property elements is, only the text
+/// still shows both.
 /// </remarks>
 internal static class XamlStartTagReader
 {
@@ -140,10 +143,165 @@ internal static class XamlStartTagReader
         return TryParseName(attributeText.Substring(start, end - start), out name);
     }
 
+    /// <summary>
+    /// Reads the name of an element from the text of its start tag, such as <c>&lt;c7:Border.Background&gt;</c>.
+    /// </summary>
+    /// <returns><see langword="false"/> when the text does not begin with a start tag that has a name.</returns>
+    public static bool TryReadElementName(string? startTagText, out XamlAttributeName name)
+    {
+        name = default;
+        if (startTagText is null)
+        {
+            return false;
+        }
+
+        int start = SkipWhitespace(startTagText, 0);
+        if (start >= startTagText.Length || startTagText[start] != '<')
+        {
+            return false;
+        }
+
+        int end = start + 1;
+        while (end < startTagText.Length && !char.IsWhiteSpace(startTagText[end]) && startTagText[end] != '>' && startTagText[end] != '/')
+        {
+            end++;
+        }
+
+        return TryParseName(startTagText.Substring(start + 1, end - start - 1), out name);
+    }
+
+    /// <summary>
+    /// Returns the names of the property elements, such as <c>&lt;c7:Border.Background&gt;</c>, that are children
+    /// of an element, in the order they are written. Elements inside a child, comments, CDATA sections and
+    /// processing instructions are skipped. Never throws: the names read up to malformed text are returned.
+    /// </summary>
+    /// <param name="contentText">
+    /// The text of the content of an element, from the end of its start tag, up to the place that is of interest.
+    /// </param>
+    public static IReadOnlyList<XamlAttributeName> ReadPropertyElementNames(string? contentText)
+    {
+        var names = new List<XamlAttributeName>();
+        if (contentText is null)
+        {
+            return names;
+        }
+
+        // How many child elements are open at the current place of the text.
+        int depth = 0;
+        int index = 0;
+        while (index < contentText.Length)
+        {
+            int open = contentText.IndexOf('<', index);
+            if (open < 0)
+            {
+                break;
+            }
+
+            // Comments, CDATA sections and processing instructions are no elements.
+            if (string.CompareOrdinal(contentText, open, "<!--", 0, 4) == 0)
+            {
+                index = SkipPast(contentText, open + 4, "-->");
+                continue;
+            }
+
+            if (string.CompareOrdinal(contentText, open, "<![CDATA[", 0, 9) == 0)
+            {
+                index = SkipPast(contentText, open + 9, "]]>");
+                continue;
+            }
+
+            if (string.CompareOrdinal(contentText, open, "<?", 0, 2) == 0)
+            {
+                index = SkipPast(contentText, open + 2, "?>");
+                continue;
+            }
+
+            // An end tag closes a child; one with no child open is the end of the content itself.
+            if (open + 1 < contentText.Length && contentText[open + 1] == '/')
+            {
+                if (depth == 0)
+                {
+                    break;
+                }
+
+                depth--;
+                index = SkipPast(contentText, open + 2, ">");
+                continue;
+            }
+
+            // A start tag: its name runs up to white space or the end of the tag, and the tag up to a '>'
+            // that is not inside an attribute value.
+            int nameEnd = open + 1;
+            while (nameEnd < contentText.Length && !char.IsWhiteSpace(contentText[nameEnd]) && contentText[nameEnd] != '>' && contentText[nameEnd] != '/')
+            {
+                nameEnd++;
+            }
+
+            int tagEnd = FindTagEnd(contentText, nameEnd);
+            if (tagEnd < 0)
+            {
+                break;
+            }
+
+            if (depth == 0
+                && TryParseName(contentText.Substring(open + 1, nameEnd - open - 1), out XamlAttributeName name)
+                && name.LocalName.IndexOf('.') > 0)
+            {
+                names.Add(name);
+            }
+
+            if (contentText[tagEnd - 1] != '/')
+            {
+                depth++;
+            }
+
+            index = tagEnd + 1;
+        }
+
+        return names;
+    }
+
+    private static int SkipPast(string text, int index, string terminator)
+    {
+        int end = text.IndexOf(terminator, index, StringComparison.Ordinal);
+        return end < 0 ? text.Length : end + terminator.Length;
+    }
+
+    private static int FindTagEnd(string text, int index)
+    {
+        for (; index < text.Length; index++)
+        {
+            char current = text[index];
+            if (current == '>')
+            {
+                return index;
+            }
+
+            // The value of an attribute ends at the quote it began with and may contain a '>'.
+            if (current == '"' || current == '\'')
+            {
+                int valueEnd = text.IndexOf(current, index + 1);
+                if (valueEnd < 0)
+                {
+                    return -1;
+                }
+
+                index = valueEnd;
+            }
+        }
+
+        return -1;
+    }
+
     private static bool TryParseName(string qualifiedName, out XamlAttributeName name)
     {
         int colon = qualifiedName.IndexOf(':');
-        if (qualifiedName.Length == 0 || colon == 0 || colon == qualifiedName.Length - 1 || colon != qualifiedName.LastIndexOf(':'))
+        if (qualifiedName.Length == 0
+            || colon == 0
+            || colon == qualifiedName.Length - 1
+            || colon != qualifiedName.LastIndexOf(':')
+            || !IsNameStart(qualifiedName[0])
+            || (colon > 0 && !IsNameStart(qualifiedName[colon + 1])))
         {
             name = default;
             return false;
@@ -154,6 +312,8 @@ internal static class XamlStartTagReader
             : new XamlAttributeName(qualifiedName.Substring(0, colon), qualifiedName.Substring(colon + 1));
         return true;
     }
+
+    private static bool IsNameStart(char character) => char.IsLetter(character) || character == '_';
 
     private static int SkipWhitespace(string text, int index)
     {

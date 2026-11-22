@@ -197,7 +197,7 @@ Measured with Windows App SDK 2.5.1. In each case the designer shows what the ma
 | A missing parenthesis, text after `)`, a name with a dot, a wrong number of arguments, a type that is no condition, a condition that throws | An exception, some of them of a kind managed code only sees as `SEHException`. | The condition is not satisfied. |
 | A version such as `7.0` or `7abc` | The leading digits are read: 7. | The condition is malformed and not satisfied. |
 | The root element under a conditional prefix | The process ends: always when the condition does not hold, now and then when it does. | The root stays, as a plain element. |
-| Two attributes for one property whose conditions both hold, or a plain attribute beside one whose condition holds | An exception: the property is set more than once. | The attribute written last applies; a warning is logged. |
+| Two attributes for one property whose conditions both hold, or a plain attribute beside one whose condition holds | An exception: the property is set more than once. | The attribute written last applies; the rewrite of prepared XAML logs a warning. |
 | Two elements under complementary conditions as the single content of an element | An exception: the property is set more than once. | The element whose condition holds. |
 | A directive under a conditional prefix, such as `x7:Name` | An exception. | The directive applies when the condition holds. |
 | A prefix that is declared again on a nested element | The outer declaration stays in effect, with its namespace and its condition. Only the default namespace can be declared again. | The inner declaration applies, as in XML. |
@@ -238,7 +238,7 @@ Nothing waits for the surface while a document is being built, and answers take 
 
 ##### Limitations
 
-- Visual Studio's document model keeps one value per property. Of `c8:CornerRadius="8" c8n:CornerRadius="0"` it keeps the second attribute; when that one is dropped, the first value is gone and the property stays unset on the construction-action path. The extension logs a warning for attributes. Prepared XAML is not affected. Writing the branch that applies last avoids the difference.
+- Visual Studio's document model keeps one value per property. Of `c8:CornerRadius="8" c8n:CornerRadius="0"` it keeps the second attribute, and of two property elements for one property, such as `<c8:Border.Background>` followed by `<c8n:Border.Background>`, the second one; an attribute is always read before a property element. When the one it kept is dropped, the earlier value is gone and the property stays unset on the construction-action path. The extension logs a warning for attributes and property elements. Prepared XAML is not affected. Writing the branch that applies last avoids the difference.
 - The live tree has no object for a dropped element, but construction actions address children by their index in the document. After an element is inserted or removed next to a dropped sibling, the preview can differ from the document until it is reloaded.
 - A dictionary that the XAML reader loads by itself, such as the compiled resources of a control library, is not rewritten. The reader evaluates its predicates, with its own answers in the surface process, and it still ends the process on a predicate it cannot handle, such as a custom condition whose type it does not find.
 - A custom condition runs without the state of the application: the designer does not run the code that sets feature flags at startup.

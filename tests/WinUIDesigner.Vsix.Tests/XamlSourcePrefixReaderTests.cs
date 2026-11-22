@@ -122,6 +122,60 @@ public sealed class XamlSourcePrefixReaderTests
     }
 
     [TestMethod]
+    public void AttributeIsReadAsAMemberTogetherWithTheAttributesOfItsElement()
+    {
+        var document = new SampleDocument();
+
+        XamlSourceMember member = XamlSourcePrefixReader.ReadContainerMember(document.Attribute(document.Border, "Opacity=\"1\""));
+
+        Assert.IsTrue(member.IsKnown);
+        Assert.IsFalse(member.IsPropertyElement);
+        Assert.AreEqual("Opacity", member.Name.ToString());
+        Assert.AreEqual("win:Tag|Opacity", string.Join("|", member.Members.Select(name => name.ToString())));
+        Assert.AreEqual(XamlNamespaces.Presentation, member.ResolvePrefix("win").Namespace?.Value);
+    }
+
+    [TestMethod]
+    public void PropertyElementIsReadAsAMemberTogetherWithTheMembersBeforeIt()
+    {
+        var document = new SampleDocument();
+
+        XamlSourceMember member = XamlSourcePrefixReader.ReadContainerMember(document.Child);
+
+        // The attributes of its element come first; nothing else is written before it.
+        Assert.IsTrue(member.IsKnown);
+        Assert.IsTrue(member.IsPropertyElement);
+        Assert.AreEqual("win:Border.Child", member.Name.ToString());
+        Assert.AreEqual("win:Tag|Opacity", string.Join("|", member.Members.Select(name => name.ToString())));
+        Assert.AreEqual(TestXamlNamespaces.Android, member.ResolvePrefix("android").Namespace?.Value);
+    }
+
+    [TestMethod]
+    public void PropertyElementIsReadWithThePropertyElementsWrittenBeforeIt()
+    {
+        var document = new ConditionalBrushes();
+
+        XamlSourceMember first = XamlSourcePrefixReader.ReadContainerMember(document.Applies);
+        XamlSourceMember second = XamlSourcePrefixReader.ReadContainerMember(document.DoesNot);
+
+        Assert.AreEqual("c7:Border.Background", first.Name.ToString());
+        Assert.AreEqual("Opacity", string.Join("|", first.Members.Select(name => name.ToString())));
+        Assert.AreEqual("c7n:Border.Background", second.Name.ToString());
+        Assert.AreEqual("Opacity|c7:Border.Background", string.Join("|", second.Members.Select(name => name.ToString())));
+    }
+
+    [TestMethod]
+    public void ReferencesThatAreNoMembersAreNotRead()
+    {
+        var document = new SampleDocument();
+
+        // A property set through element content has no container; the root element has no element to belong to.
+        Assert.IsFalse(XamlSourcePrefixReader.ReadContainerMember(null).IsKnown);
+        Assert.IsFalse(XamlSourcePrefixReader.ReadContainerMember(document.Grid).IsKnown);
+        Assert.IsFalse(XamlSourcePrefixReader.ReadContainerMember(document.Attribute(document.Border, "\"w\"")).IsKnown);
+    }
+
+    [TestMethod]
     public void PropertySetThroughContentHasNoPrefix()
     {
         // The designer gives a content property no container of its own.
@@ -291,6 +345,47 @@ public sealed class XamlSourcePrefixReaderTests
             int startOffset = _Xaml.IndexOf(start, StringComparison.Ordinal);
             Assert.IsGreaterThanOrEqualTo(0, startOffset, start);
             int endOffset = _Xaml.IndexOf(end, startOffset, StringComparison.Ordinal);
+            Assert.IsGreaterThanOrEqualTo(0, endOffset, end);
+            return new SourceContext(null, startOffset, endOffset + end.Length);
+        }
+    }
+
+    /// <summary>
+    /// The source references of two property elements for one property, the usual way to write a conditional brush,
+    /// built the same way as those of <see cref="SampleDocument"/>.
+    /// </summary>
+    private sealed class ConditionalBrushes
+    {
+        private const string _Text = """
+            <Border Opacity="1">
+              <c7:Border.Background><SolidColorBrush /></c7:Border.Background>
+              <c7n:Border.Background><AcrylicBrush /></c7n:Border.Background>
+            </Border>
+            """;
+
+        public ConditionalBrushes()
+        {
+            var buffer = new SimpleTextBuffer(_Text);
+            var document = new XmlDocumentReference(buffer, new SourceContext(null, 0, _Text.Length), "utf-8", beginTracking: true);
+            XmlElementReference border = Element(document, "<Border", "</Border>", "Opacity=\"1\">");
+            Applies = Element(border, "<c7:Border.Background>", "</c7:Border.Background>", "<c7:Border.Background>");
+            DoesNot = Element(border, "<c7n:Border.Background>", "</c7n:Border.Background>", "<c7n:Border.Background>");
+        }
+
+        public XmlElementReference Applies { get; }
+
+        public XmlElementReference DoesNot { get; }
+
+        private static XmlElementReference Element(XmlContainerReference parent, string start, string end, string startTagEnd)
+        {
+            return new XmlElementReference(parent, Find(start, end), Find(start, startTagEnd), beginTracking: true, XmlNamespaceGenerator.PlatformIndependentInstance);
+        }
+
+        private static SourceContext Find(string start, string end)
+        {
+            int startOffset = _Text.IndexOf(start, StringComparison.Ordinal);
+            Assert.IsGreaterThanOrEqualTo(0, startOffset, start);
+            int endOffset = _Text.IndexOf(end, startOffset, StringComparison.Ordinal);
             Assert.IsGreaterThanOrEqualTo(0, endOffset, end);
             return new SourceContext(null, startOffset, endOffset + end.Length);
         }
