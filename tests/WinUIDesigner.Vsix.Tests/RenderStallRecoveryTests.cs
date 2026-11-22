@@ -19,7 +19,7 @@ public sealed class RenderStallRecoveryTests
     public void TheReportIsRecognizedWithSpacesAroundIt()
     {
         // Visual Studio trims the message of an unhandled exception before it keeps it; the text may arrive padded.
-        Assert.IsTrue(RenderStallReport.IsReport("  " + RenderStallReport.Message + "\r\n"));
+        Assert.IsTrue(RenderStallReport.IsReport($"  {RenderStallReport.Message}\r\n"));
     }
 
     [TestMethod]
@@ -28,7 +28,7 @@ public sealed class RenderStallRecoveryTests
         Assert.IsFalse(RenderStallReport.IsReport(null));
         Assert.IsFalse(RenderStallReport.IsReport(string.Empty));
         Assert.IsFalse(RenderStallReport.IsReport("The surface process crashed."));
-        Assert.IsFalse(RenderStallReport.IsReport(RenderStallReport.Message + " Something else."));
+        Assert.IsFalse(RenderStallReport.IsReport($"{RenderStallReport.Message} Something else."));
     }
 
     [TestMethod]

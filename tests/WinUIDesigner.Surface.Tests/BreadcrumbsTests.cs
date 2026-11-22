@@ -14,7 +14,7 @@ public sealed class BreadcrumbsTests
     [TestMethod]
     public void AFreshJournalIsEmpty()
     {
-        Assert.AreEqual(0, new Breadcrumbs(4).Snapshot().Count);
+        Assert.IsEmpty(new Breadcrumbs(4).Snapshot());
     }
 
     [TestMethod]
@@ -81,9 +81,9 @@ public sealed class BreadcrumbsTests
     public void EntriesAddedFromManyThreadsAreAllKeptWithinTheCapacity()
     {
         var breadcrumbs = new Breadcrumbs(100);
-        Parallel.For(0, 1000, index => breadcrumbs.Add("entry " + index));
+        Parallel.For(0, 1000, index => breadcrumbs.Add($"entry {index}"));
 
-        Assert.AreEqual(100, breadcrumbs.Snapshot().Count);
+        Assert.HasCount(100, breadcrumbs.Snapshot());
     }
 
     [TestMethod]

@@ -57,10 +57,7 @@ internal static class ProjectCodeExceptions
     /// <c>E_FAIL</c> while it lays out or draws an element, as an exception that no managed method threw, so that it has
     /// no stack. An exception that managed code threw, or that was thrown and caught on the way, has one.
     /// </summary>
-    public static bool IsRaisedByNativeCode(Exception exception)
-    {
-        return new StackTrace(Unwrap(exception), fNeedFileInfo: false).FrameCount == 0;
-    }
+    public static bool IsRaisedByNativeCode(Exception exception) => new StackTrace(Unwrap(exception), fNeedFileInfo: false).FrameCount == 0;
 
     /// <summary>
     /// Whether the file is in the directory or in a directory below it. An assembly that is part of a single file has no
@@ -73,9 +70,12 @@ internal static class ProjectCodeExceptions
             return false;
         }
 
-        string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) + Path.DirectorySeparatorChar;
+        ReadOnlySpan<char> root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory).AsSpan());
+        ReadOnlySpan<char> path = Path.GetFullPath(file).AsSpan();
 
-        return Path.GetFullPath(file).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        return path.Length > root.Length
+            && path.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+            && path[root.Length] == Path.DirectorySeparatorChar;
     }
 
     private static Exception Unwrap(Exception exception)

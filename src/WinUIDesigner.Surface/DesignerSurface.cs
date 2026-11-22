@@ -140,17 +140,20 @@ internal sealed partial class DesignerSurface : IDisposable
 
     private bool TryResumeRendering()
     {
+        // Nothing is suspended.
         if (!_renderingSuspended)
         {
             return true;
         }
 
+        // Resumed.
         if (DiagnosticsPropertySourceService.TrySetRenderingEnabled(true, out int result))
         {
             _renderingSuspended = false;
             return true;
         }
 
+        // Still suspended: the caller tries again later.
         WinUIDesignerLogger.LogWarning("Surface", $"Rendering could not be resumed after a freeze (0x{result:X8}); it is tried again.");
         return false;
     }

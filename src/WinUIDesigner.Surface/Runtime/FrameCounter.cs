@@ -93,11 +93,14 @@ internal sealed class FrameCounter
     private void OnFrame()
     {
         Count = unchecked(Count + 1);
+
+        // A frame for the watch only.
         if (!_measuringFirstIsland)
         {
             return;
         }
 
+        // A frame of the first island, which draws once it has drawn more than its first one.
         _firstIslandFrames++;
         if (_firstIslandFrames >= FramesOfAnIslandThatDraws)
         {

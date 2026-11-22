@@ -47,8 +47,9 @@ internal sealed partial class SurfaceService
     /// <summary>What the surface was doing, for the log, when the framework reported an error that nothing handled.</summary>
     public string DescribeState()
     {
-        return $"Frames of the first island: {RenderFrames.Counter.DescribeFirstIsland()}. Documents: {_surfaces.Count}, shown: {_surfaces.Values.Count(surface => surface.IsHostVisible)}. Latest events:{Environment.NewLine}"
-            + string.Join(Environment.NewLine, _breadcrumbs.Snapshot().Select(entry => "  " + entry));
+        string events = string.Join(Environment.NewLine, _breadcrumbs.Snapshot().Select(entry => $"  {entry}"));
+
+        return $"Frames of the first island: {RenderFrames.Counter.DescribeFirstIsland()}. Documents: {_surfaces.Count}, shown: {_surfaces.Values.Count(surface => surface.IsHostVisible)}. Latest events:{Environment.NewLine}{events}";
     }
 
     private void ArmRenderWatch(Exception exception)
@@ -92,10 +93,12 @@ internal sealed partial class SurfaceService
                 string framesWhileRendering = counted ? $"{frames.Count - framesAtStart} frames" : "frames not counted";
                 if (canDraw)
                 {
+                    // The error left the framework drawing.
                     WinUIDesignerLogger.LogInformation("Surface", $"The surface still draws after the error that the framework reported ({framesWhileRendering} while it rendered a pixel).");
                 }
                 else
                 {
+                    // The framework has stopped drawing.
                     ReportRenderStall(exception, shownIds, framesWhileRendering);
                 }
             }
