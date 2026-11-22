@@ -40,6 +40,16 @@ public sealed class UnoPlatformPrefixScanTests
         </Page>
         """;
 
+    // A page that writes an element under an Uno namespace whose prefix is not listed in mc:Ignorable.
+    private const string _PageMissingIgnorable = """
+        <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+              xmlns:not_win="http://uno.ui/not_win"
+              mc:Ignorable="d">
+          <not_win:Border />
+        </Page>
+        """;
+
     [TestMethod]
     public void IssuePageHasElementsTheCleanerReplaces()
     {
@@ -247,6 +257,65 @@ public sealed class UnoPlatformPrefixScanTests
     }
 
     [TestMethod]
+    public void PlatformNamespaceMissingFromIgnorableIsReportedOnceForTheSameText()
+    {
+        var reported = new ReportedTextVersions();
+
+        IReadOnlyList<XamlNamespaceDeclaration> first = FindOncePerText(reported, documentId: 7, textVersion: 3, _PageMissingIgnorable);
+
+        Assert.HasCount(1, first);
+        Assert.AreEqual("not_win", first[0].Prefix);
+
+        // Every later request looks at the same text again.
+        Assert.IsEmpty(FindOncePerText(reported, documentId: 7, textVersion: 3, _PageMissingIgnorable));
+        Assert.IsEmpty(FindOncePerText(reported, documentId: 7, textVersion: 3, _PageMissingIgnorable));
+    }
+
+    [TestMethod]
+    public void PlatformNamespaceMissingFromIgnorableIsReportedAgainWhenTheTextChanged()
+    {
+        var reported = new ReportedTextVersions();
+        Assert.HasCount(1, FindOncePerText(reported, documentId: 7, textVersion: 3, _PageMissingIgnorable));
+
+        // An edit that keeps the length of the text is told from the text before it by the version of the buffer.
+        string renamed = _PageMissingIgnorable.Replace("Border", "Button");
+        Assert.HasCount(1, FindOncePerText(reported, documentId: 7, textVersion: 4, renamed));
+        Assert.IsEmpty(FindOncePerText(reported, documentId: 7, textVersion: 4, renamed));
+
+        // A buffer that does not count versions is told by the length.
+        string longer = renamed.Replace("<not_win:Button />", "<not_win:Button Tag=\"1\" />");
+        Assert.HasCount(1, FindOncePerText(reported, documentId: 7, textVersion: 4, longer));
+    }
+
+    [TestMethod]
+    public void PlatformNamespaceMissingFromIgnorableIsReportedOnceForEachDocument()
+    {
+        var reported = new ReportedTextVersions();
+
+        // Two documents with the same text and the same version are two documents.
+        Assert.HasCount(1, FindOncePerText(reported, documentId: 7, textVersion: 3, _PageMissingIgnorable));
+        Assert.HasCount(1, FindOncePerText(reported, documentId: 8, textVersion: 3, _PageMissingIgnorable));
+        Assert.IsEmpty(FindOncePerText(reported, documentId: 7, textVersion: 3, _PageMissingIgnorable));
+        Assert.IsEmpty(FindOncePerText(reported, documentId: 8, textVersion: 3, _PageMissingIgnorable));
+    }
+
+    [TestMethod]
+    public void TextWithNothingToReportDoesNotHideTheTextThatFollowsIt()
+    {
+        var reported = new ReportedTextVersions();
+
+        // The page lists its prefix in mc:Ignorable, so there is nothing to report.
+        string listed = _PageMissingIgnorable.Replace("mc:Ignorable=\"d\"", "mc:Ignorable=\"d not_win\"");
+        Assert.IsEmpty(FindOncePerText(reported, documentId: 7, textVersion: 3, listed));
+
+        // The author takes the prefix out of mc:Ignorable again.
+        IReadOnlyList<XamlNamespaceDeclaration> missing = FindOncePerText(reported, documentId: 7, textVersion: 4, _PageMissingIgnorable);
+
+        Assert.HasCount(1, missing);
+        Assert.AreEqual("not_win", missing[0].Prefix);
+    }
+
+    [TestMethod]
     public void WarningNamesTheDocumentThePositionAndTheDeclaration()
     {
         const string xaml = """
@@ -317,6 +386,12 @@ public sealed class UnoPlatformPrefixScanTests
         XamlPrefixDisposition actual = XamlNamespacePolicies.Classify(prefix, XamlNamespaceUri.Parse(uri), isIgnorable, target, evaluateCondition: null);
 
         Assert.AreEqual((XamlPrefixDisposition)Enum.Parse(typeof(XamlPrefixDisposition), expected), actual);
+    }
+
+    private static IReadOnlyList<XamlNamespaceDeclaration> FindOncePerText(ReportedTextVersions reported, int documentId, int textVersion, string xaml)
+    {
+        // The designer scans the text of a buffer and reads the version and the length from the same buffer.
+        return UnoPlatformPrefixes.FindMissingIgnorableOncePerText(reported, documentId, textVersion, xaml.Length, XamlNamespaceScanner.Scan(xaml));
     }
 
     private static bool FailWhenCalled() => throw new AssertFailedException("The page needs no second preparation.");

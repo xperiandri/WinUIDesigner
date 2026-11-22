@@ -222,6 +222,32 @@ internal static class UnoPlatformPrefixes
     }
 
     /// <summary>
+    /// Returns what <see cref="FindMissingIgnorable"/> finds in <paramref name="scan"/> the first time the text of a
+    /// document is looked at, and nothing when that text was looked at before. A designer scans the same documents
+    /// on every request, and most of them have not changed since the last one: a text is reported once.
+    /// </summary>
+    /// <param name="reported">The texts that were looked at. The text of this call is added to it.</param>
+    /// <param name="documentId">The identity of the document.</param>
+    /// <param name="textVersion">The version of the text buffer that <paramref name="scan"/> was made from.</param>
+    /// <param name="textLength">The length of that text.</param>
+    /// <param name="scan">The namespace facts of that text.</param>
+    public static IReadOnlyList<XamlNamespaceDeclaration> FindMissingIgnorableOncePerText(
+        ReportedTextVersions reported,
+        int documentId,
+        int textVersion,
+        int textLength,
+        XamlNamespaceScanResult scan)
+    {
+        // The document was reported in this very text.
+        if (!reported.TryRecord(documentId, textVersion, textLength))
+        {
+            return Array.Empty<XamlNamespaceDeclaration>();
+        }
+
+        return FindMissingIgnorable(scan);
+    }
+
+    /// <summary>
     /// Describes a declaration found by <see cref="FindMissingIgnorable"/> for the log: where it is, what is wrong
     /// with it, and what the designer makes of the members under its prefix.
     /// </summary>

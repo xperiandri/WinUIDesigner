@@ -147,14 +147,22 @@ internal sealed partial class WinUIDesignerInstanceManager
 
     private void ReportPrefixesMissingFromIgnorable(ISurfaceProcessDocument document, XamlNamespaceScanResult namespaces, string? path)
     {
-        // Every request looks at the same text again; it is reported once for each text version of the document.
+        // A document without a text buffer has no version to record, and nothing was scanned of it.
         IMarkupTextBuffer? buffer = document.Document?.TextBuffer;
-        if (buffer is null || !_reportedMissingIgnorable.TryRecord(document.DocumentId, buffer.Version, buffer.Length))
+        if (buffer is null)
         {
             return;
         }
 
-        IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(namespaces);
+        // Every request looks at the same text again; it is reported once for each text version of the document.
+        IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorableOncePerText(
+            _reportedMissingIgnorable,
+            document.DocumentId,
+            buffer.Version,
+            buffer.Length,
+            namespaces
+        );
+
         for (int index = 0; index < missing.Count; index++)
         {
             WinUIDesignerLogger.LogWarning("Platform", UnoPlatformPrefixes.DescribeMissingIgnorable(path, missing[index], _ReprepareRawPlatformElements));
