@@ -21,7 +21,7 @@ internal sealed partial class SurfaceService
     private ElementTheme? _lastPreviewTheme;
 
     // The {ThemeResource} that ResolveActionValue evaluated for the action being executed.
-    private (object Owner, object Key, string Theme)? _evaluatedThemeResource;
+    private ThemeResourceUse? _evaluatedThemeResource;
 
     // A RequestedTheme changed, or content came under a surface, during the action batch being executed.
     private bool _themeReferencesNeedReapply;
@@ -40,7 +40,7 @@ internal sealed partial class SurfaceService
         ThemeResourceMatch match = _resourceScopes.ResolveThemeResource(owner, key, theme.Theme);
         _themeResourceEvaluations++;
         _themeResourceEvaluationTicks += Stopwatch.GetTimestamp() - started;
-        _evaluatedThemeResource = (owner, key!, theme.Theme);
+        _evaluatedThemeResource = new(owner, key!, theme.Theme);
 
         if (WinUIDesignerLogger.IsVerboseLoggingEnabled)
         {
@@ -71,35 +71,14 @@ internal sealed partial class SurfaceService
     /// </summary>
     private void TrackThemeResourceProperty(XamlAction action)
     {
-        (object Owner, object Key, string Theme)? evaluated = _evaluatedThemeResource;
+        ThemeResourceUse? evaluated = _evaluatedThemeResource;
         _evaluatedThemeResource = null;
 
-        (long ownerHandle, string property) = action switch
-        {
-            SetPropertyAction set => (set.ParentHandle, set.FullPropertyName),
-            ClearPropertyAction clear => (clear.ParentHandle, clear.FullPropertyName),
-            _ => (0L, string.Empty),
-        };
-        if (ownerHandle == 0 || ResolveObject(ownerHandle) is not { } owner)
-        {
-            return;
-        }
-
         // A theme requested on the owner moves the theme of the references below it.
-        if (ThemeResourceThemes.IsRequestedThemeProperty(property))
+        if (ThemeResourceTracking.Track(_themeReferences, action, evaluated, ResolveObject, _objectIdentity.GetDocumentId))
         {
             _themeReferencesNeedReapply = true;
         }
-
-        // Set from a reference: remembered while the owner belongs to a document, which forgets it when it is released.
-        if (action is SetPropertyAction && evaluated is { } use && ReferenceEquals(use.Owner, owner) && _objectIdentity.GetDocumentId(owner) != 0)
-        {
-            _themeReferences.Record(owner, property, use.Key, use.Theme);
-            return;
-        }
-
-        // Set to something else, or cleared.
-        _themeReferences.Forget(owner, property);
     }
 
     /// <summary>
