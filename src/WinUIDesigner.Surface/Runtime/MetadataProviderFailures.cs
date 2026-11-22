@@ -48,12 +48,14 @@ internal sealed class MetadataProviderFailures(Action<string, Exception> logWarn
     {
         lock (_reported)
         {
+            // Seen before: it is in the log already.
             if (!_reported.Add(key))
             {
                 return;
             }
         }
 
+        // Seen for the first time: write it to the log.
         logWarning(message, exception);
     }
 }
