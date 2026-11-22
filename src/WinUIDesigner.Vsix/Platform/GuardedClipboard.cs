@@ -14,13 +14,14 @@ namespace WinUIDesigner.Platform;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The clipboard cannot be opened while another process holds it or while the session is locked. The reads that
-/// open it (<see cref="GetDataObject"/>, <see cref="GetData"/> and <see cref="IsCurrent"/>) then keep the UI thread
-/// waiting for about a second in the retries of WPF and fail with <c>CLIPBRD_E_CANT_OPEN</c>. Visual Studio's paste
-/// does not survive that: <see cref="Microsoft.VisualStudio.DesignTools.Utility.Data.SafeDataObject.FromClipboard"/>
-/// turns the failure into <see langword="null"/>, which <c>PasteCommand.PasteData</c> then uses, and
-/// <c>DataObjectPasteHandler.Paste</c> does not catch it. Either way Visual Studio shows the exception in place of
-/// the design surface and ends the surface process.
+/// The clipboard cannot be opened while another process holds it or while the session is locked. WPF then tries
+/// <see cref="GetDataObject"/> and <see cref="GetData"/>, which open it, ten times, 100 ms apart, on the UI thread
+/// and throws <c>CLIPBRD_E_CANT_OPEN</c>; it retries a failing <see cref="IsCurrent"/> the same way. These three are
+/// the reads the retry delay answers. Visual Studio's paste does not survive the failure:
+/// <see cref="Microsoft.VisualStudio.DesignTools.Utility.Data.SafeDataObject.FromClipboard"/> turns it into
+/// <see langword="null"/>, which <c>PasteCommand.PasteData</c> then uses, and <c>DataObjectPasteHandler.Paste</c>
+/// does not catch it. Either way Visual Studio shows the exception in place of the design surface and ends the
+/// surface process.
 /// </para>
 /// <para>
 /// <see cref="ContainsData"/>, the question Visual Studio asks on every refresh of its Paste command, does not open
@@ -35,7 +36,8 @@ namespace WinUIDesigner.Platform;
 internal sealed class GuardedClipboard : IClipboard
 {
     /// <summary>
-    /// How long the reads that open the clipboard answer without asking after the clipboard could not be read.
+    /// How long <see cref="GetDataObject"/>, <see cref="GetData"/> and <see cref="IsCurrent"/> answer without asking
+    /// after the clipboard could not be read.
     /// </summary>
     /// <remarks>
     /// A read that cannot open the clipboard has already kept the UI thread waiting for about a second in the retries
@@ -74,7 +76,7 @@ internal sealed class GuardedClipboard : IClipboard
         _getTime = getTime;
     }
 
-    // Within the retry delay, the reads that open the clipboard answer as an empty clipboard without asking.
+    // Within the retry delay, the reads that WPF retries answer as an empty clipboard without asking.
     private bool IsInRetryDelay => _isUnavailable && _getTime() < _retryTime;
 
     public bool ContainsData(string format)
