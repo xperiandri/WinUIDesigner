@@ -39,4 +39,12 @@ internal static class ContentDialogPreviewPolicy
     {
         return (Math.Max(artboardWidth, neededWidth), Math.Max(artboardHeight, neededHeight));
     }
+
+    /// <summary>
+    /// Whether the dialog that a surface showed is closed when the root of its document is replaced: whenever the island is
+    /// still there, also while it is hidden (a dialog left open stays over the island, and the dialog of a new root cannot be
+    /// shown while another one is open), and never by a surface that is disposed (closing a dialog whose island is going away
+    /// ended the process).
+    /// </summary>
+    public static bool ClosesShownDialog(bool surfaceDisposed, bool islandExists) => !surfaceDisposed && islandExists;
 }

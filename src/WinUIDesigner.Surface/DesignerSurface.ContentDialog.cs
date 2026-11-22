@@ -531,8 +531,10 @@ internal sealed partial class DesignerSurface
     }
 
     /// <summary>
-    /// Closes the dialog that the surface showed, when its root is replaced. It is not called when the surface is
-    /// disposed: the island takes its popups with it, and closing a dialog whose island is going away ends the process.
+    /// Closes the dialog that the surface showed, when its root is replaced, whether the island is shown or hidden: a dialog
+    /// that stays open in a hidden island is over the island when it is shown again, and the dialog of the new root cannot
+    /// be shown while it is open. It is not called when the surface is disposed: the island takes its popups with it, and
+    /// closing a dialog whose island is going away ends the process.
     /// </summary>
     private void HideContentDialogPreview()
     {
@@ -548,7 +550,7 @@ internal sealed partial class DesignerSurface
             dialog.SizeChanged -= OnShownDialogSizeChanged;
         }
 
-        if (dialog is null || _viewportRoot.XamlRoot is not { IsHostVisible: true })
+        if (dialog is null || !ContentDialogPreviewPolicy.ClosesShownDialog(_disposed, _xamlSource is not null))
         {
             return;
         }

@@ -46,6 +46,23 @@ public sealed class ContentDialogPreviewPolicyTests
     }
 
     [TestMethod]
+    public void TheShownDialogIsClosedWhenTheRootIsReplacedWhileTheIslandIsThere()
+    {
+        // Also while the island is hidden: before, a dialog in a hidden island stayed open over it, and the dialog of the
+        // new root could not be shown.
+        Assert.IsTrue(ContentDialogPreviewPolicy.ClosesShownDialog(surfaceDisposed: false, islandExists: true));
+    }
+
+    [TestMethod]
+    [DataRow(true, true)]
+    [DataRow(true, false)]
+    [DataRow(false, false)]
+    public void ASurfaceThatIsDisposedOrHasNoIslandDoesNotCloseTheDialog(bool surfaceDisposed, bool islandExists)
+    {
+        Assert.IsFalse(ContentDialogPreviewPolicy.ClosesShownDialog(surfaceDisposed, islandExists));
+    }
+
+    [TestMethod]
     public void TheDialogIsTheArtboardOrAsLargeAsTheCardWithItsMargin()
     {
         // A card of 500 by 800 with a margin of 56 on each side, in an artboard of 1500 by 1000 and of 400 by 300.
