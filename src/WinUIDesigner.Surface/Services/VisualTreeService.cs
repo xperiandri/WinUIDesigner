@@ -9,7 +9,7 @@ using System.Xml;
 using System.Xml.Linq;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.Networking;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.TapOM;
-using WinUIDesigner.Markup;
+using WinUIDesigner.Surface.Markup;
 
 namespace WinUIDesigner.Surface.Services;
 
@@ -317,21 +317,8 @@ internal sealed class VisualTreeService(ProtocolHandler protocolHandler, ObjectI
 
     private static bool MatchesMarkupType(XElement element, Type runtimeType)
     {
-        XName name = element.Annotation<PreparedName>()?.Name ?? element.Name;
-
-        // A conditional namespace names the same types as the namespace without its condition.
-        string namespaceName = XamlNamespaceUri.Parse(name.NamespaceName).BaseUri;
-        if (namespaceName.StartsWith("using:", StringComparison.Ordinal))
-        {
-            return string.Equals(namespaceName[6..] + "." + name.LocalName, runtimeType.FullName, StringComparison.Ordinal);
-        }
-
-        if (namespaceName.StartsWith("clr-namespace:", StringComparison.Ordinal))
-        {
-            return string.Equals(namespaceName[14..].Split(';')[0] + "." + name.LocalName, runtimeType.FullName, StringComparison.Ordinal);
-        }
-
-        return name.LocalName == runtimeType.Name && runtimeType.Namespace?.StartsWith("Microsoft.UI.Xaml", StringComparison.Ordinal) == true;
+        // An element renamed for the runtime is matched by the name it was prepared with.
+        return PreparedXamlNames.IsMarkupOf(element.Annotation<PreparedName>()?.Name ?? element.Name, runtimeType);
     }
 
     /// <summary>
