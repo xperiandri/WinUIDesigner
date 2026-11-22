@@ -178,6 +178,77 @@ public sealed class UnoPlatformPrefixScanTests
     }
 
     [TestMethod]
+    [DataRow("<android:Border />")]
+    [DataRow("<Grid android:Tag=\"1\" />")]
+    [DataRow("<Grid><android:Grid.RowDefinitions /></Grid>")]
+    public void PlatformNamespaceIsUsedByAnElementAnAttributeOrAPropertyElement(string content)
+    {
+        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:android=\"http://uno.ui/android\">{content}</Page>";
+
+        IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml));
+
+        Assert.AreEqual(1, missing.Count);
+        Assert.AreEqual("android", missing[0].Prefix);
+    }
+
+    [TestMethod]
+    public void PlatformNamespaceThatNothingIsWrittenUnderIsNotMissingFromIgnorable()
+    {
+        // A resource dictionary that declares a platform prefix as boilerplate and never uses it, next to an
+        // ignorable one that it does use: the XAML compiler has nothing to reject.
+        const string xaml = """
+            <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                                xmlns:wasm="http://uno.ui/wasm"
+                                xmlns:not_win="http://uno.ui/not_win"
+                                xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                                mc:Ignorable="not_win">
+              <Style x:Key="Padded" TargetType="CalendarDatePicker">
+                <Setter Property="Padding" Value="0,5" />
+                <not_win:Setter Property="Margin" Value="4" />
+              </Style>
+            </ResourceDictionary>
+            """;
+
+        XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
+
+        Assert.IsTrue(scan.HasPlatformNamespaces);
+        Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(scan).Count);
+    }
+
+    [TestMethod]
+    public void PlatformNamespaceIsUsedWhereItsPrefixIsBoundToIt()
+    {
+        // The page binds android to the platform namespace and writes nothing under it. A grid binds the prefix again,
+        // to the platform namespace with a CLR namespace, and writes an element under it: that use belongs to the
+        // declaration of the grid, so the one of the page is not reported.
+        string xaml = $"""
+            <Page xmlns="{_Presentation}" xmlns:android="http://uno.ui/android">
+              <Grid xmlns:android="http://uno.ui/android#using:My.Droid">
+                <android:Border />
+              </Grid>
+            </Page>
+            """;
+
+        IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml));
+
+        Assert.AreEqual(1, missing.Count);
+        Assert.AreEqual(2, missing[0].LineNumber);
+        Assert.AreEqual("http://uno.ui/android#using:My.Droid", missing[0].Uri.Original);
+    }
+
+    [TestMethod]
+    public void PlatformNamespaceWithAUsingSuffixIsUsedByItsPrefix()
+    {
+        string xaml = $"<Page xmlns=\"{_Presentation}\" xmlns:ios=\"http://uno.ui/ios#using:My.Ios\"><ios:Border /></Page>";
+
+        IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml));
+
+        Assert.AreEqual(1, missing.Count);
+        Assert.AreEqual("http://uno.ui/ios#using:My.Ios", missing[0].Uri.Original);
+    }
+
+    [TestMethod]
     public void WarningNamesTheDocumentThePositionAndTheDeclaration()
     {
         const string xaml = """
@@ -193,7 +264,7 @@ public sealed class UnoPlatformPrefixScanTests
         string message = UnoPlatformPrefixes.DescribeMissingIgnorable(@"C:\App\Page.xaml", declaration, reprepareRawElements: false);
 
         Assert.StartsWith($@"C:\App\Page.xaml(3,{declaration.LinePosition}): ", message);
-        Assert.Contains("xmlns:not_win=\"http://uno.ui/not_win#using:My.App\" is an Uno platform namespace that is not listed in mc:Ignorable", message);
+        Assert.Contains("xmlns:not_win=\"http://uno.ui/not_win#using:My.App\" is an Uno platform namespace that the document uses but does not list in mc:Ignorable", message);
         Assert.Contains("so the Windows XAML compiler cannot resolve it", message);
     }
 

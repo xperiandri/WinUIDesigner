@@ -184,9 +184,14 @@ internal static class UnoPlatformPrefixes
 
     /// <summary>
     /// Returns the declarations of <paramref name="scan"/> that bind a prefix to an Uno platform namespace
-    /// without listing the prefix in <c>mc:Ignorable</c>. The Windows XAML compiler cannot resolve such a
-    /// namespace and rejects the document; the namespace policies classify a platform prefix regardless.
+    /// without listing the prefix in <c>mc:Ignorable</c>, for a prefix that an element or an attribute is written
+    /// under. The Windows XAML compiler cannot resolve such a namespace and rejects the document; the namespace
+    /// policies classify a platform prefix regardless.
     /// </summary>
+    /// <remarks>
+    /// A declaration that nothing uses is not reported: the compiler does not look at it, and a document may
+    /// declare every platform prefix of Uno as boilerplate.
+    /// </remarks>
     public static IReadOnlyList<XamlNamespaceDeclaration> FindMissingIgnorable(XamlNamespaceScanResult scan)
     {
         List<XamlNamespaceDeclaration>? missing = null;
@@ -196,7 +201,8 @@ internal static class UnoPlatformPrefixes
             XamlNamespaceDeclaration declaration = declarations[index];
             if (declaration.Prefix.Length != 0
                 && IsPlatformUri(declaration.Uri.BaseUri)
-                && !scan.IsIgnorable(declaration.Prefix))
+                && !scan.IsIgnorable(declaration.Prefix)
+                && scan.IsPlatformNamespaceUsed(declaration.Prefix, declaration.Uri.Original))
             {
                 (missing ??= []).Add(declaration);
             }
@@ -235,7 +241,7 @@ internal static class UnoPlatformPrefixes
             consequence = $"The designer drops its attributes and property elements regardless, but its object elements appear as elements of an unknown type unless {ReprepareRawElementsVariable}=1 is set.";
         }
 
-        return $"{path}({declaration.LineNumber},{declaration.LinePosition}): xmlns:{declaration.Prefix}=\"{declaration.Uri.Original}\" is an Uno platform namespace that is not listed in mc:Ignorable, " +
+        return $"{path}({declaration.LineNumber},{declaration.LinePosition}): xmlns:{declaration.Prefix}=\"{declaration.Uri.Original}\" is an Uno platform namespace that the document uses but does not list in mc:Ignorable, " +
             $"so the Windows XAML compiler cannot resolve it. {consequence}";
     }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation;
+using Microsoft.VisualStudio.DesignTools.Utility.Text;
 using WinUIDesigner.Markup;
 
 namespace WinUIDesigner.Platform;
@@ -27,6 +28,10 @@ internal sealed partial class WinUIDesignerInstanceManager
 
     // The documents whose prepared XAML lost its platform elements. Only touched while a request is created.
     private readonly HashSet<int> _documentsBuiltFromActions = [];
+
+    // The text of each document that was last checked for platform namespaces that are missing from mc:Ignorable.
+    // Only touched while a request is created.
+    private readonly ReportedTextVersions _reportedMissingIgnorable = new();
 
     /// <summary>
     /// Prepares the Uno platform the designer previews before a document is sent to the surface.
@@ -91,7 +96,7 @@ internal sealed partial class WinUIDesignerInstanceManager
             string? path = document.Document?.DocumentContext?.DocumentPath;
             if (namespaces.HasPlatformNamespaces)
             {
-                ReportPrefixesMissingFromIgnorable(namespaces, path);
+                ReportPrefixesMissingFromIgnorable(document, namespaces, path);
             }
 
             switch (UnoPlatformPrefixes.ChooseBuild(namespaces, _ReprepareRawPlatformElements, () => TryReprepareRawPlatformElements(document)))
@@ -134,8 +139,15 @@ internal sealed partial class WinUIDesignerInstanceManager
         }
     }
 
-    private static void ReportPrefixesMissingFromIgnorable(XamlNamespaceScanResult namespaces, string? path)
+    private void ReportPrefixesMissingFromIgnorable(ISurfaceProcessDocument document, XamlNamespaceScanResult namespaces, string? path)
     {
+        // Every request looks at the same text again; it is reported once for each text version of the document.
+        IMarkupTextBuffer? buffer = document.Document?.TextBuffer;
+        if (buffer is null || !_reportedMissingIgnorable.TryRecord(document.DocumentId, buffer.Version, buffer.Length))
+        {
+            return;
+        }
+
         IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(namespaces);
         for (int index = 0; index < missing.Count; index++)
         {

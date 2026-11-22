@@ -353,7 +353,12 @@ public sealed class UnoPlatformPrefixesTests
                   xmlns:skia="using:SkiaSharp.Views.Windows"
                   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                   mc:Ignorable="android">
-              <Grid xmlns:legacy="http://uno.ui/legacy" />
+              <Grid xmlns:legacy="http://uno.ui/legacy" not_win:Tag="1">
+                <ios:Border />
+                <legacy:Border />
+                <android:Border />
+                <skia:SKXamlCanvas />
+              </Grid>
             </Page>
             """;
 
@@ -361,6 +366,25 @@ public sealed class UnoPlatformPrefixesTests
 
         CollectionAssert.AreEqual(new[] { "ios", "not_win", "legacy" }, missing.Select(declaration => declaration.Prefix).ToArray());
         CollectionAssert.AreEqual(new[] { 4, 5, 9 }, missing.Select(declaration => declaration.LineNumber).ToArray());
+    }
+
+    [TestMethod]
+    public void UnoNamespaceThatNothingUsesIsNotMissingFromIgnorable()
+    {
+        // A document may declare the platform prefixes as boilerplate; the Windows XAML compiler does not look at one
+        // that nothing is written under.
+        string xaml = $"""
+            <Page xmlns="{_Presentation}"
+                  xmlns:android="http://uno.ui/android"
+                  xmlns:wasm="http://uno.ui/wasm"
+                  xmlns:not_win="http://uno.ui/not_win"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  mc:Ignorable="not_win">
+              <Grid />
+            </Page>
+            """;
+
+        Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml)).Count);
     }
 
     [TestMethod]
