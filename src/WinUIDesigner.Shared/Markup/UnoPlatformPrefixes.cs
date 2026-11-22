@@ -22,16 +22,11 @@ internal static class UnoPlatformPrefixes
     public const string DefaultTargetPlatform = "win";
 
     /// <summary>
-    /// The start of the namespaces Uno assigns to prefixes that are excluded on Windows.
-    /// </summary>
-    public const string PlatformUriPrefix = "http://uno.ui/";
-
-    /// <summary>
     /// Returns whether <paramref name="namespaceUri"/> is an Uno platform namespace such as <c>http://uno.ui/android</c>.
     /// </summary>
     public static bool IsPlatformUri(string? namespaceUri)
     {
-        return namespaceUri is not null && namespaceUri.StartsWith(PlatformUriPrefix, StringComparison.Ordinal);
+        return namespaceUri is not null && namespaceUri.StartsWith(XamlNamespaces.UnoPlatformBase, StringComparison.Ordinal);
     }
 
     /// <summary>

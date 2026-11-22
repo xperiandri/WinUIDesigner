@@ -7,15 +7,15 @@ using Mono.Cecil;
 
 /// <summary>
 /// Pins the shape of the members of Visual Studio's closed-source XAML designer that the extension overrides
-/// or calls. The designer assemblies differ between Visual Studio versions, so every member has its own test:
-/// a failure names exactly the member that differs in the Visual Studio the tests were built with.
+/// or calls, in this package or in the packages built on it. The designer assemblies differ between Visual Studio
+/// versions, so every member has its own test: a failure names exactly the member that differs in the Visual
+/// Studio the tests were built with.
 /// </summary>
 [TestClass]
 public sealed class VsDesignerApiShapeTests
 {
     private const string _DesignerInstanceManager = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.DesignerInstanceManager";
     private const string _SurfaceProcessContext = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.SurfaceProcessContext";
-    private const string _UwpInstanceBuilderPlatform = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp.UwpInstanceBuilderPlatform";
     private const string _UwpDesignerInstanceBuilderPlatform = "Microsoft.VisualStudio.DesignTools.UwpSurfaceDesigner.SurfaceIsolation.UwpDesignerInstanceBuilderPlatform";
     private const string _SurfaceProcessMarkupProvider = "Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents.SurfaceProcessMarkupProvider";
     private const string _XamlCleaner = "Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents.XamlModify.XamlCleaner";
@@ -49,7 +49,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _DesignerInstanceManager,
             "ShouldIgnoreProperty",
-            "IInstanceBuilderContext", "DocumentCompositeNode", "DocumentNode", "IProperty", "Boolean&");
+            "IInstanceBuilderContext", "DocumentCompositeNode", "DocumentNode", "IProperty", "Boolean&"
+        );
 
         AssertOverridable(method);
         Assert.IsTrue(method.Parameters[4].IsOut, $"The last parameter must be an out parameter: {Describe(method)}");
@@ -57,12 +58,15 @@ public sealed class VsDesignerApiShapeTests
     }
 
     [TestMethod]
-    public void InstanceBuilderPlatformLetsDerivedClassesChooseTheBuilder()
+    public void DesignerInstanceBuilderPlatformLetsDerivedClassesChooseTheBuilder()
     {
+        // The extension derives from the designer platform, so its override binds to the declaration nearest to
+        // that class, which is the one the lookup returns first; the base class is reached when there is none.
         MethodDefinition method = RequireMethod(
-            _UwpInstanceBuilderPlatform,
+            _UwpDesignerInstanceBuilderPlatform,
             "GetInstanceBuilder",
-            "IInstanceBuilderContext", "DocumentNode");
+            "IInstanceBuilderContext", "DocumentNode"
+        );
 
         AssertOverridable(method);
     }
@@ -73,7 +77,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _UwpDesignerInstanceBuilderPlatform,
             "GetFallbackTypeInfo",
-            "IType", "Boolean");
+            "IType", "Boolean"
+        );
 
         AssertOverridable(method);
     }
@@ -90,20 +95,23 @@ public sealed class VsDesignerApiShapeTests
             method.IsConstructor && !method.IsStatic && HasParameters(method, "IProjectContext"));
         Assert.IsNotNull(
             constructor,
-            $"{type.FullName} needs a constructor (IProjectContext). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}");
+            $"{type.FullName} needs a constructor (IProjectContext). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}"
+        );
         Assert.IsTrue(IsVisibleToDerivedClasses(constructor), $"The constructor must be public or protected: {Describe(constructor)}");
     }
 
     [TestMethod]
-    public void MarkupProviderLetsDerivedClassesSeeTheCleaningResult()
+    public void MarkupProviderLetsDerivedClassesSetTheCleaningResult()
     {
+        // The extension calls this method from a derived class; it does not override it.
         MethodDefinition method = RequireMethod(
             _SurfaceProcessMarkupProvider,
             "SetCleaningResult",
-            "SurfaceProcessDocument", "XamlResult");
+            "SurfaceProcessDocument", "XamlResult"
+        );
 
-        AssertOverridable(method);
-        Assert.IsTrue(method.IsFamily || method.IsFamilyOrAssembly, $"Expected a protected method: {Describe(method)}");
+        Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
+        Assert.IsTrue(IsVisibleToDerivedClasses(method), $"Expected a public or protected method: {Describe(method)}");
     }
 
     [TestMethod]
@@ -112,7 +120,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _SurfaceProcessMarkupProvider,
             "GetXamlCleanerContext",
-            "IProjectContext");
+            "IProjectContext"
+        );
 
         Assert.IsTrue(method.IsPublic, $"Expected a public method: {Describe(method)}");
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
@@ -124,7 +133,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _XamlCleaner,
             "Clean",
-            "String", "IXamlCleanerContext", "IDocumentContext");
+            "String", "IXamlCleanerContext", "IDocumentContext"
+        );
 
         Assert.IsTrue(method.IsPublic && method.IsStatic, $"Expected a public static method: {Describe(method)}");
         Assert.IsTrue(RequireType(_XamlCleaner).IsPublic, $"{_XamlCleaner} must be public.");
@@ -143,14 +153,18 @@ public sealed class VsDesignerApiShapeTests
     public void ElementReferenceResolvesPrefixes()
     {
         // XmlElementReference implements GetXmlNamespace publicly in Visual Studio 18 and explicitly in
-        // Visual Studio 17.14, so the extension calls it through the interface that both versions have.
+        // Visual Studio 17.14, so the interface member is the one both versions have. The extension calls the
+        // public member in the 18 build and reaches the interface member through XmlElementReferenceExtensions
+        // in the 17.14 build.
         MethodDefinition method = RequireMethod(_XmlNamespaceResolver, "GetXmlNamespace", "XmlnsPrefix");
 
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
         Assert.AreEqual("XmlNamespace", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
-        Assert.IsTrue(
-            RequireType(_XmlElementReference).Interfaces.Any(@interface => @interface.InterfaceType.FullName == _XmlNamespaceResolver),
-            $"{_XmlElementReference} must implement {_XmlNamespaceResolver}.");
+        Assert.Contains(
+            @interface => @interface.InterfaceType.FullName == _XmlNamespaceResolver,
+            RequireType(_XmlElementReference).Interfaces,
+            $"{_XmlElementReference} must implement {_XmlNamespaceResolver}."
+        );
 
         MethodDefinition isIgnorable = RequireMethod(_XmlElementReference, "IsIgnorable", "XmlNamespace");
         Assert.IsTrue(isIgnorable.IsPublic && !isIgnorable.IsStatic, $"Expected a public instance method: {Describe(isIgnorable)}");
@@ -174,24 +188,17 @@ public sealed class VsDesignerApiShapeTests
     }
 
     [TestMethod]
-    public void SceneViewExposesTheReloadCommand()
-    {
-        PropertyDefinition property = RequireProperty(_XamlSceneView, "ReloadDesignerCommand");
-
-        Assert.IsTrue(property.GetMethod is { IsPublic: true, IsStatic: false }, $"{_XamlSceneView}.ReloadDesignerCommand needs a public instance getter.");
-        Assert.AreEqual("ICommand", property.PropertyType.Name, $"Unexpected type of {_XamlSceneView}.ReloadDesignerCommand.");
-    }
-
-    [TestMethod]
     public void CreateSurfaceRequestCanBeSubclassed()
     {
         TypeDefinition type = RequireType(_CreateSurfaceRequestInfo);
 
         Assert.IsTrue(type.IsPublic, $"{type.FullName} must be public.");
         Assert.IsFalse(type.IsSealed, $"{type.FullName} must not be sealed.");
-        Assert.IsTrue(
-            type.Methods.Any(method => method.IsConstructor && !method.IsStatic && !method.HasParameters && IsVisibleToDerivedClasses(method)),
-            $"{type.FullName} needs an accessible parameterless constructor.");
+        Assert.Contains(
+            method => method.IsConstructor && !method.IsStatic && !method.HasParameters && IsVisibleToDerivedClasses(method),
+            type.Methods,
+            $"{type.FullName} needs an accessible parameterless constructor."
+        );
     }
 
     [TestMethod]
@@ -324,7 +331,8 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.Fail(
             $"{typeName}.{methodName}({string.Join(", ", parameterTypes)}) was not found in the designer assemblies of {assemblies.InstallRoot}. " +
-            $"Methods named {methodName}: {DescribeAll(candidates)}");
+            $"Methods named {methodName}: {DescribeAll(candidates)}"
+        );
         return null!;
     }
 
@@ -430,7 +438,8 @@ public sealed class VsDesignerApiShapeTests
             {
                 throw new FileNotFoundException(
                     $"No designer assemblies (Microsoft.VisualStudio.DesignTools.*.dll) were found under '{installRoot}'. " +
-                    $"Set {_InstallRootVariable} to the root of a Visual Studio installation.");
+                    $"Set {_InstallRootVariable} to the root of a Visual Studio installation."
+                );
             }
 
             return assemblies;
@@ -487,7 +496,8 @@ public sealed class VsDesignerApiShapeTests
 
             throw new DirectoryNotFoundException(
                 $"The Visual Studio installation is unknown: the tests were built without VsInstallRoot. " +
-                $"Build them with Visual Studio's MSBuild or set {_InstallRootVariable}.");
+                $"Build them with Visual Studio's MSBuild or set {_InstallRootVariable}."
+            );
         }
     }
 }

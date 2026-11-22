@@ -29,7 +29,8 @@ public sealed class XamlNamespacePoliciesTests
         XamlPrefixDisposition actual = XamlNamespacePolicies.Combine(
             Enum.Parse<XamlPrefixDisposition>(platform),
             Enum.Parse<XamlPrefixDisposition>(conditional),
-            isConditionalNamespace);
+            isConditionalNamespace
+        );
 
         Assert.AreEqual(Enum.Parse<XamlPrefixDisposition>(expected), actual);
     }
@@ -48,7 +49,8 @@ public sealed class XamlNamespacePoliciesTests
             XamlNamespaceUri.Parse(uri),
             isIgnorable,
             UnoPlatformPrefixes.DefaultTargetPlatform,
-            evaluateCondition: _ => throw new InvalidOperationException("An unconditional namespace has no condition to evaluate."));
+            evaluateCondition: _ => throw new InvalidOperationException("An unconditional namespace has no condition to evaluate.")
+        );
 
         Assert.AreEqual(XamlPrefixDisposition.Leave, disposition);
     }

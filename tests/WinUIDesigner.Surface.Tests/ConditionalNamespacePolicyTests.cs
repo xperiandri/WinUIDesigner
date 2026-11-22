@@ -11,17 +11,13 @@ using WinUIDesigner.Markup;
 [TestClass]
 public sealed class ConditionalNamespacePolicyTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _Condition = "IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)";
-    private const string _Conditional = _Presentation + "?" + _Condition;
-
     [TestMethod]
     [DataRow(true, "Keep")]
     [DataRow(false, "Drop")]
     [DataRow(null, "Leave")]
     public void VerdictFollowsTheAnswerToTheCondition(bool? answer, string expected)
     {
-        XamlNamespaceUri uri = XamlNamespaceUri.Parse(_Conditional);
+        XamlNamespaceUri uri = XamlNamespaceUri.Parse(TestXamlNamespaces.Conditional);
         var asked = new List<string>();
 
         XamlPrefixDisposition disposition = ConditionalNamespacePolicy.Classify(uri, condition =>
@@ -33,19 +29,19 @@ public sealed class ConditionalNamespacePolicyTests
         Assert.AreEqual(expected, disposition.ToString());
 
         // The evaluator receives the text after the '?' exactly as it was declared.
-        CollectionAssert.AreEqual(new[] { _Condition }, asked);
+        CollectionAssert.AreEqual(new[] { TestXamlNamespaces.Condition }, asked);
     }
 
     [TestMethod]
     public void ConditionalNamespaceIsLeftAloneWithoutAnEvaluator()
     {
-        XamlPrefixDisposition disposition = ConditionalNamespacePolicy.Classify(XamlNamespaceUri.Parse(_Conditional), evaluateCondition: null);
+        XamlPrefixDisposition disposition = ConditionalNamespacePolicy.Classify(XamlNamespaceUri.Parse(TestXamlNamespaces.Conditional), evaluateCondition: null);
 
         Assert.AreEqual(XamlPrefixDisposition.Leave, disposition);
     }
 
     [TestMethod]
-    [DataRow(_Presentation)]
+    [DataRow(XamlNamespaces.Presentation)]
     [DataRow("using:My.App")]
     [DataRow("http://uno.ui/android#using:My.Droid")]
     [DataRow("")]
@@ -64,7 +60,7 @@ public sealed class ConditionalNamespacePolicyTests
         // "namespace?" is a conditional namespace whose predicate is empty; the evaluator knows what the XAML reader makes of it.
         var asked = new List<string>();
 
-        XamlPrefixDisposition disposition = ConditionalNamespacePolicy.Classify(XamlNamespaceUri.Parse(_Presentation + "?"), condition =>
+        XamlPrefixDisposition disposition = ConditionalNamespacePolicy.Classify(XamlNamespaceUri.Parse($"{XamlNamespaces.Presentation}?"), condition =>
         {
             asked.Add(condition);
             return true;
@@ -82,7 +78,7 @@ public sealed class ConditionalNamespacePolicyTests
     {
         XamlPrefixDisposition disposition = XamlNamespacePolicies.Classify(
             "c7",
-            XamlNamespaceUri.Parse(_Conditional),
+            XamlNamespaceUri.Parse(TestXamlNamespaces.Conditional),
             isIgnorable: false,
             UnoPlatformPrefixes.DefaultTargetPlatform,
             _ => answer);
@@ -93,7 +89,7 @@ public sealed class ConditionalNamespacePolicyTests
     [TestMethod]
     public void DocumentWithAConditionalNamespaceNeedsWorkOnceItsConditionsCanBeEvaluated()
     {
-        string xaml = $"""<Page xmlns="{_Presentation}" xmlns:cond="using:My.App" xmlns:flag="{_Presentation}?cond:FeatureFlagCondition(NewExperience)"><flag:Border /></Page>""";
+        string xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:cond="using:My.App" xmlns:flag="{XamlNamespaces.Presentation}?cond:FeatureFlagCondition(NewExperience)"><flag:Border /></Page>""";
         XamlNamespaceScanResult scan = XamlNamespaceScanner.Scan(xaml);
         var resolved = new List<string?>();
 

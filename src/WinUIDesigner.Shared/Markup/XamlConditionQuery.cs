@@ -67,7 +67,7 @@ internal sealed class XamlConditionQuery
 
         // The six built-in methods are types of the presentation namespace as far as the XAML reader is
         // concerned, so it also finds them through a prefix that is bound to that namespace.
-        if (predicateNamespace == XamlNamespaceUri.PresentationNamespace && XamlCondition.IsBuiltInMethod(parsed.Name))
+        if (predicateNamespace == XamlNamespaces.Presentation && XamlCondition.IsBuiltInMethod(parsed.Name))
         {
             return CreateBuiltIn(parsed.WithoutPrefix());
         }
