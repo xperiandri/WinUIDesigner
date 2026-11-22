@@ -45,7 +45,7 @@ public sealed class ConditionalXamlRewriteTests
         Assert.AreEqual(1, result.NormalizedMembers);
         Assert.AreEqual(2, result.RepointedDeclarations);
         AssertNoConditionIsLeft(document);
-        Assert.AreEqual(0, probes.Reports.Count);
+        Assert.IsEmpty(probes.Reports);
     }
 
     [TestMethod]
@@ -79,7 +79,7 @@ public sealed class ConditionalXamlRewriteTests
         {
             Assert.AreEqual(1, result.DroppedAttributes);
             Assert.AreEqual(1, result.NormalizedMembers);
-            Assert.IsFalse(result.Diagnostics.Any(message => message.Contains("twice", StringComparison.Ordinal)));
+            Assert.DoesNotContain(message => message.Contains("twice", StringComparison.Ordinal), result.Diagnostics);
         }
     }
 
@@ -123,11 +123,11 @@ public sealed class ConditionalXamlRewriteTests
         Assert.AreEqual(1, result.DroppedAttributes);
 
         // The reader refuses such markup, so it is a warning and not one of the routine messages.
-        Assert.AreEqual(1, warnings.Count);
-        StringAssert.Contains(warnings[0], "CornerRadius");
-        StringAssert.Contains(warnings[0], "set twice");
-        StringAssert.Contains(warnings[0], "line 1");
-        Assert.IsFalse(reports.Any(message => message.Contains("twice", StringComparison.Ordinal)));
+        Assert.HasCount(1, warnings);
+        Assert.Contains("CornerRadius", warnings[0]);
+        Assert.Contains("set twice", warnings[0]);
+        Assert.Contains("line 1", warnings[0]);
+        Assert.DoesNotContain(message => message.Contains("twice", StringComparison.Ordinal), reports);
         CollectionAssert.Contains(result.Diagnostics.ToArray(), warnings[0]);
     }
 
@@ -145,7 +145,7 @@ public sealed class ConditionalXamlRewriteTests
             Report = reports.Add,
         });
 
-        Assert.AreEqual(1, reports.Count(message => message.Contains("Text", StringComparison.Ordinal) && message.Contains("set twice", StringComparison.Ordinal)));
+        Assert.HasCount(1, reports.Where(message => message.Contains("Text", StringComparison.Ordinal) && message.Contains("set twice", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -249,7 +249,7 @@ public sealed class ConditionalXamlRewriteTests
             new[] { "Padding=4", "CornerRadius=8" },
             document.Root!.Elements(_P + "Setter").Select(setter => $"{(string?)setter.Attribute("Property")}={(string?)setter.Attribute("Value")}").ToArray());
         Assert.AreEqual(2, result.DroppedElements);
-        Assert.AreEqual(2, document.Root.Elements().Count());
+        Assert.HasCount(2, document.Root.Elements());
     }
 
     [TestMethod]
@@ -365,8 +365,8 @@ public sealed class ConditionalXamlRewriteTests
         AssertNoConditionIsLeft(document);
 
         // Reported once, although two prefixes carry the condition.
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], expectedReport);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains(expectedReport, probes.Reports[0]);
     }
 
     [TestMethod]
@@ -384,8 +384,8 @@ public sealed class ConditionalXamlRewriteTests
         Assert.AreEqual(1, result.DroppedAttributes);
         Assert.AreEqual(_Presentation, (string?)document.Root!.Attribute(XNamespace.Xmlns + "bad"));
         AssertNoConditionIsLeft(document);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], condition);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains(condition, probes.Reports[0]);
     }
 
     [TestMethod]
@@ -412,8 +412,8 @@ public sealed class ConditionalXamlRewriteTests
         XElement border = document.Root!.Elements().Single();
         Assert.AreEqual(_P + "Border", border.Name);
         CollectionAssert.AreEqual(new[] { "Tag=t" }, PlainAttributes(border));
-        Assert.AreEqual(0, probes.Calls.Count);
-        Assert.AreEqual(0, probes.Reports.Count);
+        Assert.IsEmpty(probes.Calls);
+        Assert.IsEmpty(probes.Reports);
         Assert.AreEqual(1, result.RepointedDeclarations);
         AssertNoConditionIsLeft(document);
     }
@@ -435,7 +435,7 @@ public sealed class ConditionalXamlRewriteTests
 
         Assert.IsFalse(result.Changed);
         Assert.AreEqual(before, document.ToString(SaveOptions.DisableFormatting));
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("'c7'", StringComparison.Ordinal) && message.Contains("the evaluator failed", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("'c7'", StringComparison.Ordinal) && message.Contains("the evaluator failed", StringComparison.Ordinal), result.Diagnostics);
         CollectionAssert.AreEqual(result.Diagnostics.ToArray(), reported);
     }
 
@@ -472,8 +472,8 @@ public sealed class ConditionalXamlRewriteTests
 
         Assert.AreEqual(_P + "Page", document.Root!.Name);
         Assert.AreEqual(0, result.DroppedElements);
-        Assert.AreEqual(1, document.Root.Elements(_P + "TextBlock").Count());
-        Assert.AreEqual(0, PlainAttributes(document.Root.Elements().Single()).Length);
+        Assert.HasCount(1, document.Root.Elements(_P + "TextBlock"));
+        Assert.IsEmpty(PlainAttributes(document.Root.Elements().Single()));
 
         // An attribute of the root is an ordinary member: it follows the condition.
         CollectionAssert.AreEqual(conditionHolds ? new[] { "Tag=t", "Width=5" } : new[] { "Width=5" }, PlainAttributes(document.Root));
@@ -581,7 +581,7 @@ public sealed class ConditionalXamlRewriteTests
         XDocument first = Rewrite(xaml, out _, probes);
         XDocument second = Rewrite(xaml, out _, probes);
 
-        Assert.AreEqual(4, first.Descendants(_P + "Border").Count());
+        Assert.HasCount(4, first.Descendants(_P + "Border"));
         Assert.AreEqual(first.ToString(SaveOptions.DisableFormatting), second.ToString(SaveOptions.DisableFormatting));
         CollectionAssert.AreEqual(new[] { $"contract {_Contract} 7" }, probes.Calls);
     }
@@ -642,7 +642,7 @@ public sealed class ConditionalXamlRewriteTests
         {
             Assert.AreEqual("Green", (string?)border.Attribute("Background"));
             Assert.AreEqual("20", (string?)border.Attribute(designTime + "DT.RuntimeHeight"));
-            Assert.AreEqual(2, border.Attributes().Count());
+            Assert.HasCount(2, border.Attributes());
         }
 
         Assert.IsFalse(borders[2].HasElements);
@@ -651,7 +651,7 @@ public sealed class ConditionalXamlRewriteTests
         Assert.AreEqual(4, result.DroppedElements);
         Assert.AreEqual(2, result.DroppedAttributes);
         Assert.AreEqual(5, result.RepointedDeclarations);
-        Assert.AreEqual(0, probes.Reports.Count);
+        Assert.IsEmpty(probes.Reports);
         AssertNoConditionIsLeft(document);
         Assert.AreEqual(_P + "Page", Reload(document).Root!.Name);
     }
@@ -685,7 +685,7 @@ public sealed class ConditionalXamlRewriteTests
     private static void AssertNoConditionIsLeft(XDocument document)
     {
         string text = document.ToString(SaveOptions.DisableFormatting);
-        Assert.IsFalse(text.Contains('?'), text);
+        Assert.DoesNotContain("?", text, text);
         Assert.IsFalse(XamlNamespaceScanner.Scan(text).HasConditionalNamespaces, text);
     }
 

@@ -89,8 +89,8 @@ public sealed class XamlConditionAnswersTests
         Assert.AreEqual(1, surface.ChangeCount);
 
         // The malformed condition was reported when it was evaluated; nothing else was.
-        Assert.AreEqual(1, surface.Warnings.Count);
-        StringAssert.Contains(surface.Warnings[0], "IsTypePresent(");
+        Assert.HasCount(1, surface.Warnings);
+        Assert.Contains("IsTypePresent(", surface.Warnings[0]);
     }
 
     [TestMethod]
@@ -106,8 +106,8 @@ public sealed class XamlConditionAnswersTests
         Assert.IsFalse(answers.SurfaceAnswers);
         Assert.IsNull(answers.Evaluate(_C7, Namespaces));
         Assert.AreEqual(0, surface.ChangeCount);
-        Assert.AreEqual(1, surface.Warnings.Count);
-        StringAssert.Contains(surface.Warnings[0], "did not answer");
+        Assert.HasCount(1, surface.Warnings);
+        Assert.Contains("did not answer", surface.Warnings[0]);
 
         // Asking the same again does not send it again; it waits for the request in flight.
         await answers.AskAsync(Queries(_C7), TimeSpan.FromMilliseconds(50));
@@ -190,14 +190,14 @@ public sealed class XamlConditionAnswersTests
         surface.Release();
         await first;
         Assert.IsTrue(answers.SurfaceAnswers);
-        Assert.AreEqual(0, surface.Warnings.Count);
+        Assert.IsEmpty(surface.Warnings);
 
         // Once the surface has answered, the usual time applies.
         var elapsed = Stopwatch.StartNew();
         await answers.AskAsync(Queries(_C99), TimeSpan.FromMilliseconds(50), _Long);
         Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromSeconds(5), elapsed.Elapsed.ToString());
-        Assert.AreEqual(1, surface.Warnings.Count);
-        StringAssert.Contains(surface.Warnings[0], "did not answer");
+        Assert.HasCount(1, surface.Warnings);
+        Assert.Contains("did not answer", surface.Warnings[0]);
     }
 
     [TestMethod]
@@ -218,7 +218,7 @@ public sealed class XamlConditionAnswersTests
 
         Assert.IsFalse(answers.SurfaceAnswers);
         Assert.AreEqual(1, surface.RequestCount);
-        Assert.AreEqual(3, surface.Warnings.Count);
+        Assert.HasCount(3, surface.Warnings);
     }
 
     [TestMethod]
@@ -301,8 +301,8 @@ public sealed class XamlConditionAnswersTests
 
         await answers.AskAsync([], _Long);
         Assert.AreEqual(1, surface.RequestCount);
-        Assert.AreEqual(0, surface.Requests[0].Conditions!.Count);
-        Assert.AreEqual(0, surface.Warnings.Count);
+        Assert.IsEmpty(surface.Requests[0].Conditions!);
+        Assert.IsEmpty(surface.Warnings);
     }
 
     [TestMethod]
@@ -320,7 +320,7 @@ public sealed class XamlConditionAnswersTests
         await answers.AskAsync(Queries("IsApiContractPresent(X,abc)", string.Empty), _Long);
 
         Assert.AreEqual(1, surface.RequestCount);
-        Assert.AreEqual(3, surface.Warnings.Count);
+        Assert.HasCount(3, surface.Warnings);
     }
 
     [TestMethod]
@@ -372,7 +372,7 @@ public sealed class XamlConditionAnswersTests
         Assert.AreEqual(3, surface.RequestCount);
         Assert.IsFalse(answers.SurfaceAnswers);
         Assert.AreEqual(0, surface.ChangeCount);
-        Assert.AreEqual(3, surface.Warnings.Count);
+        Assert.HasCount(3, surface.Warnings);
         Assert.IsTrue(surface.Warnings.All(warning => warning.Contains("InvalidOperationException", StringComparison.Ordinal)));
     }
 
@@ -399,9 +399,9 @@ public sealed class XamlConditionAnswersTests
         Assert.AreEqual(true, answers.Evaluate(_C7, Namespaces));
         Assert.AreEqual(3, surface.RequestCount);
 
-        Assert.AreEqual(2, surface.Warnings.Count);
-        StringAssert.Contains(surface.Warnings[0], "the surface is busy");
-        StringAssert.Contains(surface.Warnings[1], "does not answer");
+        Assert.HasCount(2, surface.Warnings);
+        Assert.Contains("the surface is busy", surface.Warnings[0]);
+        Assert.Contains("does not answer", surface.Warnings[1]);
     }
 
     [TestMethod]
@@ -417,7 +417,7 @@ public sealed class XamlConditionAnswersTests
 
         Assert.IsFalse(answers.SurfaceAnswers);
         Assert.AreEqual(3, surface.RequestCount);
-        Assert.AreEqual(3, surface.Warnings.Count);
+        Assert.HasCount(3, surface.Warnings);
     }
 
     [TestMethod]
@@ -433,7 +433,7 @@ public sealed class XamlConditionAnswersTests
         await answers.AskAsync([], _Long);
 
         Assert.AreEqual(0, surface.RequestCount);
-        Assert.AreEqual(0, surface.Warnings.Count);
+        Assert.IsEmpty(surface.Warnings);
     }
 
     [TestMethod]
@@ -446,7 +446,7 @@ public sealed class XamlConditionAnswersTests
 
         Assert.IsFalse(answers.SurfaceAnswers);
         Assert.AreEqual(1, surface.RequestCount);
-        Assert.AreEqual(0, surface.Warnings.Count);
+        Assert.IsEmpty(surface.Warnings);
     }
 
     [TestMethod]
@@ -535,7 +535,7 @@ public sealed class XamlConditionAnswersTests
         await answers.AskAsync(Queries(_C7, _C99, "IsTypePresent(Windows.Foundation.Uri)", "IsTypePresent("), _Long, _Long);
 
         Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromSeconds(5), elapsed.Elapsed.ToString());
-        Assert.AreEqual(0, surface.Warnings.Count);
+        Assert.IsEmpty(surface.Warnings);
 
         // They are asked all the same, in one request, to be confirmed in the background.
         Assert.AreEqual(1, surface.RequestCount);
@@ -555,8 +555,8 @@ public sealed class XamlConditionAnswersTests
         await answers.AskAsync(Queries(_C7, condition), TimeSpan.FromMilliseconds(600), TimeSpan.FromMilliseconds(600));
 
         Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(500), elapsed.Elapsed.ToString());
-        Assert.AreEqual(1, surface.Warnings.Count);
-        StringAssert.Contains(surface.Warnings[0], "did not answer");
+        Assert.HasCount(1, surface.Warnings);
+        Assert.Contains("did not answer", surface.Warnings[0]);
     }
 
     [TestMethod]
@@ -595,18 +595,18 @@ public sealed class XamlConditionAnswersTests
 
         // The notice says that the surface is still starting, once and before the wait ends; the warning comes at the end.
         Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(1100), elapsed.Elapsed.ToString());
-        Assert.AreEqual(1, surface.Traces.Count);
-        StringAssert.Contains(surface.Traces[0], "still starting");
-        Assert.AreEqual(1, surface.Warnings.Count);
-        StringAssert.Contains(surface.Warnings[0], "did not answer");
+        Assert.HasCount(1, surface.Traces);
+        Assert.Contains("still starting", surface.Traces[0]);
+        Assert.HasCount(1, surface.Warnings);
+        Assert.Contains("did not answer", surface.Warnings[0]);
 
         // The warning names the length of the whole wait, in the format of the log.
-        StringAssert.Contains(surface.Warnings[0], $"within {1.2:0.#} s");
+        Assert.Contains($"within {1.2:0.#} s", surface.Warnings[0]);
 
         // The next document does not say it again; it waits the usual time.
         await answers.AskAsync(Queries(_LegacyMode), TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(1200), TimeSpan.FromMilliseconds(300));
-        Assert.AreEqual(1, surface.Traces.Count);
-        Assert.AreEqual(2, surface.Warnings.Count);
+        Assert.HasCount(1, surface.Traces);
+        Assert.HasCount(2, surface.Warnings);
     }
 
     [TestMethod]
@@ -647,7 +647,7 @@ public sealed class XamlConditionAnswersTests
         // Both end when the stretch ends, with one warning between them.
         await Task.WhenAll(first, second);
         Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(1400), elapsed.Elapsed.ToString());
-        Assert.AreEqual(1, surface.Warnings.Count);
+        Assert.HasCount(1, surface.Warnings);
 
         // The answer that arrives in the stretch is what both wait for.
         surface = new FakeSurface { Hold = true };
@@ -663,7 +663,7 @@ public sealed class XamlConditionAnswersTests
         surface.Release();
         await Task.WhenAll(first, second);
         Assert.IsTrue(answers.SurfaceAnswers);
-        Assert.AreEqual(0, surface.Warnings.Count);
+        Assert.IsEmpty(surface.Warnings);
     }
 
     [TestMethod]

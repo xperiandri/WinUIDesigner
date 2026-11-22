@@ -213,9 +213,11 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.IsTrue(type.IsPublic, $"{type.FullName} must be public.");
         Assert.IsFalse(type.IsSealed, $"{type.FullName} must not be sealed.");
-        Assert.IsTrue(
-            type.Methods.Any(method => method.IsConstructor && !method.IsStatic && IsVisibleToDerivedClasses(method) && method.Parameters.All(parameter => parameter.HasDefault)),
-            $"{type.FullName} needs an accessible constructor that can be called without arguments. Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}");
+        Assert.Contains(
+            method => method.IsConstructor && !method.IsStatic && IsVisibleToDerivedClasses(method) && method.Parameters.All(parameter => parameter.HasDefault),
+            type.Methods,
+            $"{type.FullName} needs an accessible constructor that can be called without arguments. Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}"
+        );
     }
 
     [TestMethod]
@@ -249,13 +251,15 @@ public sealed class VsDesignerApiShapeTests
         TypeDefinition type = RequireType(_InstanceBuilderContext);
         MethodDefinition[] candidates = type.Methods.Where(method => method.Name == "GetLiveNodeProxy").ToArray();
 
-        Assert.IsTrue(
-            candidates.Any(method =>
+        Assert.Contains(
+            method =>
                 method.Parameters.Count >= 1
                 && method.Parameters[0].ParameterType.Name == "DocumentNode"
                 && method.Parameters.Skip(1).All(parameter => parameter.HasDefault)
-                && method.ReturnType.Name == "LiveNodeProxy"),
-            $"{_InstanceBuilderContext}.GetLiveNodeProxy(DocumentNode) was not found. Methods named GetLiveNodeProxy: {DescribeAll(candidates)}");
+                && method.ReturnType.Name == "LiveNodeProxy",
+            candidates,
+            $"{_InstanceBuilderContext}.GetLiveNodeProxy(DocumentNode) was not found. Methods named GetLiveNodeProxy: {DescribeAll(candidates)}"
+        );
     }
 
     [TestMethod]
@@ -264,7 +268,7 @@ public sealed class VsDesignerApiShapeTests
         // The extension sends a message of its own to the surface and awaits the reply.
         MethodDefinition method = RequireMethod(_ProtocolHandler, "SendMessageAsync", "Int32", "Object");
 
-        Assert.AreEqual(1, method.GenericParameters.Count, $"Expected one type parameter for the reply: {Describe(method)}");
+        Assert.HasCount(1, method.GenericParameters, $"Expected one type parameter for the reply: {Describe(method)}");
         Assert.AreEqual("Task`1", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
     }
 
@@ -296,12 +300,14 @@ public sealed class VsDesignerApiShapeTests
         PropertyDefinition application = RequireProperty(_SurfaceProcessMarkupProviderContract, "AppXaml");
         PropertyDefinition document = RequireProperty(_SurfaceProcessDocumentContract, "Document");
 
-        StringAssert.StartsWith(registered.PropertyType.Name, "IEnumerable", $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.RegisteredDocuments.");
+        Assert.StartsWith("IEnumerable", registered.PropertyType.Name, $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.RegisteredDocuments.");
         Assert.AreEqual("ISurfaceProcessDocument", application.PropertyType.Name, $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.AppXaml.");
         Assert.AreEqual("IMarkupDocument", document.PropertyType.Name, $"Unexpected type of {_SurfaceProcessDocumentContract}.Document.");
-        Assert.IsTrue(
-            RequireType(_MarkupDocument).Interfaces.Any(implemented => implemented.InterfaceType.Name == "IDocumentRoot"),
-            $"{_MarkupDocument} must be a document root.");
+        Assert.Contains(
+            implemented => implemented.InterfaceType.Name == "IDocumentRoot",
+            RequireType(_MarkupDocument).Interfaces,
+            $"{_MarkupDocument} must be a document root."
+        );
     }
 
     [TestMethod]

@@ -26,7 +26,7 @@ public sealed class XamlConditionServiceTests
         CollectionAssert.AreEqual(
             new[] { $"contract {_Contract} 7", $"contract {_Contract} 99", $"contract {_Contract} 7.2" },
             probes.Calls);
-        Assert.AreEqual(0, probes.Reports.Count);
+        Assert.IsEmpty(probes.Reports);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(true, conditions.Evaluate($"IsApiContractPresent( {_Contract} , 7 )", NoNamespaces));
         Assert.AreEqual(false, conditions.Evaluate($"IsApiContractNotPresent({_Contract}, 007)", NoNamespaces));
 
-        Assert.AreEqual(1, probes.Calls.Count);
+        Assert.HasCount(1, probes.Calls);
     }
 
     [TestMethod]
@@ -96,7 +96,7 @@ public sealed class XamlConditionServiceTests
         CollectionAssert.AreEqual(
             new[] { "custom My.App.FeatureFlagCondition[ NewExperience, 2 ]", "custom My.App.FeatureFlagCondition[NewExperience, 2]" },
             probes.Calls);
-        Assert.AreEqual(0, probes.Reports.Count);
+        Assert.IsEmpty(probes.Reports);
     }
 
     [TestMethod]
@@ -109,7 +109,7 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(true, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App"))));
         Assert.AreEqual(true, conditions.Evaluate("other:Flag(On)", Namespaces(("other", "using:My.App"))));
         Assert.AreEqual(true, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App?IsApiContractPresent(X,7)"))));
-        Assert.AreEqual(1, probes.Calls.Count);
+        Assert.HasCount(1, probes.Calls);
 
         // Another argument and another namespace are other questions.
         conditions.Evaluate("cond:Flag(Off)", Namespaces(("cond", "using:My.App")));
@@ -150,10 +150,10 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate("cond:NoSuchCondition(X)", Namespaces(("cond", "using:My.App"))));
         Assert.AreEqual(false, conditions.Evaluate("cond:NoSuchCondition(X)", Namespaces(("cond", "using:My.App"))));
 
-        Assert.AreEqual(1, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "My.App.NoSuchCondition");
-        StringAssert.Contains(probes.Reports[0], "not satisfied");
+        Assert.HasCount(1, probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("My.App.NoSuchCondition", probes.Reports[0]);
+        Assert.Contains("not satisfied", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -165,10 +165,10 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App"))));
         Assert.AreEqual(false, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App"))));
 
-        Assert.AreEqual(1, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "cond:Flag(On)");
-        StringAssert.Contains(probes.Reports[0], "InvalidOperationException: flags are not loaded");
+        Assert.HasCount(1, probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("cond:Flag(On)", probes.Reports[0]);
+        Assert.Contains("InvalidOperationException: flags are not loaded", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -180,8 +180,8 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate("IsApiContractPresent(X,7)", NoNamespaces));
         Assert.AreEqual(true, conditions.Evaluate("IsApiContractNotPresent(X,7)", NoNamespaces));
 
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "no metadata");
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("no metadata", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -197,9 +197,9 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate(condition, namespaces));
         Assert.AreEqual(false, conditions.Evaluate(condition, namespaces));
 
-        Assert.AreEqual(0, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], expectedReport);
+        Assert.IsEmpty(probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains(expectedReport, probes.Reports[0]);
     }
 
     [TestMethod]
@@ -210,8 +210,8 @@ public sealed class XamlConditionServiceTests
 
         Assert.AreEqual(false, conditions.Evaluate("IsFooPresent(X)", NoNamespaces));
 
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "no default namespace");
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("no default namespace", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -228,9 +228,9 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate(condition, NoNamespaces));
         Assert.AreEqual(false, conditions.Evaluate(condition, NoNamespaces));
 
-        Assert.AreEqual(0, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], condition);
+        Assert.IsEmpty(probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains(condition, probes.Reports[0]);
     }
 
     [TestMethod]
@@ -241,8 +241,8 @@ public sealed class XamlConditionServiceTests
 
         Assert.AreEqual(true, conditions.Evaluate(string.Empty, NoNamespaces));
 
-        Assert.AreEqual(0, probes.Calls.Count);
-        Assert.AreEqual(0, probes.Reports.Count);
+        Assert.IsEmpty(probes.Calls);
+        Assert.IsEmpty(probes.Reports);
     }
 
     [TestMethod]
@@ -301,7 +301,7 @@ public sealed class XamlConditionServiceTests
         Assert.IsFalse(conditions.SetOutcome(notPresent.Key, false));
         Assert.IsTrue(conditions.SetOutcome(XamlConditionQuery.Create("IsTypePresent(My.Type)", NoNamespaces).Key, true));
         Assert.AreEqual(true, conditions.Evaluate("IsTypePresent(My.Type)", NoNamespaces));
-        Assert.AreEqual(1, probes.Calls.Count);
+        Assert.HasCount(1, probes.Calls);
     }
 
     [TestMethod]

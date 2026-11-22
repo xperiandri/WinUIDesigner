@@ -145,7 +145,7 @@ public sealed class XamlConditionProtocolTests
         Assert.AreEqual(true, answers.Evaluate("cond:FeatureFlagCondition(A, B)", namespaces));
         Assert.AreEqual(false, answers.Evaluate("cond:NoSuchCondition(X)", namespaces));
         Assert.IsTrue(Volatile.Read(ref changes) >= 1);
-        Assert.AreEqual(0, warnings.Count, string.Join(Environment.NewLine, warnings));
+        Assert.IsEmpty(warnings, string.Join(Environment.NewLine, warnings));
     }
 
     [TestMethod]
@@ -169,8 +169,8 @@ public sealed class XamlConditionProtocolTests
         Assert.IsFalse(answers.SurfaceAnswers);
         Assert.IsNull(answers.Evaluate("cond:FeatureFlagCondition(A, B)", namespaces));
         Assert.AreEqual(true, answers.Evaluate($"IsApiContractPresent({_Contract},7)", namespaces));
-        Assert.AreEqual(1, warnings.Count);
-        StringAssert.Contains(warnings.Single(), "did not answer");
+        Assert.HasCount(1, warnings);
+        Assert.Contains("did not answer", warnings.Single());
     }
 
     /// <summary>
