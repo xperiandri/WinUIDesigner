@@ -30,6 +30,8 @@ internal static class ProjectRuntimeResolver
 
     private static readonly List<IXamlMetadataProvider> _Providers = [];
 
+    private static readonly MetadataProviderFailures _ProviderFailures = new((message, exception) => WinUIDesignerLogger.LogWarning("Surface", message, exception));
+
     private static bool _providersInitialized;
 
     [ThreadStatic] private static HashSet<string>? _resolving;
@@ -169,7 +171,8 @@ internal static class ProjectRuntimeResolver
     /// The metadata of a CLR type among the providers of the project. XAML asks for the metadata of the type of a
     /// property when it sets the property, and a nested type, such as the enumeration <c>SafeArea.InsetMask</c> of
     /// the Uno Toolkit, must not be looked up by <see cref="Type.FullName"/>: the providers know it with a dot where the
-    /// name has a plus sign. Without its metadata the property cannot be set from XAML.
+    /// name has a plus sign. Without its metadata the property cannot be set from XAML. A provider that throws is
+    /// skipped, and its failure is written to the log once (<see cref="MetadataProviderFailures"/>).
     /// </summary>
     public static IXamlType? GetXamlType(Type type)
     {
@@ -177,7 +180,7 @@ internal static class ProjectRuntimeResolver
 
         return XamlTypeLookup.Find(
             type,
-            _Providers.Select(provider => (Func<Type, IXamlType?>)(requested => provider.GetXamlType(requested))),
+            _Providers.Select(provider => _ProviderFailures.Isolate<IXamlType>(provider, provider.GetXamlType)),
             GetXamlType);
     }
 
