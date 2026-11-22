@@ -152,7 +152,9 @@ internal static class XamlRuntimeUtilities
         ResolveProperty(target, fullPropertyName, out PropertyInfo? property, out DependencyProperty? dependencyProperty);
         if (dependencyProperty is not null && target is DependencyObject dependencyObject)
         {
-            return dependencyObject.GetValue(dependencyProperty);
+            // An attached collection can be null until its static accessor creates it (Interaction.Behaviors);
+            // the XAML parser obtains such a collection through that accessor too.
+            return dependencyObject.GetValue(dependencyProperty) ?? GetAttachedPropertyValue(target, fullPropertyName);
         }
 
         if (property?.CanRead == true)
@@ -695,6 +697,16 @@ internal static class XamlRuntimeUtilities
             ?? declaringType?.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
         dependencyProperty = FindDependencyProperty(declaringType ?? targetType, propertyName)
             ?? FindDependencyProperty(targetType, propertyName);
+    }
+
+    // Reads the property through the static Get<Name> accessor of the type that declares it, when that type has one.
+    private static object? GetAttachedPropertyValue(object target, string fullPropertyName)
+    {
+        int propertySeparator = fullPropertyName.IndexOf(':');
+        Type? declaringType = propertySeparator < 0 ? null : ResolveType(fullPropertyName[(propertySeparator + 1)..]);
+        return declaringType is not null && AttachedPropertyGetter.TryGetValue(declaringType, fullPropertyName[..propertySeparator], target, out object? value)
+            ? value
+            : null;
     }
 
     private static DependencyProperty? FindDependencyProperty(Type type, string propertyName)
