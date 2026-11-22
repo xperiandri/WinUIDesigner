@@ -52,6 +52,26 @@ internal sealed class DeferredInsertionQueue<TEntry>(Func<TEntry, object> getTar
     }
 
     /// <summary>
+    /// Inserts the pending entries for <paramref name="target"/>, oldest first, and then runs
+    /// <paramref name="operation"/>, which addresses the items of the target by index.
+    /// </summary>
+    /// <param name="target">The collection the operation addresses; nothing is pending for <see langword="null"/>.</param>
+    /// <param name="insert">Applies one pending insertion.</param>
+    /// <param name="operation">Removes, reads or clears items of the target.</param>
+    public void RunAfterPendingInsertions(object? target, Action<TEntry> insert, Action operation)
+    {
+        if (target is not null)
+        {
+            foreach (TEntry entry in TakeFor(target))
+            {
+                insert(entry);
+            }
+        }
+
+        operation();
+    }
+
+    /// <summary>
     /// Removes and returns every pending insertion, oldest first.
     /// </summary>
     public List<TEntry> TakeAll()

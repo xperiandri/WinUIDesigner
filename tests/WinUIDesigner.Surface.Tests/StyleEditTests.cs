@@ -29,23 +29,35 @@ public sealed class StyleEditTests
     public void ReplacingTwoSettersInOneBatchKeepsTheIndicesVisualStudioComputed()
     {
         // Visual Studio replaces each changed setter by a new one: remove at i, add at i. Every index assumes
-        // the earlier actions of the batch already ran.
+        // the earlier actions of the batch already ran. SurfaceService queues each AddChild of a setter, runs
+        // RemoveChild, GetChild and ClearCollectionProperty through RunAfterPendingInsertions, and inserts the
+        // rest after the batch; the actions themselves need a WinUI surface, so this test runs the queue on a list.
         var setters = new List<string> { "FontSize=20", "Padding=7" };
         var queue = new DeferredInsertionQueue<Insertion>(insertion => insertion.Collection);
 
-        void Remove(int index)
-        {
-            InsertPending(queue.TakeFor(setters));
-            setters.RemoveAt(index);
-        }
-
-        Remove(0);
+        queue.RunAfterPendingInsertions(setters, Insert, () => setters.RemoveAt(0));
         queue.Add(new(setters, 0, "FontSize=24"));
-        Remove(1);
+        queue.RunAfterPendingInsertions(setters, Insert, () => setters.RemoveAt(1));
         queue.Add(new(setters, 1, "Padding=9"));
         InsertPending(queue.TakeAll());
 
         CollectionAssert.AreEqual(new[] { "FontSize=24", "Padding=9" }, setters);
+    }
+
+    [TestMethod]
+    public void AnOperationOnAnotherCollectionLeavesThePendingInsertionsWaiting()
+    {
+        var setters = new List<string>();
+        var children = new List<string> { "Border" };
+        var queue = new DeferredInsertionQueue<Insertion>(insertion => insertion.Collection);
+        queue.Add(new(setters, 0, "FontSize=24"));
+
+        queue.RunAfterPendingInsertions(children, Insert, () => children.RemoveAt(0));
+        queue.RunAfterPendingInsertions(null, Insert, () => { });
+
+        Assert.IsEmpty(children);
+        Assert.IsEmpty(setters, "A setter is inserted when its own collection is used, or after the batch.");
+        Assert.AreEqual(1, queue.Count);
     }
 
     [TestMethod]
@@ -136,7 +148,12 @@ public sealed class StyleEditTests
     {
         foreach (Insertion insertion in insertions)
         {
-            insertion.Collection.Insert(Math.Min(insertion.Index, insertion.Collection.Count), insertion.Item);
+            Insert(insertion);
         }
+    }
+
+    private static void Insert(Insertion insertion)
+    {
+        insertion.Collection.Insert(Math.Min(insertion.Index, insertion.Collection.Count), insertion.Item);
     }
 }
