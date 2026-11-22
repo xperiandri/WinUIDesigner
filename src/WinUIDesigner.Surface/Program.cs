@@ -65,6 +65,9 @@ internal static class Program
             LogAssemblyLoadFailures();
         }
 
+        // Before the handler for Visual Studio's assemblies, which would try a file of the same name from its folders.
+        ProjectRuntimeResolver.ServeNewerProjectionReferences();
+
         if (!string.IsNullOrWhiteSpace(args[4]))
         {
             string[] assemblyDirectories = [Path.Combine(args[4], "Common7", "IDE", "PrivateAssemblies"), Path.Combine(args[4], "Common7", "IDE", "PublicAssemblies"), Path.Combine(args[4], "Common7", "IDE"),];

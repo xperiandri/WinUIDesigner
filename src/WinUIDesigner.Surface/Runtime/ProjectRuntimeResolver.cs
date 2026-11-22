@@ -39,7 +39,46 @@ internal static class ProjectRuntimeResolver
     // The assemblies the surface carries itself.
     private static readonly SurfaceAssemblies _SurfaceAssemblies = new(AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string, ReadAssemblyVersion);
 
+    // The simple names of the references that the surface's own, older copy has served; each is written to the log once.
+    private static readonly HashSet<string> _ServedReferences = new(StringComparer.OrdinalIgnoreCase);
+
     [ThreadStatic] private static HashSet<string>? _resolving;
+
+    /// <summary>
+    /// Lets the surface's own copy of a WinRT projection serve a project's reference to a newer version of it, which
+    /// the runtime does not bind to that copy by itself (<see cref="AssemblyReferenceCompatibility.Resolve"/>).
+    /// </summary>
+    /// <remarks>
+    /// Call it before any other handler of <see cref="AssemblyLoadContext.Resolving"/> is added. Visual Studio's handler
+    /// would otherwise try a file of the same name from Visual Studio's folders first, and the runtime refuses to load
+    /// a copy that is newer than the surface's.
+    /// </remarks>
+    public static void ServeNewerProjectionReferences()
+    {
+        AssemblyLoadContext.Default.Resolving += (context, name) =>
+        {
+            // Any other reference: Visual Studio's handler, and then the project's, decide.
+            if (AssemblyReferenceCompatibility.Resolve(name, _SurfaceAssemblies, _Assemblies.ContainsKey) != ReferenceResolution.SurfaceCopy)
+            {
+                return null;
+            }
+
+            // A newer reference to a projection the surface carries: its own copy is bound by the simple name alone.
+            Assembly surfaceCopy;
+            try
+            {
+                surfaceCopy = context.LoadFromAssemblyName(new AssemblyName(name.Name!));
+            }
+            catch (Exception ex) when (ex is IOException or BadImageFormatException)
+            {
+                // The surface's copy cannot be loaded either; the reference fails as it would without this handler.
+                return null;
+            }
+
+            ReportServedOnce(name, surfaceCopy);
+            return surfaceCopy;
+        };
+    }
 
     public static void Initialize(string directory)
     {
@@ -77,6 +116,13 @@ internal static class ProjectRuntimeResolver
                 if (assemblyName.StartsWith("System.", StringComparison.Ordinal) ||
                     assemblyName.StartsWith("Microsoft.VisualStudio.", StringComparison.Ordinal) ||
                     assemblyName == "WinUISurface" || assemblyName == "Microsoft.WinUI")
+                {
+                    continue;
+                }
+
+                // The project's copy of an assembly the surface carries is never loaded, neither for a reference nor for a
+                // type: the runtime binds only the surface's copy, and cannot load a newer one beside it.
+                if (_SurfaceAssemblies.Contains(assemblyName))
                 {
                     continue;
                 }
@@ -122,8 +168,8 @@ internal static class ProjectRuntimeResolver
 
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
-            return name.Name is string simpleName && _Assemblies.TryGetValue(simpleName, out string? file)
-                ? AssemblyLoadContext.Default.LoadFromAssemblyPath(file)
+            return AssemblyReferenceCompatibility.Resolve(name, _SurfaceAssemblies, _Assemblies.ContainsKey) == ReferenceResolution.ProjectCopy
+                ? AssemblyLoadContext.Default.LoadFromAssemblyPath(_Assemblies[name.Name!])
                 : null;
         };
 
@@ -282,6 +328,19 @@ internal static class ProjectRuntimeResolver
         WinUIDesignerLogger.LogWarning("Surface", message, exception);
     }
 
+    private static void ReportServedOnce(AssemblyName reference, Assembly surfaceCopy)
+    {
+        lock (_ServedReferences)
+        {
+            if (!_ServedReferences.Add(reference.Name!))
+            {
+                return;
+            }
+        }
+
+        WinUIDesignerLogger.LogInformation("Surface", $"{reference.Name} {reference.Version} is served by the design surface's own copy, {surfaceCopy.GetName().Version}; code that uses a type or member that only the newer version has fails.");
+    }
+
     private static List<AssemblyReferenceInfo> ReadReferences(MetadataReader metadata)
     {
         var references = new List<AssemblyReferenceInfo>(metadata.AssemblyReferences.Count);
@@ -296,8 +355,9 @@ internal static class ProjectRuntimeResolver
 
     /// <summary>
     /// Writes a warning for each reference of a staged assembly that the surface's own, older copy of the referenced
-    /// assembly cannot satisfy. Loading such an assembly fails, and a failure inside XAML ends the process without a
-    /// word in the log; this names the cause at startup.
+    /// assembly does not satisfy. Code that needs such a reference fails unless that copy serves it
+    /// (<see cref="ServeNewerProjectionReferences"/>), and a failure inside XAML can end the process without a word in
+    /// the log; this names the cause at startup.
     /// </summary>
     private static void ReportUnsatisfiedReferences(List<(string Assembly, List<AssemblyReferenceInfo> References)> staged)
     {

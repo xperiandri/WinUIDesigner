@@ -1,16 +1,47 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
 [TestClass]
 public sealed class AssemblyReferenceCompatibilityTests
 {
+    // A surface like the one that previewed the Ecierge solution: projections, the runtime they need, and .NET.
+    private static readonly SurfaceAssemblies _CarriedBySurface = CarriedBySurface(
+        ("Microsoft.Web.WebView2.Core.Projection", "1.0.3967.48"),
+        ("Microsoft.Windows.SDK.NET", "10.0.28000.86"),
+        ("Microsoft.Windows.ApplicationModel.Resources.Projection", "2.0.0.0"),
+        ("WinRT.Runtime", "2.3.1.0"),
+        ("Microsoft.WinUI", "3.0.0.0"),
+        ("System.Text.Json", "10.0.0.0")
+    );
+
+    // The project's staged files, which have copies of assemblies the surface carries as well.
+    private static readonly HashSet<string> _Staged = new(
+        ["Ecierge.Console.UI", "Microsoft.Web.WebView2.Core.Projection", "Microsoft.Windows.SDK.NET", "WinRT.Runtime", "Microsoft.WinUI", "System.Text.Json"],
+        StringComparer.OrdinalIgnoreCase
+    );
+
     private static Func<string, Version?> Surface(params (string Name, string Version)[] assemblies)
     {
         var versions = assemblies.ToDictionary(item => item.Name, item => new Version(item.Version), StringComparer.OrdinalIgnoreCase);
         return name => versions.TryGetValue(name, out Version? version) ? version : null;
+    }
+
+    private static SurfaceAssemblies CarriedBySurface(params (string Name, string Version)[] assemblies)
+    {
+        var versions = assemblies.ToDictionary(item => item.Name, item => new Version(item.Version), StringComparer.OrdinalIgnoreCase);
+        return new SurfaceAssemblies(
+            string.Join(Path.PathSeparator, assemblies.Select(item => $@"C:\Surface\{item.Name}.dll")),
+            path => versions[Path.GetFileNameWithoutExtension(path)]
+        );
+    }
+
+    private static ReferenceResolution Resolve(string reference)
+    {
+        return AssemblyReferenceCompatibility.Resolve(new AssemblyName(reference), _CarriedBySurface, _Staged.Contains);
     }
 
     [TestMethod]
@@ -132,5 +163,94 @@ public sealed class AssemblyReferenceCompatibilityTests
     public void NoFindingsAreDescribedAsNothing()
     {
         Assert.IsEmpty(AssemblyReferenceCompatibility.Describe([]));
+    }
+
+    [TestMethod]
+    public void ANewerProjectionIsDescribedAsServedByTheSurfaceCopy()
+    {
+        var findings = new[]
+        {
+            new UnsatisfiedAssemblyReference("Ecierge.Console.UI", "Microsoft.Web.WebView2.Core.Projection", new Version(1, 0, 3967, 48), new Version(1, 0, 3719, 77)),
+            new UnsatisfiedAssemblyReference("Ecierge.Console.Management", "Microsoft.Web.WebView2.Core.Projection", new Version(1, 0, 3967, 48), new Version(1, 0, 3719, 77)),
+            new UnsatisfiedAssemblyReference("Ecierge.Uno.App", "Microsoft.Windows.SDK.NET", new Version(10, 0, 29000, 0), new Version(10, 0, 28000, 86)),
+        };
+
+        IReadOnlyList<string> lines = AssemblyReferenceCompatibility.Describe(findings);
+
+        Assert.HasCount(2, lines);
+        Assert.StartsWith("Microsoft.Web.WebView2.Core.Projection 1.0.3967.48 is referenced by Ecierge.Console.Management, Ecierge.Console.UI, but the design surface carries 1.0.3719.77; ", lines[0]);
+        Assert.StartsWith("Microsoft.Windows.SDK.NET 10.0.29000.0 is referenced by Ecierge.Uno.App, but the design surface carries 10.0.28000.86; ", lines[1]);
+        foreach (string line in lines)
+        {
+            Assert.Contains("the runtime does not bind a reference to an older copy, so the surface serves it with its own copy", line);
+            Assert.DoesNotContain("cannot be loaded", line);
+        }
+    }
+
+    [TestMethod]
+    public void ANewerReferenceTheSurfaceDoesNotServeIsDescribedAsFailing()
+    {
+        UnsatisfiedAssemblyReference[] findings = [new("Contoso.Controls", "WinRT.Runtime", new Version(2, 4, 0, 0), new Version(2, 3, 1, 0))];
+
+        string line = Assert.ContainsSingle(AssemblyReferenceCompatibility.Describe(findings));
+
+        Assert.StartsWith("WinRT.Runtime 2.4.0.0 is referenced by Contoso.Controls, but the design surface carries 2.3.1.0; ", line);
+        Assert.Contains("the runtime does not bind a reference to an older copy, so the code of these assemblies that needs it fails", line);
+        Assert.DoesNotContain("serves", line);
+    }
+
+    [TestMethod]
+    [DataRow("Microsoft.Web.WebView2.Core.Projection, Version=1.0.4000.0, Culture=neutral, PublicKeyToken=null")]
+    [DataRow("Microsoft.Windows.SDK.NET, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null")]
+    [DataRow("microsoft.windows.sdk.net, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null")]
+    [DataRow("Microsoft.Windows.ApplicationModel.Resources.Projection, Version=2.1.0.0, Culture=neutral, PublicKeyToken=null")]
+    public void ANewerReferenceToACarriedProjectionIsServedByTheSurfaceCopy(string reference)
+    {
+        Assert.AreEqual(ReferenceResolution.SurfaceCopy, Resolve(reference));
+    }
+
+    [TestMethod]
+    [DataRow("WinRT.Runtime, Version=2.4.0.0, Culture=neutral, PublicKeyToken=99ea127f02d97709")]
+    [DataRow("Microsoft.WinUI, Version=3.1.0.0, Culture=neutral, PublicKeyToken=null")]
+    [DataRow("System.Text.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51")]
+    public void ANewerReferenceToAnotherCarriedAssemblyIsNotServed(string reference)
+    {
+        // The project has a copy of each of them, which is not loaded either.
+        Assert.AreEqual(ReferenceResolution.None, Resolve(reference));
+    }
+
+    [TestMethod]
+    [DataRow("Microsoft.Web.WebView2.Core.Projection")]
+    [DataRow("Microsoft.Web.WebView2.Core.Projection, Version=1.0.3967.48, Culture=neutral, PublicKeyToken=null")]
+    [DataRow("Microsoft.Web.WebView2.Core.Projection, Version=1.0.3719.77, Culture=neutral, PublicKeyToken=null")]
+    public void AReferenceTheSurfaceCopySatisfiesIsLeftToTheRuntime(string reference)
+    {
+        // The runtime binds these to the surface's copy by itself; the project's staged copy is never loaded.
+        Assert.AreEqual(ReferenceResolution.None, Resolve(reference));
+    }
+
+    [TestMethod]
+    public void AnAssemblyOfTheProjectIsLoadedFromItsStagedCopy()
+    {
+        Assert.AreEqual(ReferenceResolution.ProjectCopy, Resolve("Ecierge.Console.UI, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"));
+    }
+
+    [TestMethod]
+    public void AnUnknownAssemblyIsNotResolved()
+    {
+        Assert.AreEqual(ReferenceResolution.None, Resolve("Contoso.Unknown, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"));
+    }
+
+    [TestMethod]
+    [DataRow("Microsoft.Windows.SDK.NET", true)]
+    [DataRow("Microsoft.Web.WebView2.Core.Projection", true)]
+    [DataRow("Microsoft.InteractiveExperiences.Projection", true)]
+    [DataRow("WinRT.Runtime", false)]
+    [DataRow("Microsoft.WinUI", false)]
+    [DataRow("Microsoft.WindowsAppRuntime.Bootstrap.Net", false)]
+    [DataRow("System.Text.Json", false)]
+    public void OnlyTheProjectionsOfWinRTComponentsAreServedByAnOlderCopy(string simpleName, bool served)
+    {
+        Assert.AreEqual(served, AssemblyReferenceCompatibility.IsServedBySurfaceCopy(simpleName));
     }
 }
