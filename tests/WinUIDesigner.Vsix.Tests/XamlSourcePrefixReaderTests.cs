@@ -9,6 +9,7 @@ using Microsoft.VisualStudio.DesignTools.Markup.Metadata;
 using Microsoft.VisualStudio.DesignTools.Markup.Text;
 using Microsoft.VisualStudio.DesignTools.Markup.Xaml;
 using Microsoft.VisualStudio.DesignTools.Markup.Xml;
+using Microsoft.VisualStudio.DesignTools.Utility.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Markup;
 using WinUIDesigner.Platform;
@@ -17,9 +18,11 @@ using WinUIDesigner.Platform;
 /// Reads prefixes through the source references of Visual Studio's document model.
 /// </summary>
 /// <remarks>
-/// The references are built by hand, the way Visual Studio's XAML parser builds them: the range of an element
+/// Most references are built by hand, the way Visual Studio's XAML parser builds them: the range of an element
 /// covers the element, its start tag is tracked only when the element has content, and the range of an attribute
-/// starts at its name. The tests check how the extension reads such references, not the ranges the parser produces.
+/// starts at its name. Those tests check how the extension reads such references. Two tests hold the hand-built
+/// ranges against the ranges that the designer's own XML parser reports for the same text, and read prefixes through
+/// references made from its result, so a Visual Studio that reports other ranges fails them.
 /// </remarks>
 [TestClass]
 public sealed class XamlSourcePrefixReaderTests
@@ -162,6 +165,66 @@ public sealed class XamlSourcePrefixReaderTests
         Assert.AreEqual(TestXamlNamespaces.Condition, prefix.Uri.Condition);
     }
 
+    [TestMethod]
+    public void ReferencesBuiltByHandHaveTheRangesTheDesignersParserReports()
+    {
+        // The tests above stand on these ranges; this one holds them against the designer's own parser.
+        var byHand = new SampleDocument();
+        var parsed = new ParsedDocument(_Xaml);
+
+        (string Name, XmlElementReference ByHand)[] elements =
+        [
+            ("Grid", byHand.Grid),
+            ("win:Border", byHand.Border),
+            ("win:Border.Child", byHand.Child),
+            ("android:TextBlock", byHand.TextBlock),
+            ("ios:Button", byHand.Button),
+        ];
+        foreach ((string name, XmlElementReference expected) in elements)
+        {
+            XmlElementReference actual = parsed.Element(name);
+            Assert.AreEqual(Describe(expected.TextRange), Describe(actual.TextRange), $"The range of <{name}>.");
+            Assert.AreEqual(Describe(expected.StartTagRange), Describe(actual.StartTagRange), $"The start tag range of <{name}>.");
+        }
+
+        Assert.AreEqual(
+            Describe(byHand.Attribute(byHand.Border, "win:Tag=\"w\"").TextRange),
+            Describe(parsed.Attribute("win:Border", "win:Tag").TextRange),
+            "The range of the attribute win:Tag."
+        );
+        Assert.AreEqual(
+            Describe(byHand.Attribute(byHand.Border, "Opacity=\"1\"").TextRange),
+            Describe(parsed.Attribute("win:Border", "Opacity").TextRange),
+            "The range of the attribute Opacity."
+        );
+    }
+
+    [TestMethod]
+    public void PrefixesAreReadThroughTheReferencesTheDesignersParserBuilds()
+    {
+        var parsed = new ParsedDocument(_Xaml);
+
+        XamlSourcePrefix prefixedAttribute = XamlSourcePrefixReader.ReadContainerPrefix(parsed.Attribute("win:Border", "win:Tag"));
+        XamlSourcePrefix unprefixedAttribute = XamlSourcePrefixReader.ReadContainerPrefix(parsed.Attribute("win:Border", "Opacity"));
+        XamlSourcePrefix propertyElement = XamlSourcePrefixReader.ReadContainerPrefix(parsed.Element("win:Border.Child"));
+        XamlSourcePrefix selfClosingElement = XamlSourcePrefixReader.ReadContainerPrefix(parsed.Element("android:TextBlock"));
+
+        Assert.AreEqual("win", prefixedAttribute.Prefix);
+        Assert.AreEqual(XamlNamespaces.Presentation, prefixedAttribute.Namespace?.Value);
+        Assert.IsTrue(unprefixedAttribute.IsKnown);
+        Assert.AreEqual(string.Empty, unprefixedAttribute.Prefix);
+        Assert.IsNull(unprefixedAttribute.Namespace);
+        Assert.AreEqual("win", propertyElement.Prefix);
+        Assert.AreEqual("android", selfClosingElement.Prefix);
+        Assert.AreEqual(TestXamlNamespaces.Android, selfClosingElement.Namespace?.Value);
+        Assert.IsTrue(selfClosingElement.IsIgnorable);
+    }
+
+    private static string Describe(ITextRange? range)
+    {
+        return range is null ? "none" : $"[{range.Offset}, {range.Offset + range.Length}) {_Xaml.Substring(range.Offset, range.Length)}";
+    }
+
     /// <summary>
     /// The source references of <see cref="_Xaml"/>, built the way the designer's XAML parser builds them.
     /// </summary>
@@ -228,6 +291,97 @@ public sealed class XamlSourcePrefixReaderTests
             Assert.IsGreaterThanOrEqualTo(0, endOffset, end);
             return new SourceContext(null, startOffset, endOffset + end.Length);
         }
+    }
+
+    /// <summary>
+    /// The source references of a text, made from what the designer's own XML parser reports for it the way the
+    /// designer's XAML parser makes them: an element from its parsed element, an attribute from the range of its
+    /// parsed attribute, and the namespaces from the declarations that the element carries.
+    /// </summary>
+    /// <remarks>
+    /// The XML parser is an internal class of the designer and is reached by reflection. Its XAML parser would need
+    /// the metadata of a whole project and platform to run, and adds no range of its own.
+    /// </remarks>
+    private sealed class ParsedDocument
+    {
+        private readonly Dictionary<string, XmlElementReference> _elements = [];
+        private readonly Dictionary<(string Element, string Attribute), XmlAttributeReference> _attributes = [];
+
+        public ParsedDocument(string xaml)
+        {
+            XmlDocument xmlDocument = Parse(xaml);
+            var document = new XmlDocumentReference(new SimpleTextBuffer(xaml), xmlDocument, beginTracking: true);
+            Add(document, xmlDocument.RootElement);
+        }
+
+        public XmlElementReference Element(string name) => _elements[name];
+
+        public XmlAttributeReference Attribute(string elementName, string attributeName) => _attributes[(elementName, attributeName)];
+
+        private static XmlDocument Parse(string xaml)
+        {
+            Type? parserType = typeof(XmlDocument).Assembly.GetType("Microsoft.VisualStudio.DesignTools.Markup.Xml.Parser");
+            Assert.IsNotNull(parserType, "The designer's XML parser was not found, so the ranges it reports cannot be checked.");
+
+            var errors = new List<ErrorNode>();
+            object parser = Activator.CreateInstance(parserType, new Document("test.xaml", new DocumentText(xaml)), errors)!;
+            var xmlDocument = (XmlDocument)parserType.GetMethod("ParseDocument")!.Invoke(parser, null)!;
+            Assert.IsEmpty(errors, "The designer's XML parser reported errors for the sample text.");
+            return xmlDocument;
+        }
+
+        private void Add(XmlContainerReference parent, XmlElement element)
+        {
+            string name = element.Name.ToString();
+            var reference = new XmlElementReference(parent, element, beginTracking: true, XmlNamespaceGenerator.PlatformIndependentInstance);
+            _elements[name] = reference;
+
+            // The declarations come first: the prefixes of the other attributes resolve against them.
+            for (Node? node = element.FirstAttribute; node is XmlAttribute attribute; node = node.NextNode)
+            {
+                if (IsDeclaration(attribute))
+                {
+                    reference.AddAttributeToPreserve(new XmlElementReference.Attribute(
+                        XmlElementReference.AttributeType.Xmlns,
+                        attribute,
+                        new XmlAttributeReference(reference, attribute.SourceContext)
+                    ));
+                }
+            }
+
+            for (Node? node = element.FirstAttribute; node is XmlAttribute attribute; node = node.NextNode)
+            {
+                if (IsDeclaration(attribute))
+                {
+                    continue;
+                }
+
+                // mc:Ignorable lists the prefixes whose namespaces the element ignores.
+                if (attribute.LocalName == "Ignorable" && Equals(reference.GetXmlNamespace(attribute.Prefix), XmlNamespace.CompatibilityXmlNamespace))
+                {
+                    foreach (string prefix in XmlUtilities.GetPrefixes(XmlUtilities.GetAttributeValue(attribute)))
+                    {
+                        if (reference.GetXmlNamespace(XmlnsPrefix.ToPrefix(prefix)) is { } ignorable)
+                        {
+                            reference.AddIgnorableNamespace(ignorable);
+                        }
+                    }
+                }
+
+                _attributes[(name, attribute.Name.ToString())] = new XmlAttributeReference(reference, attribute.SourceContext);
+            }
+
+            for (Node? child = element.FirstChild; child is not null; child = child.NextNode)
+            {
+                if (child is XmlElement childElement)
+                {
+                    Add(reference, childElement);
+                }
+            }
+        }
+
+        // "xmlns" declares the default namespace; "xmlns:p" declares prefix "p".
+        private static bool IsDeclaration(XmlAttribute attribute) => attribute.Prefix.Value == "xmlns" || attribute.Name.ToString() == "xmlns";
     }
 }
 #endif
