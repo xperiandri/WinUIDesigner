@@ -181,6 +181,7 @@ internal static class ThemeResourceThemes
     /// </summary>
     public static bool IsRequestedThemeProperty(string? fullPropertyName)
     {
+        // An action without a property.
         if (fullPropertyName is null)
         {
             return false;

@@ -89,6 +89,8 @@ internal sealed partial class SurfaceService
     private bool ReapplyThemeReferences(string reason)
     {
         _themeReferencesNeedReapply = false;
+
+        // Nothing is remembered: there is nothing to evaluate again.
         if (_themeReferences.Count == 0)
         {
             return false;

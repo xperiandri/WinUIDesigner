@@ -64,6 +64,7 @@ internal static class ThemeResourceLookup
         TDictionary? fallbackDictionary)
         where TDictionary : class
     {
+        // A reference without a key.
         if (key is null)
         {
             throw new InvalidOperationException("A ThemeResource reference has no resource key.");
@@ -73,17 +74,20 @@ internal static class ThemeResourceLookup
         var searched = new HashSet<TDictionary>(ReferenceEqualityComparer.Instance);
         for (int index = 0; index < scopes.Count; index++)
         {
+            // The nearest scope that has the key wins.
             if (TryFind(scopes[index], key, themeKeys, dictionaries, 0, searched, out object? value, out string path))
             {
                 return new(value, index, path, IsFrameworkFallback: false);
             }
         }
 
+        // No scope has it: the framework's own lookup answers, in the theme of the application.
         if (fallbackDictionary is not null && dictionaries.TryGetFrameworkValue(fallbackDictionary, key, out object? fallbackValue))
         {
             return new(fallbackValue, -1, FrameworkFallback, IsFrameworkFallback: true);
         }
 
+        // Nobody has it.
         throw new KeyNotFoundException($"Unable to resolve ThemeResource '{key}' for the {theme} theme in the owning resource scope.");
     }
 
@@ -106,6 +110,7 @@ internal static class ThemeResourceLookup
         out object? value)
         where TDictionary : class
     {
+        // The framework does not have the key for this dictionary at all.
         if (!dictionaries.TryGetFrameworkValue(dictionary, key, out value))
         {
             return false;
@@ -113,6 +118,7 @@ internal static class ThemeResourceLookup
 
         foreach (TDictionary source in GetOtherSources(dictionary, dictionaries, emptyDictionary))
         {
+            // Another source gives the same value: the answer is that source's, not an entry of this dictionary.
             if (dictionaries.TryGetFrameworkValue(source, key, out object? other) && Equals(other, value))
             {
                 value = null;
@@ -120,6 +126,7 @@ internal static class ThemeResourceLookup
             }
         }
 
+        // No other source gives it: the dictionary's own entry.
         return true;
     }
 
@@ -192,7 +199,7 @@ internal static class ThemeResourceLookup
         {
             if (TryFind(merged[index], key, themeKeys, dictionaries, depth + 1, searched, out value, out string mergedPath))
             {
-                path = $"merged dictionary {index} > {mergedPath}";
+                path = FormattableString.Invariant($"merged dictionary {index} > {mergedPath}");
                 return true;
             }
         }

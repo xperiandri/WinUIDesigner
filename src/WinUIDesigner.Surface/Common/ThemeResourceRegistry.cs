@@ -43,6 +43,7 @@ internal sealed class ThemeResourceRegistry
     /// <summary>Forgets the entries of owners that were released with their document.</summary>
     public void ForgetOwners(IReadOnlySet<object> released)
     {
+        // Nothing was released, or nothing is remembered.
         if (released.Count == 0 || _entries.Count == 0)
         {
             return;

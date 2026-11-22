@@ -7,7 +7,8 @@ using System.Collections.Generic;
 namespace WinUIDesigner.Surface.Services;
 
 /// <summary>
-/// Resolves static resources within the document and its theme resource scopes.
+/// Resolves static and theme resource references within the document and its theme resource scopes, and decides the
+/// theme that a theme resource reference is evaluated in.
 /// </summary>
 internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
 {
@@ -247,6 +248,7 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
     /// </summary>
     private static string? GetDictionaryTheme(object scope, object parent)
     {
+        // Not a dictionary: only a dictionary can be an entry of ThemeDictionaries.
         if (scope is not ResourceDictionary dictionary)
         {
             return null;
@@ -258,7 +260,7 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
             return theme;
         }
 
-        // The map itself.
+        // The map itself. It can be a ResourceDictionary too, so a dictionary that did not match above is probed as a map.
         return parent is IDictionary<object, object> map ? ThemeResourceThemes.FromThemeDictionaries(dictionary, map) : null;
     }
 

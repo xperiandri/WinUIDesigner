@@ -7,16 +7,16 @@ using WinUIDesigner.Surface.Common;
 [TestClass]
 public sealed class ThemeResourceThemesTests
 {
-    private const string Light = ThemeResourceThemes.Light;
-    private const string Dark = ThemeResourceThemes.Dark;
-    private const string Default = ThemeResourceThemes.Default;
+    private const string _Light = ThemeResourceThemes.Light;
+    private const string _Dark = ThemeResourceThemes.Dark;
+    private const string _Default = ThemeResourceThemes.Default;
 
     [TestMethod]
     public void ClosestExplicitRequestedThemeWins()
     {
-        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, null), new(null, Dark), new(null, Light)], new(Light, Light, null, Light));
+        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, null), new(null, _Dark), new(null, _Light)], new(_Light, _Light, null, _Light));
 
-        Assert.AreEqual(new ThemeChoice(Dark, ThemeChoiceSource.RequestedTheme), choice);
+        Assert.AreEqual(new ThemeChoice(_Dark, ThemeChoiceSource.RequestedTheme), choice);
     }
 
     [TestMethod]
@@ -24,53 +24,53 @@ public sealed class ThemeResourceThemesTests
     {
         // The theme dictionary is farther from the reference than an element that requests the dark theme, and it is
         // used only while its theme is shown.
-        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, Dark), new(Light, null), new(null, Dark)], new(Dark, Dark, null, Dark));
+        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, _Dark), new(_Light, null), new(null, _Dark)], new(_Dark, _Dark, null, _Dark));
 
-        Assert.AreEqual(new ThemeChoice(Light, ThemeChoiceSource.ThemeDictionary), choice);
+        Assert.AreEqual(new ThemeChoice(_Light, ThemeChoiceSource.ThemeDictionary), choice);
     }
 
     [TestMethod]
     public void DefaultUsesPreviewTheme()
     {
-        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, null), new(null, null)], new(Dark, Light, Light, Light));
+        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, null), new(null, null)], new(_Dark, _Light, _Light, _Light));
 
-        Assert.AreEqual(new ThemeChoice(Dark, ThemeChoiceSource.Surface), choice);
+        Assert.AreEqual(new ThemeChoice(_Dark, ThemeChoiceSource.Surface), choice);
     }
 
     [TestMethod]
     public void DefaultPreviewUsesLastArtboardTheme()
     {
         // A document that is being built has no surface yet; the artboard colours of another document say the theme.
-        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, null)], new(null, Dark, Light, Light));
+        ThemeChoice choice = ThemeResourceThemes.Decide([new(null, null)], new(null, _Dark, _Light, _Light));
 
-        Assert.AreEqual(new ThemeChoice(Dark, ThemeChoiceSource.LastPreview), choice);
+        Assert.AreEqual(new ThemeChoice(_Dark, ThemeChoiceSource.LastPreview), choice);
     }
 
     [TestMethod]
     public void NothingKnownUsesApplicationTheme()
     {
         Assert.AreEqual(
-            new ThemeChoice(Light, ThemeChoiceSource.ApplicationRequestedTheme),
-            ThemeResourceThemes.Decide([], new(null, null, Light, Dark))
+            new ThemeChoice(_Light, ThemeChoiceSource.ApplicationRequestedTheme),
+            ThemeResourceThemes.Decide([], new(null, null, _Light, _Dark))
         );
-        Assert.AreEqual(new ThemeChoice(Dark, ThemeChoiceSource.Application), ThemeResourceThemes.Decide([], new(null, null, null, Dark)));
+        Assert.AreEqual(new ThemeChoice(_Dark, ThemeChoiceSource.Application), ThemeResourceThemes.Decide([], new(null, null, null, _Dark)));
     }
 
     [TestMethod]
     public void ThemeDictionaryKeysTryTheThemeThenDefault()
     {
-        CollectionAssert.AreEqual(new[] { Light, Default }, ThemeResourceThemes.GetThemeDictionaryKeys(Light).ToArray());
-        CollectionAssert.AreEqual(new[] { Dark, Default }, ThemeResourceThemes.GetThemeDictionaryKeys(Dark).ToArray());
-        CollectionAssert.AreEqual(new[] { Default }, ThemeResourceThemes.GetThemeDictionaryKeys(Default).ToArray());
+        CollectionAssert.AreEqual(new[] { _Light, _Default }, ThemeResourceThemes.GetThemeDictionaryKeys(_Light).ToArray());
+        CollectionAssert.AreEqual(new[] { _Dark, _Default }, ThemeResourceThemes.GetThemeDictionaryKeys(_Dark).ToArray());
+        CollectionAssert.AreEqual(new[] { _Default }, ThemeResourceThemes.GetThemeDictionaryKeys(_Default).ToArray());
     }
 
     [TestMethod]
-    [DataRow(Light, "", Light)]
-    [DataRow(Dark, "", Dark)]
-    [DataRow(Default, "Light", Dark)]
-    [DataRow(Default, "Dark", Light)]
-    [DataRow(Default, "", null)]
-    [DataRow(Default, "Light,Dark", null)]
+    [DataRow(_Light, "", _Light)]
+    [DataRow(_Dark, "", _Dark)]
+    [DataRow(_Default, "Light", _Dark)]
+    [DataRow(_Default, "Dark", _Light)]
+    [DataRow(_Default, "", null)]
+    [DataRow(_Default, "Light,Dark", null)]
     [DataRow(ThemeResourceThemes.HighContrast, "Light", null)]
     [DataRow("Custom", "Light", null)]
     [DataRow(null, "Light", null)]
@@ -87,10 +87,10 @@ public sealed class ThemeResourceThemesTests
     {
         var light = new FakeDictionary("Light");
         var fallback = new FakeDictionary("Default");
-        var map = new Dictionary<object, object> { [Light] = light, [Default] = fallback };
+        var map = new Dictionary<object, object> { [_Light] = light, [_Default] = fallback };
 
-        Assert.AreEqual(Light, ThemeResourceThemes.FromThemeDictionaries(light, map));
-        Assert.AreEqual(Dark, ThemeResourceThemes.FromThemeDictionaries(fallback, map));
+        Assert.AreEqual(_Light, ThemeResourceThemes.FromThemeDictionaries(light, map));
+        Assert.AreEqual(_Dark, ThemeResourceThemes.FromThemeDictionaries(fallback, map));
         Assert.IsNull(ThemeResourceThemes.FromThemeDictionaries(new FakeDictionary("Light"), map));
     }
 
@@ -99,8 +99,8 @@ public sealed class ThemeResourceThemesTests
     {
         // brush -> 'Light' dictionary -> ThemeDictionaries map -> page dictionary -> page, the search path of Visual Studio.
         var pageResources = new FakeDictionary("Page.Resources");
-        FakeDictionary light = pageResources.Theme(Light);
-        var page = new FakeElement("Page", Dark);
+        FakeDictionary light = pageResources.Theme(_Light);
+        var page = new FakeElement("Page", _Dark);
         object brush = new();
         var parents = new Dictionary<object, object>
         {
@@ -110,13 +110,13 @@ public sealed class ThemeResourceThemesTests
             [pageResources] = page,
         };
 
-        List<ThemeScopeFacts> facts = ThemeResourceThemes.Describe(brush, parents.GetValueOrDefault, DictionaryTheme, RequestedTheme);
+        List<ThemeScopeFacts> facts = ThemeResourceThemes.Describe(brush, parents.GetValueOrDefault, FakeScopes.DictionaryTheme, FakeScopes.RequestedTheme);
 
         CollectionAssert.AreEqual(
-            new ThemeScopeFacts[] { new(null, null), new(Light, null), new(null, null), new(null, null), new(null, Dark) },
+            new ThemeScopeFacts[] { new(null, null), new(_Light, null), new(null, null), new(null, null), new(null, _Dark) },
             facts
         );
-        Assert.AreEqual(new ThemeChoice(Light, ThemeChoiceSource.ThemeDictionary), ThemeResourceThemes.Decide(facts, new(Dark, Dark, null, Dark)));
+        Assert.AreEqual(new ThemeChoice(_Light, ThemeChoiceSource.ThemeDictionary), ThemeResourceThemes.Decide(facts, new(_Dark, _Dark, null, _Dark)));
     }
 
     [TestMethod]
@@ -125,34 +125,34 @@ public sealed class ThemeResourceThemesTests
         // TitleBar.xaml: the page dictionaries 'Light' and 'Dark' hold LogoSource, which the page reads through a
         // {ThemeResource}, and brushes that refer to brushes of XamlControlsResources.
         var controls = new FakeDictionary("XamlControlsResources");
-        controls.Theme(Default).Own["SubtleFillColorSecondaryBrush"] = "subtle dark";
-        controls.Theme(Light).Own["SubtleFillColorSecondaryBrush"] = "subtle light";
+        controls.Theme(_Default).Own["SubtleFillColorSecondaryBrush"] = "subtle dark";
+        controls.Theme(_Light).Own["SubtleFillColorSecondaryBrush"] = "subtle light";
         var application = new FakeDictionary("Application.Resources");
         application.Merge(controls);
         var pageResources = new FakeDictionary("TitleBar.Resources");
-        pageResources.Theme(Light).Own["LogoSource"] = "logo light";
-        pageResources.Theme(Dark).Own["LogoSource"] = "logo dark";
+        pageResources.Theme(_Light).Own["LogoSource"] = "logo light";
+        pageResources.Theme(_Dark).Own["LogoSource"] = "logo dark";
         var page = new FakeElement("TitleBar") { Resources = pageResources };
         var image = new FakeElement("Image");
         object alias = new();
         var parents = new Dictionary<object, object>
         {
             [image] = page,
-            [alias] = pageResources.Theme(Light),
-            [pageResources.Theme(Light)] = pageResources.ThemeDictionaries,
+            [alias] = pageResources.Theme(_Light),
+            [pageResources.Theme(_Light)] = pageResources.ThemeDictionaries,
             [pageResources.ThemeDictionaries] = pageResources,
             [pageResources] = page,
         };
-        var preview = new ThemePreview(Dark, Dark, null, Light);
+        var preview = new ThemePreview(_Dark, _Dark, null, _Light);
 
         Assert.AreEqual("logo dark", Evaluate(image, "LogoSource"));
         Assert.AreEqual("subtle light", Evaluate(alias, "SubtleFillColorSecondaryBrush"));
 
         object? Evaluate(object owner, string key)
         {
-            List<ThemeScopeFacts> walk = ThemeResourceThemes.Describe(owner, parents.GetValueOrDefault, DictionaryTheme, RequestedTheme);
+            List<ThemeScopeFacts> walk = ThemeResourceThemes.Describe(owner, parents.GetValueOrDefault, FakeScopes.DictionaryTheme, FakeScopes.RequestedTheme);
             string theme = ThemeResourceThemes.Decide(walk, preview).Theme;
-            var scopes = ResourceScopeWalk.Dictionaries(owner, parents.GetValueOrDefault, DictionaryOf, [application]).ToList();
+            var scopes = ResourceScopeWalk.Dictionaries(owner, parents.GetValueOrDefault, FakeScopes.DictionaryOf, [application]).ToList();
             return ThemeResourceLookup.Resolve(scopes, key, theme, new FakeDictionaries(true), application).Value;
         }
     }
@@ -168,33 +168,4 @@ public sealed class ThemeResourceThemesTests
     {
         Assert.AreEqual(isRequestedTheme, ThemeResourceThemes.IsRequestedThemeProperty(fullPropertyName));
     }
-
-    // As the surface does: the parent is the ThemeDictionaries map, or the dictionary that owns it.
-    internal static string? DictionaryTheme(object scope, object parent) => parent switch
-    {
-        FakeDictionary owner when ThemeResourceThemes.FromThemeDictionaries(scope, owner.ThemeDictionaries) is { } theme => theme,
-        IDictionary<object, object> map => ThemeResourceThemes.FromThemeDictionaries(scope, map),
-        _ => null,
-    };
-
-    internal static string? RequestedTheme(object scope) => (scope as FakeElement)?.RequestedTheme;
-
-    internal static FakeDictionary? DictionaryOf(object scope) => scope switch
-    {
-        FakeElement element => element.Resources,
-        FakeDictionary dictionary => dictionary,
-        _ => null,
-    };
-}
-
-/// <summary>An element of a fake tree: a theme it may request, and resources.</summary>
-internal sealed class FakeElement(string name, string? requestedTheme = null)
-{
-    public string Name { get; } = name;
-
-    public string? RequestedTheme { get; set; } = requestedTheme;
-
-    public FakeDictionary Resources { get; init; } = new($"{name}.Resources");
-
-    public override string ToString() => Name;
 }

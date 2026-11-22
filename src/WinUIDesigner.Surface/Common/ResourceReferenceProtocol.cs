@@ -17,6 +17,7 @@ internal static class ResourceReferenceProtocol
     /// </summary>
     public static Type? GetReferenceType(string? serializedTypeName)
     {
+        // No type name.
         if (serializedTypeName is null)
         {
             return null;
@@ -28,8 +29,11 @@ internal static class ResourceReferenceProtocol
 
         return name switch
         {
+            // The names that Visual Studio's builders send for {StaticResource} and {ThemeResource}.
             StaticResourceReference.ProtocolTypeName => typeof(StaticResourceReference),
             ThemeResourceReference.ProtocolTypeName => typeof(ThemeResourceReference),
+
+            // Any other type name is an ordinary type.
             _ => null,
         };
     }

@@ -29,7 +29,7 @@ public sealed class ResourceScopeWalkTests
             setter,
             searchParents,
             liveParents.GetValueOrDefault,
-            ThemeResourceThemesTests.DictionaryOf,
+            FakeScopes.DictionaryOf,
             application,
             themeScope
         ).ToList();
@@ -57,7 +57,7 @@ public sealed class ResourceScopeWalkTests
             setter,
             searchParents,
             liveParents.GetValueOrDefault,
-            ThemeResourceThemesTests.DictionaryOf,
+            FakeScopes.DictionaryOf,
             application,
             themeScope
         ).ToList();

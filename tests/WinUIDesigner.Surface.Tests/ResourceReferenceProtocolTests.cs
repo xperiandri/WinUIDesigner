@@ -31,10 +31,7 @@ public sealed class ResourceReferenceProtocolTests
     [DataRow("System.Windows.ThemeResourceExtensionX")]
     [DataRow("")]
     [DataRow(null)]
-    public void OtherNamesAreNotResourceReferences(string? typeName)
-    {
-        Assert.IsNull(ResourceReferenceProtocol.GetReferenceType(typeName));
-    }
+    public void OtherNamesAreNotResourceReferences(string? typeName) => Assert.IsNull(ResourceReferenceProtocol.GetReferenceType(typeName));
 
     [TestMethod]
     [DataRow(typeof(StaticResourceReference))]

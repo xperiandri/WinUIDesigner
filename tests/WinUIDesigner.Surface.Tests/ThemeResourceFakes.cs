@@ -3,6 +3,42 @@
 
 using WinUIDesigner.Surface.Common;
 
+/// <summary>An element of a fake tree: a theme it may request, and resources.</summary>
+internal sealed class FakeElement(string name, string? requestedTheme = null)
+{
+    public string Name { get; } = name;
+
+    public string? RequestedTheme { get; set; } = requestedTheme;
+
+    public FakeDictionary Resources { get; init; } = new($"{name}.Resources");
+
+    public override string ToString() => Name;
+}
+
+/// <summary>
+/// What the surface reads from the objects of a scope walk, for the fakes: the dictionary of a scope, the theme that it
+/// requests, and the theme of a dictionary that is an entry of a <c>ThemeDictionaries</c> map.
+/// </summary>
+internal static class FakeScopes
+{
+    /// <summary>As the surface does: the parent is the <c>ThemeDictionaries</c> map, or the dictionary that owns it.</summary>
+    public static string? DictionaryTheme(object scope, object parent) => parent switch
+    {
+        FakeDictionary owner when ThemeResourceThemes.FromThemeDictionaries(scope, owner.ThemeDictionaries) is { } theme => theme,
+        IDictionary<object, object> map => ThemeResourceThemes.FromThemeDictionaries(scope, map),
+        _ => null,
+    };
+
+    public static string? RequestedTheme(object scope) => (scope as FakeElement)?.RequestedTheme;
+
+    public static FakeDictionary? DictionaryOf(object scope) => scope switch
+    {
+        FakeElement element => element.Resources,
+        FakeDictionary dictionary => dictionary,
+        _ => null,
+    };
+}
+
 /// <summary>
 /// A resource dictionary as the theme lookup sees one: own entries, <c>ThemeDictionaries</c> and merged dictionaries.
 /// <see cref="TryGetFrameworkValue(object, out object)"/> stands for WinUI's own lookup as the surface assumes it works: own entries, then the
