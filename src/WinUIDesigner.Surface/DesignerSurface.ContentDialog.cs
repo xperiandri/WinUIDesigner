@@ -17,6 +17,10 @@ internal sealed partial class DesignerSurface
     // What happened to the card of the dialog is logged once.
     private bool _loggedDialogCard;
 
+    // The card whose limits the surface sets, and the limits that its template gave it, which every design size starts from.
+    private FrameworkElement? _limitedCard;
+    private CardLimits _cardTemplateLimits;
+
     // Gives the dialog the brushes of the theme of the preview and remembers the ones that it wrote over those of the style.
     private readonly ContentDialogBrushRetargeter _dialogBrushes = new();
 
@@ -115,21 +119,21 @@ internal sealed partial class DesignerSurface
 
         SetSize(card, designWidth, designHeight);
 
-        // The template limits the card (548 by 756 by default); a size that the document asks for is not limited by it.
-        if (!double.IsNaN(designWidth) && card.MaxWidth < designWidth)
+        // The template limits the card (320 to 548 wide and 184 to 756 high in WinUI); a size that the document asks for is not
+        // limited by it, and the limits of the template come back when the document asks for another size or none.
+        if (!ReferenceEquals(_limitedCard, card))
         {
-            card.MaxWidth = designWidth;
+            _limitedCard = card;
+            _cardTemplateLimits = new CardLimits(card.MinWidth, card.MaxWidth, card.MinHeight, card.MaxHeight);
         }
 
-        if (!double.IsNaN(designHeight) && card.MaxHeight < designHeight)
-        {
-            card.MaxHeight = designHeight;
-        }
+        SetLimits(card, ContentDialogPreviewPolicy.LimitsForDesignSize(_cardTemplateLimits, designWidth, designHeight));
 
         card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         Size needed = card.DesiredSize;
 
-        SetSize(dialog, Math.Max(artboardWidth, needed.Width), Math.Max(artboardHeight, needed.Height));
+        (double areaWidth, double areaHeight) = ContentDialogPreviewPolicy.DialogArea(artboardWidth, artboardHeight, needed.Width, needed.Height);
+        SetSize(dialog, areaWidth, areaHeight);
 
         if (!_loggedDialogCard)
         {
@@ -156,6 +160,30 @@ internal sealed partial class DesignerSurface
         if (!element.Height.Equals(height))
         {
             element.Height = height;
+        }
+    }
+
+    private static void SetLimits(FrameworkElement card, CardLimits limits)
+    {
+        // As for the size, equal values are not assigned again.
+        if (!card.MinWidth.Equals(limits.MinWidth))
+        {
+            card.MinWidth = limits.MinWidth;
+        }
+
+        if (!card.MaxWidth.Equals(limits.MaxWidth))
+        {
+            card.MaxWidth = limits.MaxWidth;
+        }
+
+        if (!card.MinHeight.Equals(limits.MinHeight))
+        {
+            card.MinHeight = limits.MinHeight;
+        }
+
+        if (!card.MaxHeight.Equals(limits.MaxHeight))
+        {
+            card.MaxHeight = limits.MaxHeight;
         }
     }
 
