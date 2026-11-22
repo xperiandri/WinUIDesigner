@@ -19,7 +19,10 @@ internal sealed partial class SurfaceService
         {
             if (!_dispatcherQueue.HasThreadAccess)
             {
-                return DispatcherOperation.InvokeAsync(_dispatcherQueue, () => HandleHitTest(request), _protocolHandler.CancellationToken).GetAwaiter().GetResult();
+                // When the UI thread does not take the request in time, the document did not fail: answer without hits.
+                return DispatcherOperation.TryInvoke(_dispatcherQueue, () => HandleHitTest(request), _protocolHandler.CancellationToken, out var response)
+                    ? response
+                    : new HitResponse() { Hits = [] };
             }
 
             if (!_objectIdentity.TryGetObject(request.RootHandle, out object? rootObject) || rootObject is not UIElement root)

@@ -20,7 +20,10 @@ internal sealed partial class SurfaceService
         {
             try
             {
-                return DispatcherOperation.InvokeAsync(_dispatcherQueue, () => HandleGetSnapLines(request), _protocolHandler.CancellationToken).GetAwaiter().GetResult();
+                // When the UI thread does not take the request in time, the document did not fail: answer without snap lines.
+                return DispatcherOperation.TryInvoke(_dispatcherQueue, () => HandleGetSnapLines(request), _protocolHandler.CancellationToken, out var response)
+                    ? response
+                    : GetSnapLinesResponse.Empty;
             }
             catch (Exception ex)
             {
@@ -81,7 +84,10 @@ internal sealed partial class SurfaceService
         {
             try
             {
-                return DispatcherOperation.InvokeAsync(_dispatcherQueue, () => HandleGetElementSnapData(request), _protocolHandler.CancellationToken).GetAwaiter().GetResult();
+                // When the UI thread does not take the request in time, the document did not fail: answer without snap data.
+                return DispatcherOperation.TryInvoke(_dispatcherQueue, () => HandleGetElementSnapData(request), _protocolHandler.CancellationToken, out var response)
+                    ? response
+                    : new GetElementSnapDataResponse();
             }
             catch (Exception ex)
             {

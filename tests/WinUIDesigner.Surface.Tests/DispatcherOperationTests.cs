@@ -1,0 +1,230 @@
+// Copyright (c) 0x5BFA. All rights reserved.
+// Licensed under MIT License.
+
+using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
+using WinUIDesigner.Surface.Common;
+using Action = System.Action;
+
+/// <summary>
+/// The time limits of the work on the UI thread: the work on a document waits as long as the UI thread is busy, and only
+/// the synchronous requests of Visual Studio give up, without an exception for the observer that answers them.
+/// </summary>
+[TestClass]
+public sealed class DispatcherOperationTests
+{
+    [TestMethod]
+    public async Task DocumentStepWaitsForABusyUIThreadLongerThanTheInteractiveLimit()
+    {
+        const string Step = nameof(DocumentStepWaitsForABusyUIThreadLongerThanTheInteractiveLimit);
+        var time = new ManualTimeProvider();
+        Action? queued = null;
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+
+        Task<int> step = DispatcherOperation.RunAsync(queue, Step, () => 42, time, default);
+        time.Advance(TimeSpan.FromMinutes(10));
+
+        Assert.IsFalse(step.IsCompleted);
+        queued!();
+        Assert.AreEqual(42, await step);
+        Assert.AreEqual(TimeSpan.FromMinutes(10), Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.Step, Step)).Duration);
+        Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.GaveUp, Step));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DocumentStepEndsWithTheProtocolOrTheQueueAndItsCallbackNeverRuns(bool queueShutsDown)
+    {
+        Action? queued = null;
+        bool changed = false;
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+        using var protocol = new CancellationTokenSource();
+
+        Task<bool> step = DispatcherOperation.RunAsync(queue, nameof(DocumentStepEndsWithTheProtocolOrTheQueueAndItsCallbackNeverRuns), () => changed = true, new ManualTimeProvider(), protocol.Token);
+        if (queueShutsDown)
+        {
+            // The dispatcher queue shuts down while the step waits.
+            queue.BeginShutdown();
+        }
+        else
+        {
+            // The protocol ends while the step waits.
+            protocol.Cancel();
+        }
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => step);
+        queued!();
+        Assert.IsFalse(changed);
+    }
+
+    [TestMethod]
+    public async Task InteractiveRequestStillGivesUpAndItsQueuedCallbackNeverRuns()
+    {
+        const string Request = nameof(InteractiveRequestStillGivesUpAndItsQueuedCallbackNeverRuns);
+        var time = new ManualTimeProvider();
+        Action? queued = null;
+        bool changed = false;
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+
+        Task<bool> pending = DispatcherOperation.InvokeAsync(queue, Request, () => changed = true, DispatcherOperation.InteractiveTimeout, time, default);
+        time.Advance(DispatcherOperation.InteractiveTimeout - TimeSpan.FromTicks(1));
+        Assert.IsFalse(pending.IsCompleted);
+
+        time.Advance(TimeSpan.FromTicks(1));
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+        queued!();
+
+        Assert.IsFalse(changed);
+        Assert.IsInstanceOfType<TimeoutException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, Request)).Exception);
+        Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.Step, Request));
+    }
+
+    [TestMethod]
+    public async Task CallbackThatOutlivesItsRequestIsReportedOnce()
+    {
+        const string Request = nameof(CallbackThatOutlivesItsRequestIsReportedOnce);
+        var time = new ManualTimeProvider();
+        Action? queued = null;
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+
+        Task<int> pending = DispatcherOperation.InvokeAsync(queue, Request, () =>
+        {
+            started.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+            return 1;
+        }, DispatcherOperation.InteractiveTimeout, time, default);
+
+        // The UI thread takes the callback, and the callback runs on past the time limit of its request.
+        Task uiThread = Task.Run(queued!);
+        try
+        {
+            Assert.IsTrue(started.Wait(TimeSpan.FromSeconds(10)));
+            time.Advance(DispatcherOperation.InteractiveTimeout);
+            await Assert.ThrowsExactlyAsync<TimeoutException>(() => pending);
+            time.Advance(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        await uiThread;
+
+        Assert.AreEqual(TimeSpan.FromSeconds(5), Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.LateFinish, Request)).Duration);
+        Assert.HasCount(1, DispatcherReports.Of(DispatcherReportKind.GaveUp, Request));
+    }
+
+    [TestMethod]
+    [DataRow(30, "StalledGetProperties")]
+    [DataRow(2, "StalledSetFreezeState")]
+    public async Task SynchronousRequestOfAStalledUIThreadIsAnsweredWithoutAnException(int seconds, string request)
+    {
+        TimeSpan timeout = TimeSpan.FromSeconds(seconds);
+        var time = new ManualTimeProvider();
+        Action? queued = null;
+        bool changed = false;
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+
+        Task<bool> answered = Task.Run(() => DispatcherOperation.TryInvoke(queue, request, () => changed = true, timeout, time, default, out _));
+        await time.WaitForTimerAsync();
+        time.Advance(timeout);
+
+        Assert.IsFalse(await answered);
+        queued!();
+        Assert.IsFalse(changed);
+        Assert.IsInstanceOfType<TimeoutException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, request)).Exception);
+    }
+
+    [TestMethod]
+    public async Task SynchronousRequestIsAnsweredWithoutAnExceptionWhenTheQueueShutsDown()
+    {
+        var time = new ManualTimeProvider();
+        Action? queued = null;
+        bool changed = false;
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+
+        Task<bool> answered = Task.Run(() => DispatcherOperation.TryInvoke(queue, nameof(SynchronousRequestIsAnsweredWithoutAnExceptionWhenTheQueueShutsDown), () => changed = true, DispatcherOperation.InteractiveTimeout, time, default, out _));
+        await time.WaitForTimerAsync();
+        queue.BeginShutdown();
+
+        Assert.IsFalse(await answered);
+        queued!();
+        Assert.IsFalse(changed);
+    }
+
+    [TestMethod]
+    public void SynchronousRequestThatTheQueueRefusesIsAnsweredWithoutAnException()
+    {
+        var queue = new DispatcherQueue(_ => false);
+
+        Assert.IsFalse(DispatcherOperation.TryInvoke(queue, () => 1, default, out _));
+        Assert.IsInstanceOfType<OperationCanceledException>(Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.GaveUp, nameof(SynchronousRequestThatTheQueueRefusesIsAnsweredWithoutAnException))).Exception);
+    }
+
+    [TestMethod]
+    public void SynchronousRequestOfACancelledProtocolIsAnsweredWithoutAnException()
+    {
+        bool ran = false;
+        var queue = new DispatcherQueue(action => { action(); return true; });
+        using var protocol = new CancellationTokenSource();
+        protocol.Cancel();
+
+        Assert.IsFalse(DispatcherOperation.TryInvoke(queue, () => ran = true, protocol.Token, out _));
+        Assert.IsFalse(ran);
+    }
+
+    [TestMethod]
+    public void FailureOfTheCallbackOfASynchronousRequestReachesTheObserver()
+    {
+        var queue = new DispatcherQueue(action => { action(); return true; });
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => DispatcherOperation.TryInvoke<int>(queue, () => throw new InvalidOperationException(), default, out _));
+    }
+
+    [TestMethod]
+    [DataRow(typeof(TimeoutException), true)]
+    [DataRow(typeof(OperationCanceledException), true)]
+    [DataRow(typeof(TaskCanceledException), true)]
+    [DataRow(typeof(InvalidOperationException), false)]
+    [DataRow(typeof(COMException), false)]
+    public void GivingUpIsToldApartFromAFailure(Type exceptionType, bool unanswered)
+    {
+        var exception = (Exception)Activator.CreateInstance(exceptionType)!;
+
+        Assert.AreEqual(unanswered, DispatcherOperation.IsUnanswered(exception));
+    }
+
+    [TestMethod]
+    public async Task WaitWithoutALimitCompletesAfterTheInteractiveLimitAndIsReportedWithItsDuration()
+    {
+        const string What = nameof(WaitWithoutALimitCompletesAfterTheInteractiveLimitAndIsReportedWithItsDuration);
+        var time = new ManualTimeProvider();
+        var gate = new TaskCompletionSource<bool>();
+
+        Task<bool> waiting = DispatcherOperation.WaitWithoutLimitAsync(What, gate.Task, time);
+        time.Advance(TimeSpan.FromSeconds(45));
+        Assert.IsFalse(waiting.IsCompleted);
+        gate.SetResult(true);
+
+        Assert.IsTrue(await waiting);
+        Assert.AreEqual(TimeSpan.FromSeconds(45), Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.LongWait, What)).Duration);
+    }
+
+    [TestMethod]
+    public async Task WaitWithinTheInteractiveLimitIsNotReported()
+    {
+        const string What = nameof(WaitWithinTheInteractiveLimitIsNotReported);
+        var time = new ManualTimeProvider();
+        var gate = new TaskCompletionSource<bool>();
+
+        Task<bool> waiting = DispatcherOperation.WaitWithoutLimitAsync(What, gate.Task, time);
+        time.Advance(DispatcherOperation.InteractiveTimeout);
+        gate.SetResult(true);
+
+        Assert.IsTrue(await waiting);
+        Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.LongWait, What));
+    }
+}
