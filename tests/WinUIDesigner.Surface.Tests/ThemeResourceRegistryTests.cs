@@ -126,6 +126,70 @@ public sealed class ThemeResourceRegistryTests
     }
 
     [TestMethod]
+    public void AnOwnerWhoseThemeCannotBeDecidedDoesNotStopThePass()
+    {
+        // Deciding a theme reads live objects, which can fail for one owner: the entries after it are still evaluated, and
+        // the broken one keeps its theme and is tried again. Entries are visited in the order they were recorded.
+        var registry = new ThemeResourceRegistry();
+        object first = new();
+        object broken = new();
+        object last = new();
+        registry.Record(first, Background, "Key", Light);
+        registry.Record(broken, Background, "Key", Light);
+        registry.Record(last, Background, "Key", Light);
+        var applied = new List<object>();
+        var failures = new List<(object Owner, Exception Exception)>();
+        var cause = new InvalidOperationException("The owner is gone.");
+
+        ThemeResourceReapplyResult result = registry.Reapply(
+            entry => ReferenceEquals(entry.Owner, broken) ? throw cause : Dark,
+            (entry, _) =>
+            {
+                applied.Add(entry.Owner);
+                return true;
+            },
+            (entry, exception) => failures.Add((entry.Owner, exception))
+        );
+
+        Assert.AreEqual(new ThemeResourceReapplyResult(3, 2, 1), result);
+        CollectionAssert.AreEquivalent(new[] { first, last }, applied);
+        (object Owner, Exception Exception) reported = Assert.ContainsSingle(failures);
+        Assert.AreSame(broken, reported.Owner);
+        Assert.AreSame(cause, reported.Exception);
+        Assert.Contains(new ThemeResourceEntry(broken, Background, "Key", Light), registry.Entries);
+        Assert.AreEqual(new ThemeResourceReapplyResult(3, 1, 0), registry.Reapply(_ => Dark, (_, _) => true));
+    }
+
+    [TestMethod]
+    public void AnApplyThatThrowsDoesNotStopThePassEvenWithoutAFailureReport()
+    {
+        var registry = new ThemeResourceRegistry();
+        object broken = new();
+        object last = new();
+        registry.Record(broken, Background, "Key", Light);
+        registry.Record(last, Background, "Key", Light);
+        var applied = new List<object>();
+
+        ThemeResourceReapplyResult result = registry.Reapply(
+            _ => Dark,
+            (entry, _) =>
+            {
+                if (ReferenceEquals(entry.Owner, broken))
+                {
+                    throw new InvalidOperationException("The value cannot be applied.");
+                }
+
+                applied.Add(entry.Owner);
+                return true;
+            }
+        );
+
+        Assert.AreEqual(new ThemeResourceReapplyResult(2, 1, 1), result);
+        CollectionAssert.AreEqual(new[] { last }, applied);
+        Assert.Contains(new ThemeResourceEntry(broken, Background, "Key", Light), registry.Entries);
+    }
+
+    [TestMethod]
     public void RequestedThemeEditOnAncestorRevisitsDescendants()
     {
         // A grid gets RequestedTheme="Dark": the border inside it moves to the dark theme, the one beside it does not.

@@ -120,18 +120,28 @@ internal sealed partial class SurfaceService
         {
             result = _themeReferences.Reapply(
                 entry => _resourceScopes.DecideTheme(entry.Owner, GetThemePreview(entry.Owner)).Theme,
-                TryReapplyThemeReference
+                TryReapplyThemeReference,
+                LogThemeReferenceFailure
             );
         }
         catch (Exception exception)
         {
-            // Deciding a theme reads live objects; the request that asked for the pass must not fail with it.
+            // Whatever else goes wrong: the request that asked for the pass must not fail with it.
             WinUIDesignerLogger.LogWarning("Surface", $"The ThemeResource references were not evaluated again after {reason}.", exception);
             return false;
         }
 
         WinUIDesignerLogger.LogTrace("Surface", $"ThemeResource references after {reason}: {result.Applied} evaluated again, {result.Failed} kept their value, {result.Visited - result.Applied - result.Failed} already in their theme.");
         return result.Applied > 0;
+    }
+
+    /// <summary>
+    /// Logs an entry that a pass could not evaluate again because deciding its theme threw (that reads the live objects of
+    /// its owner). The entry keeps its value and the pass goes on with the next one.
+    /// </summary>
+    private static void LogThemeReferenceFailure(ThemeResourceEntry entry, Exception exception)
+    {
+        WinUIDesignerLogger.LogTrace("Surface", $"ThemeResource '{entry.Key}' of a {entry.Owner.GetType().Name} keeps its {entry.Theme} value, it could not be evaluated again: {exception.Message}");
     }
 
     private bool TryReapplyThemeReference(ThemeResourceEntry entry, string theme)

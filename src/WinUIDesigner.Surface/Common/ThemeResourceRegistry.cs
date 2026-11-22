@@ -12,7 +12,7 @@ internal readonly record struct ThemeResourceEntry(object Owner, string Property
 /// <summary>What one pass of <see cref="ThemeResourceRegistry.Reapply"/> did.</summary>
 /// <param name="Visited">The entries it looked at: every entry, once.</param>
 /// <param name="Applied">The entries evaluated again because their theme changed.</param>
-/// <param name="Failed">The entries whose theme changed but whose new value could not be applied; they keep the old theme.</param>
+/// <param name="Failed">The entries whose new theme could not be decided or whose new value could not be applied; they keep the old theme.</param>
 internal readonly record struct ThemeResourceReapplyResult(int Visited, int Applied, int Failed);
 
 /// <summary>
@@ -62,9 +62,14 @@ internal sealed class ThemeResourceRegistry
     /// <summary>
     /// Visits every entry once. An entry whose theme is still the one that <paramref name="decideTheme"/> gives is left
     /// alone; the others are handed to <paramref name="apply"/> with the new theme and keep it when it returns
-    /// <see langword="true"/>.
+    /// <see langword="true"/>. An entry whose theme cannot be decided, or whose <paramref name="apply"/> returns
+    /// <see langword="false"/> or throws, keeps its old theme and is tried again by the next pass; an exception goes to
+    /// <paramref name="onFailure"/>, and the pass goes on with the next entry.
     /// </summary>
-    public ThemeResourceReapplyResult Reapply(Func<ThemeResourceEntry, string> decideTheme, Func<ThemeResourceEntry, string, bool> apply)
+    public ThemeResourceReapplyResult Reapply(
+        Func<ThemeResourceEntry, string> decideTheme,
+        Func<ThemeResourceEntry, string, bool> apply,
+        Action<ThemeResourceEntry, Exception>? onFailure = null)
     {
         int applied = 0;
         int failed = 0;
@@ -77,21 +82,30 @@ internal sealed class ThemeResourceRegistry
                 continue;
             }
 
-            // Already evaluated in that theme: Visual Studio sends the artboard colours again with every new surface.
-            string theme = decideTheme(entry);
-            if (theme == entry.Theme)
+            try
             {
-                continue;
-            }
+                // Already evaluated in that theme: Visual Studio sends the artboard colours again with every new surface.
+                string theme = decideTheme(entry);
+                if (theme == entry.Theme)
+                {
+                    continue;
+                }
 
-            if (apply(entry, theme))
-            {
-                _entries[entryKey] = entry with { Theme = theme };
-                applied++;
+                if (apply(entry, theme))
+                {
+                    _entries[entryKey] = entry with { Theme = theme };
+                    applied++;
+                }
+                else
+                {
+                    failed++;
+                }
             }
-            else
+            catch (Exception exception)
             {
+                // The owner's live objects can fail to answer: this entry keeps its value and must not stop the others.
                 failed++;
+                onFailure?.Invoke(entry, exception);
             }
         }
 
