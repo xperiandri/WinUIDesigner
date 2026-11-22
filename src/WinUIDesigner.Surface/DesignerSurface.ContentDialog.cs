@@ -24,6 +24,12 @@ internal sealed partial class DesignerSurface
     // Gives the dialog the brushes of the theme of the preview and remembers the ones that it wrote over those of the style.
     private readonly ContentDialogBrushRetargeter _dialogBrushes = new();
 
+    // The layer of smoke that the framework opened with the shown dialog and the fill that the framework gave it, which comes
+    // back when the preview has the theme of the application again; and the fill of the layer for each theme of the preview.
+    private Microsoft.UI.Xaml.Shapes.Rectangle? _smokeLayer;
+    private Brush? _frameworkSmokeFill;
+    private readonly Dictionary<string, Brush> _smokeFills = new(StringComparer.Ordinal);
+
     // The pan and zoom of the artboard as Visual Studio sent them last. The dialog is not in the artboard (it is in the
     // popup layer of the island), so it is given them itself, see MoveDialogWithArtboard.
     private double _artboardOffsetX;
@@ -252,11 +258,21 @@ internal sealed partial class DesignerSurface
             dialog.RequestedTheme = theme;
         }
 
-        SyncSmokeLayerTheme(theme);
+        // The themes as the policy names them: the one of the preview (none where the root has no theme of its own), and the
+        // one of the application, which a brush gets that comes from the resources of the application.
+        string? previewTheme = theme switch
+        {
+            ElementTheme.Dark => ContentDialogThemePolicy.Dark,
+            ElementTheme.Light => ContentDialogThemePolicy.Light,
+            _ => null,
+        };
+        string applicationTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark ? ContentDialogThemePolicy.Dark : ContentDialogThemePolicy.Light;
+
+        SyncSmokeLayerTheme(dialog, previewTheme, applicationTheme);
 
         if (dialog.IsLoaded)
         {
-            RetargetDialogBrushes(dialog, theme, Application.Current.RequestedTheme, afterEdits);
+            RetargetDialogBrushes(dialog, previewTheme, applicationTheme, afterEdits);
         }
     }
 
@@ -278,31 +294,115 @@ internal sealed partial class DesignerSurface
     }
 
     /// <summary>
-    /// The layer of smoke that dims what lies behind a dialog is a popup of its own (a rectangle), filled by the framework
-    /// with the colour that the theme of the application has for it: white at 60 per cent in the light theme (the system
-    /// colour <c>SystemAltMediumColor</c>), black at 60 per cent in the dark one. The theme of the application of this
-    /// process is the theme of the system, not the theme of the preview, so a dark preview got a light wash.
+    /// The layer of smoke that dims what lies behind a dialog is a popup of its own (a rectangle) that the framework opens
+    /// with the dialog and fills with the brush that the theme of the application has for it
+    /// (<see cref="ContentDialogThemePolicy.SmokeBrushKey"/>: white at 60 per cent in the light theme, black at 60 per cent in
+    /// the dark one). The theme of the application of this process is the theme of the system, so a dark preview of a light
+    /// system got a light wash. Where the preview has another theme than the application, the layer takes the brush of the
+    /// theme of the preview; where it has the same theme again, the fill of the framework comes back. A popup of the document
+    /// is left alone.
     /// </summary>
-    private void SyncSmokeLayerTheme(ElementTheme theme)
+    private void SyncSmokeLayerTheme(ContentDialog dialog, string? previewTheme, string applicationTheme)
     {
-        if (_viewportRoot.XamlRoot is not { } root || theme == ElementTheme.Default)
+        if (_viewportRoot.XamlRoot is not { } root)
         {
             return;
         }
 
-        var smokeColor = theme == ElementTheme.Dark
-            ? Windows.UI.Color.FromArgb(0x99, 0x00, 0x00, 0x00)
-            : Windows.UI.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF);
-
         foreach (Popup popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
         {
-            if (popup.Child is Microsoft.UI.Xaml.Shapes.Rectangle { Fill: SolidColorBrush current } smoke
-                && current.Color != smokeColor)
+            // Only the layer that the framework opened with the dialog: a popup of the document is in the tree of the dialog.
+            if (!ContentDialogThemePolicy.IsSmokeLayer(popup.Child is Microsoft.UI.Xaml.Shapes.Rectangle, IsWithin(popup, dialog))
+                || popup.Child is not Microsoft.UI.Xaml.Shapes.Rectangle smoke)
             {
-                WinUIDesignerLogger.LogTrace("Surface", $"The smoke layer of the ContentDialog, {DescribeBrush(current)}, is replaced by {smokeColor} for the {theme} theme of the preview.");
-                smoke.Fill = new SolidColorBrush(smokeColor);
+                continue;
+            }
+
+            // The first time that the layer is seen, its fill is the one of the framework.
+            if (!ReferenceEquals(_smokeLayer, smoke))
+            {
+                _smokeLayer = smoke;
+                _frameworkSmokeFill = smoke.Fill;
+            }
+
+            Brush? fill = ContentDialogThemePolicy.PreviewThemeDiffers(previewTheme, applicationTheme) ? SmokeFill(previewTheme) : _frameworkSmokeFill;
+            if (fill is not null && !ReferenceEquals(smoke.Fill, fill))
+            {
+                WinUIDesignerLogger.LogTrace("Surface", $"The smoke layer of the ContentDialog, {DescribeBrush(smoke.Fill)}, is given {DescribeBrush(fill)} for a preview in the theme '{previewTheme}' of an application in the theme '{applicationTheme}'.");
+                smoke.Fill = fill;
             }
         }
+    }
+
+    /// <summary>
+    /// The fill of the layer of smoke in a theme: the brush that the resources of the application have for it in that theme
+    /// (the dictionaries of WinUI do, and an app may have its own), or else the colour that the framework fills it with.
+    /// </summary>
+    private Brush SmokeFill(string theme)
+    {
+        if (!_smokeFills.TryGetValue(theme, out Brush? fill))
+        {
+            fill = FindThemeBrush(Application.Current.Resources, ContentDialogThemePolicy.SmokeBrushKey, theme, 0)
+                ?? new SolidColorBrush(ToColor(ContentDialogThemePolicy.SmokeColor(theme)));
+            _smokeFills[theme] = fill;
+        }
+
+        return fill;
+    }
+
+    /// <summary>
+    /// The brush under <paramref name="key"/> in the theme dictionary of <paramref name="theme"/>, where a lookup finds it:
+    /// in the dictionary itself first, then in the dictionaries that it merges, the last one first.
+    /// </summary>
+    private static Brush? FindThemeBrush(ResourceDictionary dictionary, string key, string theme, int depth)
+    {
+        if (depth > 12)
+        {
+            return null;
+        }
+
+        foreach (string themeKey in ContentDialogThemePolicy.ThemeKeys(theme))
+        {
+            if (dictionary.ThemeDictionaries.TryGetValue(themeKey, out object? themed) && themed is ResourceDictionary themeDictionary)
+            {
+                if (themeDictionary.TryGetValue(key, out object? value) && value is Brush brush)
+                {
+                    return brush;
+                }
+
+                // The theme takes its resources from the first of its dictionaries that is there (Dark before Default).
+                break;
+            }
+        }
+
+        IList<ResourceDictionary> merged = dictionary.MergedDictionaries;
+        for (int index = merged.Count - 1; index >= 0; index--)
+        {
+            if (FindThemeBrush(merged[index], key, theme, depth + 1) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsWithin(DependencyObject element, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = VisualTreeHelper.GetParent(element); current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Windows.UI.Color ToColor(uint argb)
+    {
+        return Windows.UI.Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
     }
 
     /// <summary>
@@ -312,16 +412,8 @@ internal sealed partial class DesignerSurface
     /// that <see cref="ContentDialogThemePolicy"/> chooses for the theme of the preview; the ones that the surface wrote for
     /// another theme are taken back first, and a brush that the document sets on the dialog stays.
     /// </summary>
-    private void RetargetDialogBrushes(ContentDialog dialog, ElementTheme theme, ApplicationTheme application, bool afterEdits)
+    private void RetargetDialogBrushes(ContentDialog dialog, string? previewTheme, string applicationTheme, bool afterEdits)
     {
-        string? previewTheme = theme switch
-        {
-            ElementTheme.Dark => ContentDialogThemePolicy.Dark,
-            ElementTheme.Light => ContentDialogThemePolicy.Light,
-            _ => null,
-        };
-        string applicationTheme = application == ApplicationTheme.Dark ? ContentDialogThemePolicy.Dark : ContentDialogThemePolicy.Light;
-
         // Only the dictionaries of these two themes are read: the choice looks at no other.
         string[] themeKeys = previewTheme is null ? [] : [.. ContentDialogThemePolicy.ThemeKeys(applicationTheme), .. ContentDialogThemePolicy.ThemeKeys(previewTheme)];
 
@@ -541,8 +633,10 @@ internal sealed partial class DesignerSurface
         ContentDialog? dialog = _shownDialog;
         _shownDialog = null;
 
-        // The brushes that the surface wrote belong to the dialog that goes.
+        // The brushes that the surface wrote and the layer of smoke belong to the dialog that goes.
         _dialogBrushes.Forget();
+        _smokeLayer = null;
+        _frameworkSmokeFill = null;
 
         if (dialog is not null)
         {

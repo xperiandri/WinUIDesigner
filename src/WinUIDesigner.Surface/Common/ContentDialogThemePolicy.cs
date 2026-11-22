@@ -72,6 +72,9 @@ internal static class ContentDialogThemePolicy
     /// <summary>The dark theme, as a key of <c>ThemeDictionaries</c> (see <see cref="ThemeKeys"/>).</summary>
     public const string Dark = "Dark";
 
+    /// <summary>The key of the brush that the framework fills the layer of smoke behind a dialog with.</summary>
+    public const string SmokeBrushKey = "SystemControlPageBackgroundMediumAltMediumBrush";
+
     /// <summary>
     /// The keys that a theme has in <c>ThemeDictionaries</c>: the dark theme of Windows is <c>Default</c> (there is no
     /// <c>Dark</c> in the dictionaries of WinUI, nor in those of Uno Material), and the palette of an app may say
@@ -141,6 +144,20 @@ internal static class ContentDialogThemePolicy
         // In no theme dictionary: nothing says that it is a brush of the theme of the application.
         return BrushChoice.Keep("no theme dictionary has it");
     }
+
+    /// <summary>
+    /// Whether an open popup of the island is the layer of smoke that the framework opened with the dialog: a rectangle in a
+    /// popup that is not in the tree of the dialog. A popup that the document has is in that tree, and the popup of the dialog
+    /// itself has the dialog in it.
+    /// </summary>
+    public static bool IsSmokeLayer(bool childIsRectangle, bool popupIsInDialog) => childIsRectangle && !popupIsInDialog;
+
+    /// <summary>
+    /// The colour that the framework fills the layer of smoke with in a theme (<c>SystemAltMediumColor</c>): black at 60 per
+    /// cent in the dark theme, white at 60 per cent in the light one. The layer takes it in the theme of the preview where the
+    /// resources of the application have no brush under <see cref="SmokeBrushKey"/>.
+    /// </summary>
+    public static uint SmokeColor(string theme) => theme == Dark ? 0x99000000 : 0x99FFFFFF;
 
     /// <summary>
     /// The key that a brush is taken from where several keys qualify: the name that a surface has in the Material palette

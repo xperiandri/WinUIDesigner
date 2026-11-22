@@ -162,6 +162,26 @@ public sealed class ContentDialogThemePolicyTests
     }
 
     [TestMethod]
+    public void OnlyTheRectangleThatTheFrameworkOpensWithTheDialogIsTheSmokeLayer()
+    {
+        Assert.IsTrue(ContentDialogThemePolicy.IsSmokeLayer(childIsRectangle: true, popupIsInDialog: false));
+
+        // Before: a <Popup> of the document with a Rectangle in it was given the colour of the smoke too.
+        Assert.IsFalse(ContentDialogThemePolicy.IsSmokeLayer(childIsRectangle: true, popupIsInDialog: true));
+
+        // The popup that has the dialog in it.
+        Assert.IsFalse(ContentDialogThemePolicy.IsSmokeLayer(childIsRectangle: false, popupIsInDialog: false));
+    }
+
+    [TestMethod]
+    public void WithoutABrushOfTheResourcesTheSmokeHasTheColourOfTheFramework()
+    {
+        // SystemAltMediumColor of the dark (Default) and the light theme of WinUI.
+        Assert.AreEqual(0x99000000u, ContentDialogThemePolicy.SmokeColor(Dark));
+        Assert.AreEqual(0x99FFFFFFu, ContentDialogThemePolicy.SmokeColor(Light));
+    }
+
+    [TestMethod]
     public void TheNameOfASurfaceComesFirstThenTheShortestName()
     {
         Assert.AreEqual("SurfaceBrush", ContentDialogThemePolicy.PreferredKey(["InfoBadgeForeground", "SurfaceVariantBrush", "SurfaceBrush", "Hub"]));
