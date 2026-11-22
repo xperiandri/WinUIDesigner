@@ -53,7 +53,8 @@ internal sealed class ContentDialogBrushRetargeter
     /// <paramref name="afterEdits"/> says that the document was edited since. <paramref name="collectDictionaries"/> is called
     /// once at most, and only where a brush needs the resources; <paramref name="describe"/> turns a value of the dialog into
     /// a <see cref="ThemeBrush"/> (<see langword="null"/> for a value that is not a brush); <paramref name="chosen"/> hears of
-    /// each choice that is made, for the log.
+    /// each choice that is made, for the log. The themes count as chosen for only when every brush was looked at: where a
+    /// callback throws, the next call takes back what was written and chooses again, whatever its themes are.
     /// </summary>
     public void Refresh(
         IDialogBrushProperties dialog,
@@ -75,8 +76,11 @@ internal sealed class ContentDialogBrushRetargeter
         if (_themes != (previewTheme, applicationTheme))
         {
             _choices.Clear();
-            _themes = (previewTheme, applicationTheme);
         }
+
+        // The themes are set once every brush is chosen (below): a callback that throws leaves them unset, so that the next
+        // call does not take the dialog for done, with the brushes of the old themes after the failing one still on it.
+        _themes = null;
 
         IReadOnlyList<ThemeDictionarySet>? dictionaries = null;
         foreach (string property in Properties)
@@ -119,5 +123,8 @@ internal sealed class ContentDialogBrushRetargeter
                 _written[property] = target.Brush;
             }
         }
+
+        // Every brush is chosen.
+        _themes = (previewTheme, applicationTheme);
     }
 }

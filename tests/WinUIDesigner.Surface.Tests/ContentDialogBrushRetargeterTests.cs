@@ -187,6 +187,37 @@ public sealed class ContentDialogBrushRetargeterTests
         Assert.AreSame(resources.DarkSurface.Brush, dialog.Local["Background"]);
     }
 
+    [TestMethod]
+    public void ResourcesThatCouldNotBeReadAreReadAgainForTheSameThemes()
+    {
+        var (resources, dialog, retargeter) = MaterialDialog();
+        Assert.Throws<InvalidOperationException>(() => RefreshWithUnreadableResources(retargeter, dialog, resources, Dark, Light));
+        Assert.IsEmpty(dialog.Local);
+
+        // Before: the themes counted as chosen for when the reading failed, so the same themes chose nothing until an edit or
+        // another theme came, and the card stayed white around the dark content.
+        int collected = Refresh(retargeter, dialog, resources, Dark, Light);
+
+        Assert.AreEqual(1, collected);
+        Assert.AreSame(resources.DarkSurface.Brush, dialog.Local["Background"]);
+        Assert.AreSame(resources.DarkOnSurfaceVariant.Brush, dialog.Local["Foreground"]);
+    }
+
+    [TestMethod]
+    public void AFailureAfterTheBrushesOfOtherThemesWereWrittenTakesThemBackOnTheNextCall()
+    {
+        // The dark brushes were written for a dark preview; the preview turns light and the resources cannot be read at the
+        // first brush. The foreground comes after it and still has its dark brush.
+        var (resources, dialog, retargeter) = MaterialDialog();
+        Refresh(retargeter, dialog, resources, Dark, Light);
+        Assert.Throws<InvalidOperationException>(() => RefreshWithUnreadableResources(retargeter, dialog, resources, Light, Dark));
+
+        Refresh(retargeter, dialog, resources, Light, Dark);
+
+        // The brushes of the style are those of the light preview: nothing of the dark brushes stays.
+        Assert.IsEmpty(dialog.Local);
+    }
+
     /// <summary>The Material dialog of the Uno solution: the light brushes of the palette from its style, the dark stroke of WinUI.</summary>
     private static (ThemeResources Resources, FakeDialog Dialog, ContentDialogBrushRetargeter Retargeter) MaterialDialog()
     {
@@ -227,6 +258,19 @@ public sealed class ContentDialogBrushRetargeterTests
         );
 
         return collected;
+    }
+
+    /// <summary>Chooses the brushes of the dialog where reading the resources fails.</summary>
+    private static void RefreshWithUnreadableResources(ContentDialogBrushRetargeter retargeter, FakeDialog dialog, ThemeResources resources, string? previewTheme, string applicationTheme)
+    {
+        retargeter.Refresh(
+            dialog,
+            previewTheme,
+            applicationTheme,
+            afterEdits: false,
+            () => throw new InvalidOperationException("The resources cannot be read."),
+            resources.Describe
+        );
     }
 
     /// <summary>A dialog with the values that its style gives and the values that are set on it.</summary>
