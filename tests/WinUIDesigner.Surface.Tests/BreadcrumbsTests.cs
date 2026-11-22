@@ -1,6 +1,8 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
@@ -45,6 +47,28 @@ public sealed class BreadcrumbsTests
         breadcrumbs.Add("event");
 
         StringAssert.Matches(breadcrumbs.Snapshot()[0], new System.Text.RegularExpressions.Regex(@"^\d\d:\d\d:\d\d\.\d{3} event$"));
+    }
+
+    [TestMethod]
+    public void TheTimeOfAnEntryIsWrittenTheSameWayInEveryCulture()
+    {
+        // fi-FI and id-ID, for example, separate the hours, minutes and seconds with a dot.
+        var dottedTime = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        dottedTime.DateTimeFormat.TimeSeparator = ".";
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        var breadcrumbs = new Breadcrumbs(2);
+
+        CultureInfo.CurrentCulture = dottedTime;
+        try
+        {
+            breadcrumbs.Add("event");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+
+        StringAssert.Matches(breadcrumbs.Snapshot()[0], new Regex(@"^\d\d:\d\d:\d\d\.\d{3} event$"));
     }
 
     [TestMethod]

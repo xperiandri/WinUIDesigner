@@ -26,7 +26,8 @@ internal sealed class Breadcrumbs
 
     public void Add(string text)
     {
-        string entry = $"{DateTime.Now:HH:mm:ss.fff} {text}";
+        // The time separator of a culture can be a dot; the log reads the same on every machine.
+        string entry = FormattableString.Invariant($"{DateTime.Now:HH:mm:ss.fff} {text}");
 
         lock (_gate)
         {
