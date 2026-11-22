@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Windows.Foundation;
 using WinUIDesigner.Markup;
+using WinUIDesigner.Surface.Markup;
 
 namespace WinUIDesigner.Surface.Services;
 
@@ -23,7 +24,6 @@ internal sealed partial class SurfaceService
     private const string _XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
     private const string _BlendDesignNamespace = "http://schemas.microsoft.com/expression/blend/2008";
     private const string _XSurfUwpNamespace = "using:XSurfUwp";
-    private const string _XamlControlsNamespace = "using:Microsoft.UI.Xaml.Controls";
     private readonly Dictionary<int, DesignerSurface> _surfaces = [];
     private readonly SemaphoreSlim _constructionGate = new(1, 1);
     private readonly Dictionary<int, ResourceDictionary> _resourceDocuments = [];
@@ -108,7 +108,7 @@ internal sealed partial class SurfaceService
 
                     _hasXamlControlsResources = appDocument?.Root?.DescendantsAndSelf()
                         .Any(element => element.Name.LocalName == "XamlControlsResources"
-                            && IsXamlControlsNamespace(element.Name.NamespaceName)) == true;
+                            && PreparedXamlNames.IsXamlControlsNamespace(element.Name.NamespaceName)) == true;
 
                     string? requestedTheme = (string?)appDocument?.Root?.Attribute("RequestedTheme");
                     _appRequestedTheme = Enum.TryParse(requestedTheme, true, out ElementTheme theme)
@@ -536,7 +536,7 @@ internal sealed partial class SurfaceService
                             if (element.Name.NamespaceName == "using:XSurfUwp.Fallback"
                                 && ("XSurfUwp.Fallback." + element.Name.LocalName is "XSurfUwp.Fallback.FallbackControl" or "XSurfUwp.Fallback.LayoutFaultFallbackControl"))
                             {
-                                VisualTreeService.RenameForRuntime(element, XNamespace.Get(XamlNamespaceUri.PresentationNamespace) + "ContentControl");
+                                VisualTreeService.RenameForRuntime(element, XNamespace.Get(XamlNamespaces.Presentation) + "ContentControl");
                                 if (element.Attribute("Content") is null && element.Attribute("Tag") is { } originalType)
                                 {
                                     element.SetAttributeValue("Content", originalType.Value);
@@ -737,14 +737,6 @@ internal sealed partial class SurfaceService
             _visualTreeService.PublishMutationIfChanged(entry.Value.Content);
             PublishSurfaceBounds(entry.Key, entry.Value);
         }
-    }
-
-    private static bool IsXamlControlsNamespace(string namespaceName)
-    {
-        // XamlControlsResources is usually written under its CLR namespace, but the presentation namespace
-        // contains the type as well, and either namespace can carry a condition.
-        string baseUri = XamlNamespaceUri.Parse(namespaceName).BaseUri;
-        return baseUri == _XamlControlsNamespace || baseUri == XamlNamespaceUri.PresentationNamespace;
     }
 
     private static string? TryReadPreparedXaml(CreateDocumentInfo? document)

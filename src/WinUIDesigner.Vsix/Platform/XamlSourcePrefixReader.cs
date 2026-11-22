@@ -32,7 +32,7 @@ internal readonly struct XamlSourcePrefix
             ? default
             : XamlNamespaceUri.Parse(string.IsNullOrEmpty(xmlNamespace.Condition)
                 ? xmlNamespace.Value
-                : xmlNamespace.Value + "?" + xmlNamespace.Condition);
+                : $"{xmlNamespace.Value}?{xmlNamespace.Condition}");
     }
 
     /// <summary>
@@ -124,23 +124,35 @@ internal static class XamlSourcePrefixReader
     {
         try
         {
+            // There is no property to read.
             if (parentNode is null || property is null)
             {
                 return XamlSourcePrefix.None;
             }
 
-            // A property set through element content has no container of its own.
-            return parentNode.GetContainerContext(property) switch
-            {
-                XmlElementReference propertyElement => ReadElementPrefix(propertyElement),
-                XmlAttributeReference attribute => ReadAttributePrefix(attribute),
-                _ => XamlSourcePrefix.None,
-            };
+            return ReadContainerPrefix(parentNode.GetContainerContext(property));
         }
         catch (Exception)
         {
             return XamlSourcePrefix.None;
         }
+    }
+
+    /// <summary>
+    /// Returns the prefix of the attribute or the property element that the source reference
+    /// <paramref name="container"/> refers to.
+    /// </summary>
+    /// <returns>The prefix, or <see cref="XamlSourcePrefix.None"/> for any other container.</returns>
+    /// <remarks>Unlike the public methods, this one lets a failure of the designer's references through.</remarks>
+    internal static XamlSourcePrefix ReadContainerPrefix(object? container)
+    {
+        // A property set through element content has no container of its own.
+        return container switch
+        {
+            XmlElementReference propertyElement => ReadElementPrefix(propertyElement),
+            XmlAttributeReference attribute => ReadAttributePrefix(attribute),
+            _ => XamlSourcePrefix.None,
+        };
     }
 
     private static XamlSourcePrefix ReadElementPrefix(XmlElementReference element)
@@ -152,11 +164,13 @@ internal static class XamlSourcePrefixReader
 
     private static XamlSourcePrefix ReadAttributePrefix(XmlAttributeReference attribute)
     {
+        // An attribute outside an element has no scope to resolve its prefix in.
         if (attribute.Parent is not XmlElementReference owner)
         {
             return XamlSourcePrefix.None;
         }
 
+        // The range does not start with an attribute name.
         string? prefix = XamlNamespaceScanner.ReadAttributePrefix(ReadText(attribute, attribute.TextRange));
         if (prefix is null)
         {
@@ -178,18 +192,21 @@ internal static class XamlSourcePrefixReader
 
     private static string? ReadText(XamlSourceContext context, ITextRange? range)
     {
+        // A reference without text or without a range has nothing to read.
         IReadableSelectableTextBuffer? buffer = context.TextBuffer;
         if (buffer is null || range is null)
         {
             return null;
         }
 
+        // A range that starts before the text does not describe it.
         int offset = range.Offset;
         if (offset < 0)
         {
             return null;
         }
 
+        // Only the start of the range is read, and a range at or past the end of the text has nothing to read.
         int length = Math.Min(Math.Min(range.Length, _MaxNameLength), buffer.Length - offset);
         return length > 0 ? buffer.GetText(offset, length) : null;
     }

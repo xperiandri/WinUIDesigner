@@ -34,7 +34,7 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("http://uno.ui/android#using:My.Droid", true)]
     [DataRow("http://uno.ui", false)]
     [DataRow("HTTP://UNO.UI/android", false)]
-    [DataRow(_Presentation, false)]
+    [DataRow(XamlNamespaces.Presentation, false)]
     [DataRow("using:My.App", false)]
     [DataRow("", false)]
     [DataRow(null, false)]
