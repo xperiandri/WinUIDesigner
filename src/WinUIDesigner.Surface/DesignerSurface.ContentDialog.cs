@@ -291,7 +291,8 @@ internal sealed partial class DesignerSurface
     /// After a batch of edits, a change of theme, or the same root set again (<see cref="RefreshLayout"/>), the dialog that is
     /// shown is still the same object, but what it asks for can have changed: a design size that was removed, another style,
     /// a brush that the document set or removed. Its brushes are chosen again, the ones that the surface wrote taken back
-    /// first, and it is fitted again.
+    /// first, and it is fitted again. The surfaces are refreshed one after the other after a batch of edits, so a dialog that
+    /// fails is logged and goes no further: the batch of the other documents does not fail for it.
     /// </summary>
     private void RefreshContentDialog()
     {
@@ -301,8 +302,16 @@ internal sealed partial class DesignerSurface
             return;
         }
 
-        SyncContentDialogTheme(afterEdits: true);
-        FitContentDialog();
+        try
+        {
+            SyncContentDialogTheme(afterEdits: true);
+            FitContentDialog();
+        }
+        catch (Exception exception)
+        {
+            // The card cannot be fitted (a design size that cannot be laid out, project code that throws in a measure).
+            WinUIDesignerLogger.LogWarning("Surface", "The ContentDialog of the preview could not be refreshed.", exception);
+        }
     }
 
     /// <summary>
