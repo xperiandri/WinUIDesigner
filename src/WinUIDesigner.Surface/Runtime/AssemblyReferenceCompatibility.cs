@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 
 namespace WinUIDesigner.Surface.Runtime;
 
@@ -125,6 +126,41 @@ internal static class AssemblyReferenceCompatibility
         return reference.Version is { } requested && surface.GetVersion(name) is { } available && requested > available
             ? ReferenceResolution.SurfaceCopy
             : ReferenceResolution.None;
+    }
+
+    /// <summary>
+    /// Serves a newer reference to a WinRT projection that the surface carries with the surface's own, older copy of
+    /// it, for a handler of <see cref="AssemblyLoadContext.Resolving"/>.
+    /// </summary>
+    /// <param name="context">The context that could not bind the reference.</param>
+    /// <param name="reference">The referenced assembly, with the version that was referenced.</param>
+    /// <param name="surface">The assemblies the surface carries.</param>
+    /// <returns>
+    /// The surface's copy, which the runtime binds by the simple name alone, or <see langword="null"/> when the other
+    /// handlers are to decide: the reference is not one that <see cref="Resolve"/> leaves to the surface's copy, or the
+    /// copy cannot be read or loaded.
+    /// </returns>
+    public static Assembly? ServeFromSurfaceCopy(AssemblyLoadContext context, AssemblyName reference, SurfaceAssemblies surface)
+    {
+        // A handler that throws fails the code that needed the reference, which can be a callback of the XAML framework.
+        try
+        {
+            // Any other reference: Visual Studio's handler, and then the project's, decide. Only the surface's copy
+            // matters here, so no file of the project is staged as far as this handler is concerned.
+            if (Resolve(reference, surface, static _ => false) != ReferenceResolution.SurfaceCopy)
+            {
+                return null;
+            }
+
+            // A newer reference to a projection the surface carries: its own copy is bound by the simple name alone.
+            return context.LoadFromAssemblyName(new AssemblyName(reference.Name!));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The version of the surface's copy cannot be read, or the copy cannot be loaded either; the reference
+            // fails as it would without this handler.
+            return null;
+        }
     }
 
     /// <summary>

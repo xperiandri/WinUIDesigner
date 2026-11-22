@@ -2,6 +2,7 @@
 // Licensed under MIT License.
 
 using System.Reflection;
+using System.Runtime.Loader;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
@@ -42,6 +43,11 @@ public sealed class AssemblyReferenceCompatibilityTests
     private static ReferenceResolution Resolve(string reference)
     {
         return AssemblyReferenceCompatibility.Resolve(new AssemblyName(reference), _CarriedBySurface, _Staged.Contains);
+    }
+
+    private static Assembly? ServeFromSurfaceCopy(string reference, SurfaceAssemblies surface)
+    {
+        return AssemblyReferenceCompatibility.ServeFromSurfaceCopy(AssemblyLoadContext.Default, new AssemblyName(reference), surface);
     }
 
     [TestMethod]
@@ -233,6 +239,29 @@ public sealed class AssemblyReferenceCompatibilityTests
     {
         // The runtime binds these to the surface's copy by itself; the project's staged copy is never loaded.
         Assert.AreEqual(ReferenceResolution.None, Resolve(reference));
+    }
+
+    [TestMethod]
+    public void AnUnreadableSurfaceCopyDoesNotFailTheHandler()
+    {
+        // As when the host denies access to the surface's own file; the handler must not throw.
+        var surface = new SurfaceAssemblies(@"C:\Surface\Microsoft.Windows.SDK.NET.dll", _ => throw new UnauthorizedAccessException());
+
+        Assert.IsNull(ServeFromSurfaceCopy("Microsoft.Windows.SDK.NET, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null", surface));
+    }
+
+    [TestMethod]
+    public void AProjectionTheSurfaceCannotLoadIsLeftToTheOtherHandlers()
+    {
+        // The surface carries it, as far as its list goes, but this test host has no Microsoft.Windows.SDK.NET to bind.
+        Assert.IsNull(ServeFromSurfaceCopy("Microsoft.Windows.SDK.NET, Version=10.0.29000.0, Culture=neutral, PublicKeyToken=null", _CarriedBySurface));
+    }
+
+    [TestMethod]
+    public void AnotherNewerReferenceIsNotServedWithTheCarriedCopy()
+    {
+        // This test host does carry System.Text.Json: only the decision of Resolve keeps the handler from serving it.
+        Assert.IsNull(ServeFromSurfaceCopy("System.Text.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51", _CarriedBySurface));
     }
 
     [TestMethod]

@@ -57,25 +57,14 @@ internal static class ProjectRuntimeResolver
     {
         AssemblyLoadContext.Default.Resolving += (context, name) =>
         {
-            // Any other reference: Visual Studio's handler, and then the project's, decide.
-            if (AssemblyReferenceCompatibility.Resolve(name, _SurfaceAssemblies, _Assemblies.ContainsKey) != ReferenceResolution.SurfaceCopy)
+            Assembly? surfaceCopy = AssemblyReferenceCompatibility.ServeFromSurfaceCopy(context, name, _SurfaceAssemblies);
+
+            // A newer reference to a projection that the surface carries, served by its own copy.
+            if (surfaceCopy is not null)
             {
-                return null;
+                ReportServedOnce(name, surfaceCopy);
             }
 
-            // A newer reference to a projection the surface carries: its own copy is bound by the simple name alone.
-            Assembly surfaceCopy;
-            try
-            {
-                surfaceCopy = context.LoadFromAssemblyName(new AssemblyName(name.Name!));
-            }
-            catch (Exception ex) when (ex is IOException or BadImageFormatException)
-            {
-                // The surface's copy cannot be loaded either; the reference fails as it would without this handler.
-                return null;
-            }
-
-            ReportServedOnce(name, surfaceCopy);
             return surfaceCopy;
         };
     }
