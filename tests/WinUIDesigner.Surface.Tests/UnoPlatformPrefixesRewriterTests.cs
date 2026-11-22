@@ -268,6 +268,32 @@ public sealed class UnoPlatformPrefixesRewriterTests
     }
 
     [TestMethod]
+    public void PrefixThatIsExcludedByItsNameButBoundToThePresentationNamespaceStaysOnWindows()
+    {
+        // The Windows XAML compiler resolves the presentation namespace whatever the prefix is called.
+        string xaml = $"""
+            <StackPanel xmlns="{_Presentation}" xmlns:not_win="{_Presentation}" xmlns:android="{_Presentation}">
+              <not_win:Border Tag="kept" android:Padding="4" />
+            </StackPanel>
+            """;
+
+        XamlNamespaceRewriteResult onWindows = Rewrite(xaml, "win", out XDocument windows);
+
+        XElement border = windows.Root!.Elements().Single();
+        Assert.AreEqual(_P + "Border", border.Name);
+        CollectionAssert.AreEqual(new[] { "Tag=kept", "Padding=4" }, PlainAttributes(border));
+        Assert.AreEqual(0, onWindows.DroppedElements);
+        Assert.AreEqual(0, onWindows.DroppedAttributes);
+
+        // On another platform the prefix decides: not_win is included on iOS and android is not.
+        Rewrite(xaml, "ios", out XDocument ios);
+
+        XElement iosBorder = ios.Root!.Elements().Single();
+        Assert.AreEqual(_P + "Border", iosBorder.Name);
+        CollectionAssert.AreEqual(new[] { "Tag=kept" }, PlainAttributes(iosBorder));
+    }
+
+    [TestMethod]
     public void UnknownUnoPrefixIsDroppedWhenItIsIgnorableAndLeftOtherwise()
     {
         string xaml = $"""

@@ -119,6 +119,9 @@ public sealed class UnoPlatformPrefixScanTests
     [DataRow("android", "http://uno.ui/android", true, "android", "Keep")]
     [DataRow("not_win", "http://uno.ui/not_win", true, "win", "Drop")]
     [DataRow("not_win", "http://uno.ui/not_win", true, "skia", "Keep")]
+    // Bound to the namespace the Windows XAML compiler resolves, the members stay whatever the prefix is called.
+    [DataRow("not_win", "http://schemas.microsoft.com/winfx/2006/xaml/presentation", false, "win", "Keep")]
+    [DataRow("android", "http://schemas.microsoft.com/winfx/2006/xaml/presentation", false, "win", "Keep")]
     [DataRow("skia", "using:SkiaSharp.Views.Windows", false, "win", "Leave")]
     [DataRow("legacy", "http://uno.ui/legacy", true, "win", "Drop")]
     [DataRow("", "http://schemas.microsoft.com/winfx/2006/xaml/presentation", false, "android", "Leave")]

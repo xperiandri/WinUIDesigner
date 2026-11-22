@@ -133,7 +133,8 @@ internal static class UnoPlatformPrefixes
     /// </returns>
     /// <remarks>
     /// A platform prefix decides whether or not it is listed in <c>mc:Ignorable</c>; a prefix that should be
-    /// listed and is not is found by <see cref="FindMissingIgnorable"/>, for the caller to report.
+    /// listed and is not is found by <see cref="FindMissingIgnorable"/>, for the caller to report. On Windows a
+    /// platform prefix is kept exactly when it is bound to the presentation namespace, whatever its name says.
     /// </remarks>
     public static XamlPrefixDisposition Classify(string prefix, XamlNamespaceUri uri, bool isIgnorable, string targetPlatform)
     {
@@ -152,18 +153,14 @@ internal static class UnoPlatformPrefixes
                 return XamlPrefixDisposition.Leave;
             }
 
-            bool isIncluded = IsIncluded(platform, isNegated, targetPlatform);
-
-            // Uno's own compiler includes a prefix whatever namespace it is bound to. Windows is built by the
-            // Windows XAML compiler, which knows no platform prefixes and includes what it can resolve: of the
-            // namespaces a platform prefix is bound to, that is the presentation namespace alone. So
-            // not_netstdref, which the documentation binds to an Uno namespace, is left out on Windows.
-            if (isIncluded
-                && IsWindows(targetPlatform)
-                && !string.Equals(uri.BaseUri, XamlNamespaces.Presentation, StringComparison.Ordinal))
-            {
-                isIncluded = false;
-            }
+            // Uno's own compiler includes a prefix whatever namespace it is bound to, as the table says. Windows is
+            // built by the Windows XAML compiler, which knows no platform prefixes and includes what it can resolve:
+            // of the namespaces a platform prefix is bound to, that is the presentation namespace alone. So on
+            // Windows the namespace decides, in both directions: not_win bound to the presentation namespace is
+            // kept, and not_netstdref, which the documentation binds to an Uno namespace, is left out.
+            bool isIncluded = IsWindows(targetPlatform)
+                ? string.Equals(uri.BaseUri, XamlNamespaces.Presentation, StringComparison.Ordinal)
+                : IsIncluded(platform, isNegated, targetPlatform);
 
             return isIncluded ? XamlPrefixDisposition.Keep : XamlPrefixDisposition.Drop;
         }
