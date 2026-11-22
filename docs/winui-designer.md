@@ -220,21 +220,21 @@ sequenceDiagram
     Conditions-->>Service: Answers, the ones prepared XAML is rewritten with
     Service-->>Protocol: Reply
     Protocol-->>Manager: Answers, kept per question
-    Note over Manager: Wait at most two seconds, twenty for the<br/>first answer, then continue with 516 CreateSurface
+    Note over Manager: Wait only for what the surface alone can decide:<br/>two seconds, up to two minutes for the first answer,<br/>then continue with 516 CreateSurface
     Manager->>Manager: ShouldIgnoreProperty and GetInstanceBuilder<br/>drop what the answers exclude
 ```
 
-The first wait is longer because a surface process that has just started answers only once it is ready, which took about six seconds in a running designer; the document waits for that start anyway. The long wait is spent once, also when the surface never answers.
+Visual Studio waits only for the predicates that it cannot decide itself: a custom condition, and a type or property of the application. A malformed or empty predicate is settled by code that both processes share, and a contract or a `Windows.*` type or property asks the same Windows the surface runs on, so these are decided from the first document on, even while the surface is still starting. The surface is asked all the same, and its answer replaces the local one.
 
-Nothing waits for the surface while a document is being built, and answers take effect only before a document is sent, never while Visual Studio builds one. A verdict that changed halfway through would build an element as written and then drop its properties; the surface cannot create a `Setter` without its `Property`. An answer that arrives later takes effect with the next document that is loaded and discards the verdicts reached without it. The answers are used as follows:
+The first answer of a surface process that has just started took about six seconds in a running designer, and about a minute while the machine was busy scanning for malware. The wait for it is therefore capped at two minutes, and a trace says after twenty seconds that the surface is still starting. It is one stretch of time for every document that waits for it, so a second document that loads meanwhile waits for the same answer; it is used up only when it ran out or an answer arrived, and a surface that never answers costs it once.
+
+Nothing waits for the surface while a document is being built, and answers take effect only before a document is sent. A document that is being built, on the protocol thread of Visual Studio or in an edit, is judged with one set of answers: its verdicts are kept until its text changes or it is loaded again, and a condition has one answer in that time, whichever member asks. A verdict that changed halfway through would build an element as written and then drop its properties; the surface cannot create a `Setter` without its `Property`. An answer that arrives later takes effect with the next document that is loaded, or the next change of a document's text. The questions that the documents of a request raise are sent together, in one request. The answers are used as follows:
 
 | Situation | Result |
 | --- | --- |
-| The surface has not answered any request | No predicate is evaluated; the members are built as written. A surface that does not know the message never answers. |
+| A predicate that is malformed or empty, about a contract, or about a `Windows.*` type or property | Decided by Visual Studio from the first document on, by the shared code or on the same operating system as the surface, and confirmed by the surface in the background. |
+| A custom condition, or a type or property of the application | The document waits for the answer when the predicate is new. Until the surface has answered any request, the members are built as written; after that, a custom condition that was not answered yet does not apply, and a type or property predicate is left as written, until the answer takes effect with the next document. A surface that does not know the message never answers. |
 | The predicate was answered | The answer of the surface. |
-| A predicate that appears later, about a contract or a `Windows.*` type | Answered by Visual Studio, which runs on the same operating system, and confirmed by the surface in the background. |
-| A custom condition that appears later | Not satisfied until the surface has answered and the next document is loaded. |
-| Another type or property predicate that appears later | Left as written until the surface has answered and the next document is loaded. |
 
 ##### Limitations
 

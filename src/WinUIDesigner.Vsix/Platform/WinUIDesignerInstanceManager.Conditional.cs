@@ -20,10 +20,13 @@ internal sealed partial class WinUIDesignerInstanceManager
     // on its UI thread. Loading a document must not wait long for either.
     private static readonly TimeSpan _ConditionAnswerTimeout = TimeSpan.FromSeconds(2);
 
-    // A surface process that has just started answers once it is ready, which took about six seconds in a
-    // running designer. The document that is about to be sent waits for the same start anyway. The wait is
-    // spent once, also when the surface never answers.
-    private static readonly TimeSpan _FirstConditionAnswerTimeout = TimeSpan.FromSeconds(20);
+    // A surface process that has just started answers once it is ready. That took about six seconds in a
+    // running designer and, on a machine that was busy with scanning for malware, up to about a minute. A
+    // document whose conditions only the surface can decide waits for the same start anyway. The wait is one
+    // stretch of time for all documents and is spent once, also when the surface never answers; a trace says
+    // after twenty seconds that the surface is still starting.
+    private static readonly TimeSpan _FirstConditionAnswerTimeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan _FirstConditionAnswerNotice = TimeSpan.FromSeconds(20);
 
     private static readonly object _Reported = new();
 
@@ -44,7 +47,8 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// <remarks>
     /// The surface evaluates the conditions of prepared XAML itself. Its answers are needed here for the
     /// other path: when the surface asks for construction actions, and for every edit afterwards, the
-    /// document model decides which members exist.
+    /// document model decides which members exist. Only conditions that this process cannot decide are waited
+    /// for: those about a custom condition or a type of the application.
     /// </remarks>
     private async Task PrepareConditionalNamespacesAsync(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
     {
@@ -52,22 +56,31 @@ internal sealed partial class WinUIDesignerInstanceManager
 
         // Everything that may be built for this request: the target, the documents prepared with it, and
         // what else the markup provider has registered, such as App.xaml and the design-time resources.
+        // The questions that come up while the documents are scanned go out together, in one request.
         var queries = new Dictionary<string, XamlConditionQuery>(StringComparer.Ordinal);
         var scanned = new HashSet<IDocumentRoot>();
-        AddConditions(queries, scanned, targetDocument);
-        foreach (ISurfaceProcessDocument document in preparedDocuments)
+        using (answers.BeginCollecting())
         {
-            AddConditions(queries, scanned, document);
-        }
+            AddConditions(queries, scanned, targetDocument);
+            foreach (ISurfaceProcessDocument document in preparedDocuments)
+            {
+                AddConditions(queries, scanned, document);
+            }
 
-        AddConditions(queries, scanned, MarkupProvider.AppXaml);
-        foreach (ISurfaceProcessDocument document in MarkupProvider.RegisteredDocuments)
-        {
-            AddConditions(queries, scanned, document);
+            AddConditions(queries, scanned, MarkupProvider.AppXaml);
+            foreach (ISurfaceProcessDocument document in MarkupProvider.RegisteredDocuments)
+            {
+                AddConditions(queries, scanned, document);
+            }
         }
 
         // The answers that arrived take effect here, before anything of this request is built.
-        await answers.AskAsync(new List<XamlConditionQuery>(queries.Values), _ConditionAnswerTimeout, _FirstConditionAnswerTimeout).ConfigureAwait(false);
+        await answers.AskAsync(
+            new List<XamlConditionQuery>(queries.Values),
+            _ConditionAnswerTimeout,
+            _FirstConditionAnswerTimeout,
+            _FirstConditionAnswerNotice
+        ).ConfigureAwait(false);
 
         // The documents that are about to be built are judged with the answers that took effect. A document
         // that is being built, such as another page that loads at the same time, keeps the answers it has.
@@ -161,7 +174,9 @@ internal sealed partial class WinUIDesignerInstanceManager
             ProtocolHandler.CancellationToken,
             _memberDispositions.AnswersChanged,
             XamlConditionAnswers.CreateLocalProbes(),
-            (message, exception) => WinUIDesignerLogger.LogWarning("Platform", message, exception));
+            (message, exception) => WinUIDesignerLogger.LogWarning("Platform", message, exception),
+            message => WinUIDesignerLogger.LogTrace("Platform", message)
+        );
 
         _memberDispositions.EvaluateCondition = answers.Evaluate;
         return answers;

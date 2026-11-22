@@ -161,11 +161,14 @@ public sealed class XamlConditionProtocolTests
             new XamlConditionProbeSet { IsApiContractPresent = (_, _, _) => true },
             (message, _) => warnings.Enqueue(message));
 
-        await answers.AskAsync([XamlConditionQuery.Create($"IsApiContractPresent({_Contract},7)", predicateNamespace: null)], TimeSpan.FromMilliseconds(200));
+        Func<string, string?> namespaces = prefix => prefix == "cond" ? "using:My.App" : null;
+        await answers.AskAsync([XamlConditionQuery.Create("cond:FeatureFlagCondition(A, B)", namespaces)], TimeSpan.FromMilliseconds(200));
 
-        // Nothing is decided without the surface, not even what this process could tell by itself.
+        // A condition of the application is not decided without the surface, but what this process can tell
+        // by itself, about the operating system both processes run on, is.
         Assert.IsFalse(answers.SurfaceAnswers);
-        Assert.IsNull(answers.Evaluate($"IsApiContractPresent({_Contract},7)", _ => null));
+        Assert.IsNull(answers.Evaluate("cond:FeatureFlagCondition(A, B)", namespaces));
+        Assert.AreEqual(true, answers.Evaluate($"IsApiContractPresent({_Contract},7)", namespaces));
         Assert.AreEqual(1, warnings.Count);
         StringAssert.Contains(warnings.Single(), "did not answer");
     }

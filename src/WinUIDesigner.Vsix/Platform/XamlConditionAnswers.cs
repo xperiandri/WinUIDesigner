@@ -24,25 +24,22 @@ namespace WinUIDesigner.Platform;
 /// from construction actions drop the same members.
 /// </para>
 /// <para>
-/// Nothing here waits for the surface while a document is being built. A condition that is met for the first
-/// time is answered from this process where that is possible, counts as not satisfied when it is a custom
-/// condition, and is asked in the background. Until the surface has answered once, no condition is evaluated
-/// at all: a surface that does not know the message never answers, and it loads prepared XAML with its
-/// conditional namespaces as written.
+/// Nothing here waits for the surface while a document is being built. What this process can decide itself is
+/// decided from the first document on, without waiting: malformed and empty conditions, which the code both
+/// processes share settles, and contracts and types and properties of the operating system, which both
+/// processes ask the same Windows. The surface is still asked, to confirm, and its answer replaces the local
+/// one. A condition that needs the surface, a custom condition or a type of the application, counts as not
+/// satisfied when it is custom, and is left as written otherwise, until the surface has answered. A surface
+/// that does not know the message never answers, and it loads prepared XAML with its conditional namespaces
+/// as written.
 /// </para>
 /// <para>
-/// Answers take effect only in <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan)"/>,
-/// which runs before a document is sent to the surface, one caller at a time and on the context of the caller.
-/// A reply that arrived in the middle of building would change verdicts halfway through: an element built as
-/// written would lose its properties, and the surface cannot create a <c>Setter</c> without its <c>Property</c>.
-/// A reply that arrives later takes effect with the next document.
-/// </para>
-/// <para>
-/// That alone does not keep the verdicts of a document that is being built apart from the call for another
-/// document, which may overlap its construction on another thread: Visual Studio builds the actions of a
-/// document on the thread of its protocol, and an edit on the user interface thread.
-/// <see cref="XamlMemberDispositionService"/> does that: it judges a document with one set of answers until
-/// the text of the document changes or the document is loaded again.
+/// Answers are put into effect only in <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan, TimeSpan)"/>,
+/// which runs before a document is sent to the surface, and in no other place: a reply that arrives in
+/// between is kept for the next call. That does not by itself keep the verdicts of a document that is
+/// being built apart from a later call for another document, which may overlap its construction on another
+/// thread. <see cref="XamlMemberDispositionService"/> does that: it judges a document with one set of
+/// answers until the text of the document changes or the document is loaded again.
 /// </para>
 /// <para>
 /// The class does not depend on the designer: the connection to the surface and the log are passed in as
@@ -58,6 +55,7 @@ internal sealed class XamlConditionAnswers
     private readonly CancellationToken _connectionClosed;
     private readonly Action _answersChanged;
     private readonly Action<string, Exception?> _report;
+    private readonly Action<string>? _trace;
     private readonly XamlConditionService _conditions;
     private readonly ConcurrentDictionary<string, bool> _answeredKeys = new(StringComparer.Ordinal);
     private readonly object _gate = new();
@@ -65,14 +63,18 @@ internal sealed class XamlConditionAnswers
 
     // Guarded by _gate: the questions that wait for the request in flight to finish, the keys of the
     // questions that were sent, the request in flight together with the processing of its reply, the
-    // replies that have not taken effect yet, and whether the long wait for the first answer was spent.
+    // replies that have not taken effect yet, and the long wait for the first answer of the surface.
     private readonly Dictionary<string, XamlConditionQuery> _waiting = new(StringComparer.Ordinal);
     private readonly HashSet<string> _askedKeys = new(StringComparer.Ordinal);
     private readonly List<ReceivedReply> _received = [];
     private Task? _request;
     private int _failedRequests;
-    private bool _firstAnswerWaited;
+    private long _firstAnswerStarted;
+    private long _firstAnswerDeadline;
+    private bool _firstAnswerNoticeWritten;
+    private bool _firstAnswerTimeoutReported;
 
+    private int _collecting;
     private volatile bool _surfaceAnswers;
 
     /// <summary>
@@ -81,35 +83,39 @@ internal sealed class XamlConditionAnswers
     /// <param name="askSurface">Sends a request to the surface and returns its reply.</param>
     /// <param name="connectionClosed">Is canceled when the connection to the surface closes.</param>
     /// <param name="answersChanged">
-    /// Called, on the thread that calls <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan)"/>,
-    /// when answers took effect that change what <see cref="Evaluate"/> returns.
+    /// Called when answers took effect that change what <see cref="Evaluate"/> returns, on the thread that calls
+    /// <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan, TimeSpan)"/>.
     /// </param>
     /// <param name="localProbes">What this process can tell about the system; see <see cref="CreateLocalProbes"/>.</param>
     /// <param name="report">Receives a warning and the exception behind it, if any.</param>
+    /// <param name="trace">Receives a message that is only of interest to somebody who looks for a problem.</param>
     public XamlConditionAnswers(
         Func<EvaluateXamlConditionsRequest, Task<EvaluateXamlConditionsResponse>> askSurface,
         CancellationToken connectionClosed,
         Action answersChanged,
         XamlConditionProbeSet localProbes,
-        Action<string, Exception?> report)
+        Action<string, Exception?> report,
+        Action<string>? trace = null)
     {
         _askSurface = askSurface ?? throw new ArgumentNullException(nameof(askSurface));
         _connectionClosed = connectionClosed;
         _answersChanged = answersChanged ?? throw new ArgumentNullException(nameof(answersChanged));
         _report = report ?? throw new ArgumentNullException(nameof(report));
+        _trace = trace;
         _conditions = new XamlConditionService(
             localProbes ?? throw new ArgumentNullException(nameof(localProbes)),
-            message => Report("Conditional XAML: " + message));
+            message => Report($"Conditional XAML: {message}"));
     }
 
     /// <summary>
-    /// Gets a value indicating whether an answer of the surface has taken effect. Conditions are evaluated only then.
+    /// Gets a value indicating whether an answer of the surface has taken effect. Conditions that only the
+    /// surface can decide are evaluated only then.
     /// </summary>
     public bool SurfaceAnswers => _surfaceAnswers;
 
     /// <summary>
     /// Gets a value indicating whether a request is waiting for its reply. A reply that arrived is either kept
-    /// for the next call of <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan)"/> or failed.
+    /// for the next call of <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan, TimeSpan)"/> or failed.
     /// </summary>
     internal bool IsRequestInFlight
     {
@@ -127,9 +133,23 @@ internal sealed class XamlConditionAnswers
     /// operating system both processes run on. The probes are missing where the Windows Runtime class behind
     /// them cannot be reached; only the surface answers then, which takes effect later.
     /// </summary>
-    public static XamlConditionProbeSet CreateLocalProbes()
+    public static XamlConditionProbeSet CreateLocalProbes() => WindowsApiInformation.CreateProbes();
+
+    /// <summary>
+    /// Starts collecting questions: <see cref="Evaluate"/> queues what it has not been asked before but does not
+    /// send it, so that everything the documents of a request ask goes in one request, by the call of
+    /// <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan, TimeSpan)"/> that follows.
+    /// </summary>
+    /// <remarks>
+    /// Scanning a document evaluates the first condition it declares, and the call of <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan, TimeSpan)"/>
+    /// adds the others. Sent as soon as it is evaluated, the first condition would be a request of its own and the
+    /// others would wait for its reply.
+    /// </remarks>
+    /// <returns>The scope; dispose it when the questions of the documents have been collected.</returns>
+    public IDisposable BeginCollecting()
     {
-        return WindowsApiInformation.CreateProbes();
+        Interlocked.Increment(ref _collecting);
+        return new CollectingScope(this);
     }
 
     /// <summary>
@@ -144,63 +164,88 @@ internal sealed class XamlConditionAnswers
     }
 
     /// <summary>
-    /// Asks the surface the questions it has not been asked yet, waits a limited time for the answers, and puts
-    /// every answer that has arrived into effect. Called before a document is sent to the surface.
+    /// Asks the surface the questions it has not been asked yet, waits a limited time for the answers that
+    /// the documents cannot do without, and puts every answer that has arrived into effect. Called before a
+    /// document is sent to the surface.
     /// </summary>
     /// <param name="queries">The conditions of the documents that are about to be built; may be empty.</param>
     /// <param name="timeout">How long to wait. The surface answers in the order it receives messages.</param>
     /// <param name="firstAnswerTimeout">
     /// How long to wait while the surface has not answered yet: a surface process that has just started
-    /// answers only once it is ready. This wait is spent once, so a surface that never answers costs it a
-    /// single time.
+    /// answers only once it is ready. The wait is one stretch of time that starts when the first request is
+    /// awaited and ends at the same moment for every document that waits for it; a surface that never answers
+    /// costs it once.
+    /// </param>
+    /// <param name="firstAnswerNotice">
+    /// After how long of the wait for the first answer a trace says that the surface is still starting;
+    /// <see cref="TimeSpan.Zero"/> for no trace.
     /// </param>
     /// <remarks>
-    /// Answers take effect here and nowhere else, so that they cannot change while a document is being built.
-    /// A reply that arrives after this call returns takes effect at the next call.
+    /// Only conditions that need the surface are waited for: a custom condition, or a type or a property of
+    /// the application. What this process decides itself is sent and confirmed in the background.
     /// </remarks>
-    public async Task AskAsync(IReadOnlyCollection<XamlConditionQuery> queries, TimeSpan timeout, TimeSpan firstAnswerTimeout)
+    public async Task AskAsync(
+        IReadOnlyCollection<XamlConditionQuery> queries,
+        TimeSpan timeout,
+        TimeSpan firstAnswerTimeout,
+        TimeSpan firstAnswerNotice = default)
     {
         // What arrived since the last document takes effect before anything of this one is built.
         ApplyReceivedAnswers();
 
+        bool needsSurface = false;
         foreach (XamlConditionQuery query in queries)
         {
             Enqueue(query);
+            needsSurface |= NeedsSurface(query);
         }
 
-        if (queries.Count == 0)
+        // Nothing here waits for the surface: the questions go out to be confirmed, and an empty request
+        // still shows whether the surface answers at all. Its reply takes effect with the next document.
+        if (!needsSurface)
         {
-            // Nothing to wait for. An empty request still shows whether the surface answers at all; its
-            // reply takes effect with the next document.
-            if (!_surfaceAnswers)
-            {
-                _ = Send(force: true);
-            }
+            _ = Send(force: !_surfaceAnswers);
 
+            // A reply may have arrived while the questions were looked at.
+            ApplyReceivedAnswers();
             return;
         }
 
-        TimeSpan wait = TakeWaitTime(timeout, firstAnswerTimeout);
         try
         {
             var elapsed = Stopwatch.StartNew();
+            FirstWait? wait = null;
             while (true)
             {
                 // A request of an earlier call may still be in flight; the questions of this call follow it.
                 Task? request = Send(force: false);
+
+                // Nothing was sent or is in flight: nothing was waited for, and no wait is used up.
                 if (request is null)
                 {
                     return;
                 }
 
-                TimeSpan remaining = wait - elapsed.Elapsed;
+                // The long wait starts when a request is awaited, not when the call is made.
+                wait ??= TakeWaitTime(timeout, firstAnswerTimeout);
+                TimeSpan remaining = wait.Value.Time - elapsed.Elapsed;
+                TimeSpan untilNotice = wait.Value.IsFirstAnswerWait ? GetTimeToNotice(firstAnswerNotice) : TimeSpan.Zero;
+                bool noticeFirst = untilNotice > TimeSpan.Zero && untilNotice < remaining;
+
                 // The wait goes on at the context of the caller, which is where the document is built next.
-                if (remaining <= TimeSpan.Zero
-                    || await Task.WhenAny(request, Task.Delay(remaining)) != request)
+                if (remaining > TimeSpan.Zero && await Task.WhenAny(request, Task.Delay(noticeFirst ? untilNotice : remaining)) == request)
                 {
-                    Report($"The surface did not answer which conditional XAML namespaces apply within {wait.TotalSeconds:0.#} s. Its answers take effect when the next document is loaded.");
-                    return;
+                    continue;
                 }
+
+                if (noticeFirst)
+                {
+                    WriteFirstAnswerNotice(firstAnswerNotice);
+                    continue;
+                }
+
+                ReportTimeout(wait.Value);
+                return;
             }
         }
         finally
@@ -223,16 +268,22 @@ internal sealed class XamlConditionAnswers
         bool surfaceDecides = kind is XamlConditionKind.ApiContract or XamlConditionKind.Type or XamlConditionKind.Property
             || (kind == XamlConditionKind.Custom && query.TypeName is not null);
 
-        // Without an answering surface nothing is decided: deciding conditions here alone would make the two
-        // loading paths disagree. Otherwise this process answers first, so that the surface's answer, which
-        // may arrive at any moment, is compared with what was returned.
+        // What this process can decide itself is decided at once: the surface runs on the same Windows and
+        // reads the same code. For the rest nothing is decided without an answering surface, because it
+        // loads prepared XAML as written until then, and deciding alone would make the two loading paths
+        // disagree. Whatever this process answers first is compared with the answer of the surface later.
         bool surfaceAnswers = _surfaceAnswers;
-        bool? holds = surfaceAnswers ? _conditions.Evaluate(query) : null;
+        bool? holds = surfaceAnswers || _conditions.CanEvaluate(query) ? _conditions.Evaluate(query) : null;
 
         if (surfaceDecides && !_answeredKeys.ContainsKey(query.Key))
         {
             Enqueue(query);
-            Send(force: false);
+
+            // A document that collects its questions sends them together.
+            if (Volatile.Read(ref _collecting) == 0)
+            {
+                Send(force: false);
+            }
         }
 
         if (!holds.HasValue && kind == XamlConditionKind.Custom && surfaceAnswers)
@@ -243,6 +294,14 @@ internal sealed class XamlConditionAnswers
         }
 
         return holds;
+    }
+
+    private bool NeedsSurface(XamlConditionQuery query)
+    {
+        // Questions that the surface answered already, and those this process decides itself, need no wait.
+        return !_answeredKeys.ContainsKey(query.Key)
+            && query.Condition.Kind is not (XamlConditionKind.Empty or XamlConditionKind.Unknown)
+            && !_conditions.CanEvaluate(query);
     }
 
     private void Enqueue(XamlConditionQuery query)
@@ -300,7 +359,8 @@ internal sealed class XamlConditionAnswers
                     reply => ProcessReply(queries, reply),
                     CancellationToken.None,
                     TaskContinuationOptions.None,
-                    TaskScheduler.Default);
+                    TaskScheduler.Default
+                );
                 return _request;
             }
             catch (Exception ex)
@@ -367,12 +427,15 @@ internal sealed class XamlConditionAnswers
             _failedRequests = 0;
         }
 
-        // Questions that came up while the request was in flight.
-        Send(force: false);
+        // Questions that came up while the request was in flight; a document that collects them sends them itself.
+        if (Volatile.Read(ref _collecting) == 0)
+        {
+            Send(force: false);
+        }
     }
 
     /// <summary>
-    /// Puts the replies that arrived into effect. Called only between documents.
+    /// Puts the replies that arrived into effect. Called only from <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan, TimeSpan)"/>.
     /// </summary>
     private void ApplyReceivedAnswers()
     {
@@ -423,15 +486,88 @@ internal sealed class XamlConditionAnswers
         }
     }
 
-    private TimeSpan TakeWaitTime(TimeSpan timeout, TimeSpan firstAnswerTimeout)
+    /// <summary>
+    /// Returns how long a call that awaits a request may wait.
+    /// </summary>
+    private FirstWait TakeWaitTime(TimeSpan timeout, TimeSpan firstAnswerTimeout)
     {
         lock (_gate)
         {
-            bool waitForFirstAnswer = !_surfaceAnswers && !_firstAnswerWaited;
-            _firstAnswerWaited = true;
-            return waitForFirstAnswer && firstAnswerTimeout > timeout ? firstAnswerTimeout : timeout;
+            // The usual time, once the surface has answered.
+            if (_surfaceAnswers || firstAnswerTimeout <= timeout)
+            {
+                return new FirstWait(timeout, isFirstAnswerWait: false, TimeSpan.Zero);
+            }
+
+            // The wait for the first answer is one stretch of time for all documents: the one that finds the
+            // surface still starting waits for the end of it, not for a new one.
+            long now = Stopwatch.GetTimestamp();
+            if (_firstAnswerDeadline == 0)
+            {
+                _firstAnswerStarted = now;
+                _firstAnswerDeadline = now + ToTicks(firstAnswerTimeout);
+            }
+
+            // The usual time, once the stretch has ended.
+            TimeSpan left = FromTicks(_firstAnswerDeadline - now);
+            return left > timeout
+                ? new FirstWait(left, isFirstAnswerWait: true, FromTicks(now - _firstAnswerStarted))
+                : new FirstWait(timeout, isFirstAnswerWait: false, TimeSpan.Zero);
         }
     }
+
+    private TimeSpan GetTimeToNotice(TimeSpan firstAnswerNotice)
+    {
+        lock (_gate)
+        {
+            // The notice is written once, and not when the surface has answered or there is none to write.
+            if (firstAnswerNotice <= TimeSpan.Zero || _firstAnswerNoticeWritten || _surfaceAnswers)
+            {
+                return TimeSpan.Zero;
+            }
+
+            TimeSpan sinceStart = FromTicks(Stopwatch.GetTimestamp() - _firstAnswerStarted);
+            return firstAnswerNotice > sinceStart ? firstAnswerNotice - sinceStart : TimeSpan.Zero;
+        }
+    }
+
+    private void WriteFirstAnswerNotice(TimeSpan firstAnswerNotice)
+    {
+        lock (_gate)
+        {
+            if (_firstAnswerNoticeWritten)
+            {
+                return;
+            }
+
+            _firstAnswerNoticeWritten = true;
+        }
+
+        WriteTrace($"The surface has not answered which conditional XAML namespaces apply within {firstAnswerNotice.TotalSeconds:0.#} s; it is probably still starting. The document waits for its answer.");
+    }
+
+    private void ReportTimeout(FirstWait wait)
+    {
+        // Every document that waits for the first answer reaches the end of it together; one warning is enough.
+        if (wait.IsFirstAnswerWait)
+        {
+            lock (_gate)
+            {
+                if (_firstAnswerTimeoutReported)
+                {
+                    return;
+                }
+
+                _firstAnswerTimeoutReported = true;
+            }
+        }
+
+        Report($"The surface did not answer which conditional XAML namespaces apply within {(wait.Time + wait.AlreadyWaited).TotalSeconds:0.#} s. Its answers take effect when the next document is loaded.");
+    }
+
+    private static long ToTicks(TimeSpan time) => (long)(time.TotalSeconds * Stopwatch.Frequency);
+
+    private static TimeSpan FromTicks(long ticks) => TimeSpan.FromSeconds(ticks / (double)Stopwatch.Frequency);
 
     private void Forget(List<XamlConditionQuery> queries)
     {
@@ -453,6 +589,30 @@ internal sealed class XamlConditionAnswers
         }
     }
 
+    private void WriteTrace(string message)
+    {
+        try
+        {
+            _trace?.Invoke(message);
+        }
+        catch (Exception)
+        {
+            // A log that fails must not change which members a document has.
+        }
+    }
+
+    /// <summary>
+    /// How long a call may wait for a request, and how much of the wait for the first answer has passed already.
+    /// </summary>
+    private readonly struct FirstWait(TimeSpan time, bool isFirstAnswerWait, TimeSpan alreadyWaited)
+    {
+        public TimeSpan Time { get; } = time;
+
+        public bool IsFirstAnswerWait { get; } = isFirstAnswerWait;
+
+        public TimeSpan AlreadyWaited { get; } = alreadyWaited;
+    }
+
     /// <summary>
     /// A reply of the surface that has not taken effect yet, with the questions it answers.
     /// </summary>
@@ -461,6 +621,22 @@ internal sealed class XamlConditionAnswers
         public List<XamlConditionQuery> Queries { get; } = queries;
 
         public EvaluateXamlConditionsResponse Response { get; } = response;
+    }
+
+    /// <summary>
+    /// The scope in which <see cref="Evaluate"/> only collects questions.
+    /// </summary>
+    private sealed class CollectingScope(XamlConditionAnswers owner) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                Interlocked.Decrement(ref owner._collecting);
+            }
+        }
     }
 
     /// <summary>

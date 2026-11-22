@@ -27,15 +27,19 @@ public sealed class XamlConditionAnswersTests
     private static readonly TimeSpan _Long = TimeSpan.FromSeconds(10);
 
     [TestMethod]
-    public async Task NothingIsEvaluatedBeforeTheSurfaceAnswers()
+    public async Task WhatOnlyTheSurfaceCanDecideIsNotEvaluatedBeforeItAnswers()
     {
         var surface = new FakeSurface { Hold = true };
         XamlConditionAnswers answers = surface.CreateAnswers();
 
-        // Not even what this process could tell by itself: the surface loads prepared XAML as written until it answers.
+        // This process has no probe for a contract, and cannot load a condition type or see the application's
+        // types: the surface loads prepared XAML as written until it answers.
         Assert.IsNull(answers.Evaluate(_C7, Namespaces));
         Assert.IsNull(answers.Evaluate(_NewExperience, Namespaces));
-        Assert.IsNull(answers.Evaluate("IsTypePresent(", Namespaces));
+        Assert.IsNull(answers.Evaluate(_ColorPicker, Namespaces));
+
+        // A malformed condition is decided by the code both processes share.
+        Assert.AreEqual(false, answers.Evaluate("IsTypePresent(", Namespaces));
         Assert.IsFalse(answers.SurfaceAnswers);
 
         // The question is on its way all the same.
@@ -488,6 +492,231 @@ public sealed class XamlConditionAnswersTests
     }
 
     [TestMethod]
+    public async Task ContractsAndTypesOfTheOperatingSystemAreDecidedFromTheFirstDocumentOn()
+    {
+        // Both processes run on the same Windows, so the local probes tell the same as the surface would.
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers(CreateOperatingSystemProbes());
+        const string typePresent = "IsTypePresent(Windows.Foundation.Uri)";
+        const string typeNotPresent = "IsTypeNotPresent(Windows.Foundation.NoSuchType)";
+        const string propertyPresent = "IsPropertyPresent(Windows.Foundation.Uri,Host)";
+
+        Assert.AreEqual(true, answers.Evaluate(_C7, Namespaces));
+        Assert.AreEqual(false, answers.Evaluate(_C7N, Namespaces));
+        Assert.AreEqual(false, answers.Evaluate(_C99, Namespaces));
+        Assert.AreEqual(true, answers.Evaluate(typePresent, Namespaces));
+        Assert.AreEqual(true, answers.Evaluate(typeNotPresent, Namespaces));
+        Assert.AreEqual(true, answers.Evaluate(propertyPresent, Namespaces));
+
+        // The surface has not answered, and is still asked to confirm.
+        Assert.IsFalse(answers.SurfaceAnswers);
+        Assert.AreEqual(1, surface.RequestCount);
+        Assert.Contains(_C7, surface.Requests[0].Conditions!);
+
+        surface.Hold = false;
+        surface.Release();
+        await WaitFor(() => surface.RequestCount == 2 && !answers.IsRequestInFlight);
+        await answers.AskAsync([], _Long);
+
+        // Confirmed, the answers are the same.
+        Assert.IsTrue(answers.SurfaceAnswers);
+        Assert.AreEqual(true, answers.Evaluate(_C7, Namespaces));
+        Assert.AreEqual(false, answers.Evaluate(_C99, Namespaces));
+    }
+
+    [TestMethod]
+    public async Task ConditionsDecidedHereAreNotWaitedFor()
+    {
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers(CreateOperatingSystemProbes());
+        var elapsed = Stopwatch.StartNew();
+
+        // A surface that has not started answering would make every document wait for the long time.
+        await answers.AskAsync(Queries(_C7, _C99, "IsTypePresent(Windows.Foundation.Uri)", "IsTypePresent("), _Long, _Long);
+
+        Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromSeconds(5), elapsed.Elapsed.ToString());
+        Assert.AreEqual(0, surface.Warnings.Count);
+
+        // They are asked all the same, in one request, to be confirmed in the background.
+        Assert.AreEqual(1, surface.RequestCount);
+        Assert.HasCount(3, surface.Requests[0].Conditions!);
+    }
+
+    [TestMethod]
+    [DataRow(_NewExperience)]
+    [DataRow(_ColorPicker)]
+    [DataRow("IsPropertyPresent(Microsoft.UI.Xaml.Controls.Control,DefaultStyleKey)")]
+    public async Task CustomConditionsAndTypesOfTheApplicationAreWaitedFor(string condition)
+    {
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers(CreateOperatingSystemProbes());
+        var elapsed = Stopwatch.StartNew();
+
+        await answers.AskAsync(Queries(_C7, condition), TimeSpan.FromMilliseconds(600), TimeSpan.FromMilliseconds(600));
+
+        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(500), elapsed.Elapsed.ToString());
+        Assert.AreEqual(1, surface.Warnings.Count);
+        StringAssert.Contains(surface.Warnings[0], "did not answer");
+    }
+
+    [TestMethod]
+    public async Task OnlyMalformedAndEmptyConditionsStillAskTheSurfaceOnce()
+    {
+        var surface = new FakeSurface();
+        XamlConditionAnswers answers = surface.CreateAnswers();
+        var elapsed = Stopwatch.StartNew();
+
+        // The first document of a surface that has not answered has nothing but conditions that no surface is needed for.
+        await answers.AskAsync(Queries("IsApiContractPresent(X)", string.Empty), _Long, _Long);
+
+        // Nothing waits for the answer, and the members of the malformed condition are dropped as the surface drops them.
+        Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromSeconds(5), elapsed.Elapsed.ToString());
+        Assert.AreEqual(false, answers.Evaluate("IsApiContractPresent(X)", Namespaces));
+        Assert.AreEqual(true, answers.Evaluate(string.Empty, Namespaces));
+
+        // An empty request was sent all the same, which shows whether the surface answers at all.
+        Assert.AreEqual(1, surface.RequestCount);
+        Assert.IsEmpty(surface.Requests[0].Conditions!);
+        await WaitFor(() => !answers.IsRequestInFlight);
+        await answers.AskAsync([], _Long);
+        Assert.IsTrue(answers.SurfaceAnswers);
+        Assert.AreEqual(1, surface.RequestCount);
+    }
+
+    [TestMethod]
+    public async Task FirstAnswerWaitWritesOneNoticeAndOneWarning()
+    {
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers();
+        var elapsed = Stopwatch.StartNew();
+
+        await answers.AskAsync(Queries(_NewExperience), TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(1200), TimeSpan.FromMilliseconds(300));
+        elapsed.Stop();
+
+        // The notice says that the surface is still starting, once and before the wait ends; the warning comes at the end.
+        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(1100), elapsed.Elapsed.ToString());
+        Assert.AreEqual(1, surface.Traces.Count);
+        StringAssert.Contains(surface.Traces[0], "still starting");
+        Assert.AreEqual(1, surface.Warnings.Count);
+        StringAssert.Contains(surface.Warnings[0], "did not answer");
+
+        // The warning names the length of the whole wait, in the format of the log.
+        StringAssert.Contains(surface.Warnings[0], $"within {1.2:0.#} s");
+
+        // The next document does not say it again; it waits the usual time.
+        await answers.AskAsync(Queries(_LegacyMode), TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(1200), TimeSpan.FromMilliseconds(300));
+        Assert.AreEqual(1, surface.Traces.Count);
+        Assert.AreEqual(2, surface.Warnings.Count);
+    }
+
+    [TestMethod]
+    public async Task FirstAnswerWaitThatEndsWithoutWaitingIsNotUsedUp()
+    {
+        var surface = new FakeSurface { Hold = true, Reply = _ => throw new InvalidOperationException("the pipe is not there yet") };
+        XamlConditionAnswers answers = surface.CreateAnswers();
+        TimeSpan firstAnswerTimeout = TimeSpan.FromMilliseconds(800);
+
+        // The request cannot be sent, so nothing is waited for.
+        var elapsed = Stopwatch.StartNew();
+        await answers.AskAsync(Queries(_NewExperience), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
+        Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromMilliseconds(700), elapsed.Elapsed.ToString());
+
+        // The surface is there now and slow: the next document still gets the long wait.
+        surface.Reply = null;
+        elapsed.Restart();
+        await answers.AskAsync(Queries(_LegacyMode), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
+        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(700), elapsed.Elapsed.ToString());
+    }
+
+    [TestMethod]
+    public async Task FirstAnswerWaitIsOneStretchOfTimeForDocumentsThatLoadTogether()
+    {
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers();
+        TimeSpan firstAnswerTimeout = TimeSpan.FromMilliseconds(1500);
+        var elapsed = Stopwatch.StartNew();
+
+        Task first = answers.AskAsync(Queries(_NewExperience), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
+        await Task.Delay(300);
+        Task second = answers.AskAsync(Queries(_LegacyMode), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
+
+        // The second document does not give up after the usual time: it waits for the same answer.
+        await Task.Delay(500);
+        Assert.IsFalse(second.IsCompleted, "The second document waits for the first answer as the first one does.");
+
+        // Both end when the stretch ends, with one warning between them.
+        await Task.WhenAll(first, second);
+        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(1400), elapsed.Elapsed.ToString());
+        Assert.AreEqual(1, surface.Warnings.Count);
+
+        // The answer that arrives in the stretch is what both wait for.
+        surface = new FakeSurface { Hold = true };
+        answers = surface.CreateAnswers();
+        first = answers.AskAsync(Queries(_NewExperience), TimeSpan.FromMilliseconds(50), _Long);
+        await Task.Delay(100);
+        second = answers.AskAsync(Queries(_LegacyMode), TimeSpan.FromMilliseconds(50), _Long);
+        await Task.Delay(300);
+        Assert.IsFalse(first.IsCompleted);
+        Assert.IsFalse(second.IsCompleted);
+
+        surface.Hold = false;
+        surface.Release();
+        await Task.WhenAll(first, second);
+        Assert.IsTrue(answers.SurfaceAnswers);
+        Assert.AreEqual(0, surface.Warnings.Count);
+    }
+
+    [TestMethod]
+    public async Task FirstConditionThatIsEvaluatedWhileCollectingIsNotSentAlone()
+    {
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers();
+
+        // Scanning a document evaluates the first condition it declares; the call that follows adds the others.
+        using (answers.BeginCollecting())
+        {
+            answers.Evaluate(_NewExperience, Namespaces);
+            Assert.AreEqual(0, surface.RequestCount);
+        }
+
+        Assert.AreEqual(0, surface.RequestCount);
+        Task ask = answers.AskAsync(Queries(_NewExperience, _ColorPicker, _LegacyMode), _Long, _Long);
+
+        // One request has all three questions, and its reply is the only one that is awaited.
+        Assert.AreEqual(1, surface.RequestCount);
+        CollectionAssert.AreEquivalent(new[] { _NewExperience, _ColorPicker, _LegacyMode }, surface.Requests[0].Conditions);
+        surface.Hold = false;
+        surface.Release();
+        await ask;
+
+        Assert.AreEqual(1, surface.RequestCount);
+        Assert.AreEqual(true, answers.Evaluate(_NewExperience, Namespaces));
+        Assert.AreEqual(true, answers.Evaluate(_ColorPicker, Namespaces));
+        Assert.AreEqual(false, answers.Evaluate(_LegacyMode, Namespaces));
+    }
+
+    [TestMethod]
+    public async Task QuestionsAreSentAtOnceWhenNoDocumentCollectsThem()
+    {
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers();
+
+        using (answers.BeginCollecting())
+        {
+            answers.Evaluate(_NewExperience, Namespaces);
+        }
+
+        // Once the collecting ends, the first new condition goes out when it is asked about, as before.
+        answers.Evaluate(_ColorPicker, Namespaces);
+        Assert.AreEqual(1, surface.RequestCount);
+        CollectionAssert.AreEquivalent(new[] { _NewExperience, _ColorPicker }, surface.Requests[0].Conditions);
+
+        surface.Hold = false;
+        surface.Release();
+        await WaitFor(() => !answers.IsRequestInFlight);
+    }
+
+    [TestMethod]
     public async Task AnswersAreAppliedOneCallerAtATime()
     {
         var surface = new FakeSurface();
@@ -542,6 +771,16 @@ public sealed class XamlConditionAnswersTests
 
         Assert.IsTrue(answers.SurfaceAnswers);
         Assert.AreEqual(context.ThreadId, appliedOn, "The answers took effect on a thread that is not the caller's.");
+    }
+
+    private static XamlConditionProbeSet CreateOperatingSystemProbes()
+    {
+        return new XamlConditionProbeSet
+        {
+            IsApiContractPresent = (_, major, _) => major <= 10,
+            IsWindowsTypePresent = name => name == "Windows.Foundation.Uri",
+            IsWindowsPropertyPresent = (type, property) => type == "Windows.Foundation.Uri" && property == "Host",
+        };
     }
 
     private static string? Namespaces(string prefix)
@@ -647,6 +886,7 @@ public sealed class XamlConditionAnswersTests
         private readonly object _gate = new();
         private readonly List<EvaluateXamlConditionsRequest> _requests = [];
         private readonly List<string> _warnings = [];
+        private readonly List<string> _traces = [];
         private readonly List<(TaskCompletionSource<EvaluateXamlConditionsResponse> Completion, EvaluateXamlConditionsRequest Request)> _held = [];
         private readonly XamlConditionService _conditions;
         private int _changeCount;
@@ -710,6 +950,18 @@ public sealed class XamlConditionAnswersTests
             }
         }
 
+        /// <summary>Gets what the answers wrote to their trace.</summary>
+        public List<string> Traces
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _traces];
+                }
+            }
+        }
+
         public XamlConditionAnswers CreateAnswers(XamlConditionProbeSet? localProbes = null, CancellationToken connectionClosed = default)
         {
             return new XamlConditionAnswers(
@@ -723,7 +975,15 @@ public sealed class XamlConditionAnswersTests
                     {
                         _warnings.Add(exception is null ? message : $"{message} {exception.GetType().Name}: {exception.Message}");
                     }
-                });
+                },
+                message =>
+                {
+                    lock (_gate)
+                    {
+                        _traces.Add(message);
+                    }
+                }
+            );
         }
 
         public EvaluateXamlConditionsResponse Answer(EvaluateXamlConditionsRequest request)

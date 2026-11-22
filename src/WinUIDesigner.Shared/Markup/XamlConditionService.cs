@@ -68,6 +68,37 @@ internal sealed class XamlConditionService
     }
 
     /// <summary>
+    /// Returns whether this process can decide a condition without another process: the condition is malformed
+    /// or empty, which the shared grammar settles, or this process has a probe for what the condition asks.
+    /// </summary>
+    /// <remarks>
+    /// A custom condition whose type cannot even be named counts as decided here: it is not satisfied in
+    /// every process. Otherwise only a process that can load the type can tell.
+    /// </remarks>
+    public bool CanEvaluate(XamlConditionQuery query)
+    {
+        XamlCondition condition = query.Condition;
+        switch (condition.Kind)
+        {
+            case XamlConditionKind.ApiContract:
+                return _probes.IsApiContractPresent is not null;
+
+            case XamlConditionKind.Type:
+                return (IsWindowsName(condition.Arguments[0]) ? _probes.IsWindowsTypePresent : _probes.IsManagedTypePresent) is not null;
+
+            case XamlConditionKind.Property:
+                return (IsWindowsName(condition.Arguments[0]) ? _probes.IsWindowsPropertyPresent : _probes.IsManagedPropertyPresent) is not null;
+
+            case XamlConditionKind.Custom:
+                return query.PredicateNamespace is null || query.TypeName is null || _probes.EvaluateCustom is not null;
+
+            default:
+                // Empty and malformed conditions.
+                return true;
+        }
+    }
+
+    /// <summary>
     /// Records the answer to a question as another process gave it; it replaces what this process found out itself.
     /// </summary>
     /// <param name="key">The <see cref="XamlConditionQuery.Key"/> of the question.</param>

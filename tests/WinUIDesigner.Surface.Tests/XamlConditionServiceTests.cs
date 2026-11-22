@@ -372,6 +372,52 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(XamlConditionKind.Type, query.Condition.Kind);
     }
 
+    [TestMethod]
+    [DataRow("IsApiContractPresent(X,7)", true)]
+    [DataRow("IsTypePresent(Windows.Foundation.Uri)", true)]
+    [DataRow("IsPropertyPresent(Windows.Foundation.Uri,Host)", true)]
+    [DataRow("IsTypePresent(Microsoft.UI.Xaml.Controls.Button)", false)]
+    [DataRow("IsPropertyPresent(Microsoft.UI.Xaml.Controls.Control,CornerRadius)", false)]
+    [DataRow("cond:Flag(On)", false)]
+    public void ProcessCanDecideWhatItHasAProbeFor(string condition, bool expectedWithProbes)
+    {
+        Func<string, string?> namespaces = Namespaces(("cond", "using:My.App"));
+        XamlConditionQuery query = XamlConditionQuery.Create(condition, namespaces);
+        XamlConditionService withOperatingSystemProbes = new(new XamlConditionProbeSet
+        {
+            IsApiContractPresent = (_, _, _) => true,
+            IsWindowsTypePresent = _ => true,
+            IsWindowsPropertyPresent = (_, _) => true,
+        });
+        XamlConditionService withoutProbes = new(new XamlConditionProbeSet());
+
+        Assert.AreEqual(expectedWithProbes, withOperatingSystemProbes.CanEvaluate(query));
+        Assert.IsFalse(withoutProbes.CanEvaluate(query));
+    }
+
+    [TestMethod]
+    [DataRow("IsApiContractPresent(X)")]
+    [DataRow("IsTypePresent(")]
+    [DataRow("")]
+    [DataRow("nope:Flag(On)")]
+    [DataRow("uri:Flag(On)")]
+    public void ProcessCanDecideWhatTheSharedCodeSettlesWithoutAnyProbe(string condition)
+    {
+        // Malformed, empty, with an undeclared prefix, or with a namespace that names no CLR namespace.
+        XamlConditionQuery query = XamlConditionQuery.Create(condition, Namespaces(("uri", "http://example.org/conditions")));
+
+        Assert.IsTrue(new XamlConditionService(new XamlConditionProbeSet()).CanEvaluate(query));
+    }
+
+    [TestMethod]
+    public void CustomConditionOfALoadableTypeIsDecidedOnlyWhereItCanBeCreated()
+    {
+        XamlConditionQuery query = XamlConditionQuery.Create("cond:Flag(On)", Namespaces(("cond", "using:My.App")));
+
+        Assert.IsFalse(new XamlConditionService(new XamlConditionProbeSet()).CanEvaluate(query));
+        Assert.IsTrue(new XamlConditionService(new XamlConditionProbeSet { EvaluateCustom = (_, _) => true }).CanEvaluate(query));
+    }
+
     private static string? NoNamespaces(string prefix)
     {
         return null;
