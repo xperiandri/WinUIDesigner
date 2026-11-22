@@ -30,7 +30,7 @@ public sealed class DispatcherOperationTests
         Assert.IsFalse(step.IsCompleted);
         queued!();
         Assert.AreEqual(42, await Promptly(step));
-        Assert.AreEqual(TimeSpan.FromMinutes(10), Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.Step, Step)).Duration);
+        Assert.AreEqual(TimeSpan.FromMinutes(10), Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.SlowStep, Step)).Duration);
         Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.GaveUp, Step));
     }
 
@@ -255,6 +255,69 @@ public sealed class DispatcherOperationTests
     {
         Assert.IsTrue(DispatcherOperation.IsUnanswered(new DispatcherTimeoutException("The time limit passed.")));
         Assert.IsTrue(DispatcherOperation.IsUnanswered(new DispatcherCanceledException("The protocol has ended.")));
+    }
+
+    [TestMethod]
+    public async Task StepIsReportedWithItsQueueWaitAndItsRunTime()
+    {
+        const string Step = nameof(StepIsReportedWithItsQueueWaitAndItsRunTime);
+        var time = new ManualTimeProvider();
+        Action? queued = null;
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+
+        Task<int> pending = DispatcherOperation.RunAsync(queue, Step, () =>
+        {
+            time.Advance(TimeSpan.FromSeconds(7));
+            return 1;
+        }, time, default);
+        time.Advance(TimeSpan.FromSeconds(5));
+        queued!();
+        await Promptly(pending);
+
+        DispatcherReport report = Assert.ContainsSingle(DispatcherReports.Of(DispatcherReportKind.Step, Step));
+        Assert.AreEqual(TimeSpan.FromSeconds(5), report.Duration);
+        Assert.AreEqual(TimeSpan.FromSeconds(7), report.RunTime);
+        Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.SlowStep, Step));
+    }
+
+    [TestMethod]
+    [DataRow(45, 0, true)]
+    [DataRow(0, 45, true)]
+    [DataRow(20, 11, true)]
+    [DataRow(20, 10, false)]
+    public async Task StepThatTookLongerThanTheInteractiveLimitIsReportedAsSlow(int waitSeconds, int runSeconds, bool slow)
+    {
+        string step = $"{nameof(StepThatTookLongerThanTheInteractiveLimitIsReportedAsSlow)} {waitSeconds}+{runSeconds}";
+        var time = new ManualTimeProvider();
+        Action? queued = null;
+        var queue = new DispatcherQueue(action => { queued = action; return true; });
+
+        Task<int> pending = DispatcherOperation.RunAsync(queue, step, () =>
+        {
+            time.Advance(TimeSpan.FromSeconds(runSeconds));
+            return 1;
+        }, time, default);
+        time.Advance(TimeSpan.FromSeconds(waitSeconds));
+        queued!();
+        await Promptly(pending);
+
+        // The wait and the run time of a step together, not each of them, are compared with the interactive limit.
+        DispatcherReport report = Assert.ContainsSingle(DispatcherReports.Of(slow ? DispatcherReportKind.SlowStep : DispatcherReportKind.Step, step));
+        Assert.AreEqual(TimeSpan.FromSeconds(waitSeconds), report.Duration);
+        Assert.AreEqual(TimeSpan.FromSeconds(runSeconds), report.RunTime);
+        Assert.IsEmpty(DispatcherReports.Of(slow ? DispatcherReportKind.Step : DispatcherReportKind.SlowStep, step));
+    }
+
+    [TestMethod]
+    public async Task InteractiveRequestIsNotTracedAsAStep()
+    {
+        const string Request = nameof(InteractiveRequestIsNotTracedAsAStep);
+        var queue = new DispatcherQueue(action => { action(); return true; });
+
+        Assert.AreEqual(1, await Promptly(DispatcherOperation.InvokeAsync(queue, Request, () => 1, DispatcherOperation.InteractiveTimeout, new ManualTimeProvider(), default)));
+
+        Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.Step, Request));
+        Assert.IsEmpty(DispatcherReports.Of(DispatcherReportKind.SlowStep, Request));
     }
 
     [TestMethod]

@@ -16,6 +16,12 @@ internal static partial class DispatcherOperation
         WinUIDesignerLogger.LogTrace("Surface", $"'{step}' waited {queueWait.TotalMilliseconds:0} ms for the UI thread and ran for {runTime.TotalMilliseconds:0} ms.");
     }
 
+    static partial void ReportSlowStep(string step, TimeSpan queueWait, TimeSpan runTime)
+    {
+        // A warning, not a trace: the default log keeps it, so that a slow start can be told from a hang, and a wait for the
+        // UI thread from a slow step.
+        WinUIDesignerLogger.LogWarning("Surface", $"'{step}' took {(queueWait + runTime).TotalSeconds:0.#} s: it waited {queueWait.TotalSeconds:0.#} s for the UI thread and ran for {runTime.TotalSeconds:0.#} s.");
+    }
 
     static partial void ReportGaveUp(string request, TimeSpan waited, Exception reason)
     {

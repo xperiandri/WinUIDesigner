@@ -10,7 +10,12 @@ internal static partial class DispatcherOperation
 {
     static partial void ReportStep(string step, TimeSpan queueWait, TimeSpan runTime)
     {
-        DispatcherReports.Add(new(DispatcherReportKind.Step, step, queueWait, null));
+        DispatcherReports.Add(new(DispatcherReportKind.Step, step, queueWait, null, runTime));
+    }
+
+    static partial void ReportSlowStep(string step, TimeSpan queueWait, TimeSpan runTime)
+    {
+        DispatcherReports.Add(new(DispatcherReportKind.SlowStep, step, queueWait, null, runTime));
     }
 
     static partial void ReportGaveUp(string request, TimeSpan waited, Exception reason)
@@ -32,15 +37,17 @@ internal static partial class DispatcherOperation
 internal enum DispatcherReportKind
 {
     Step,
+    SlowStep,
     GaveUp,
     LateFinish,
     LongWait,
 }
 
 /// <summary>
-/// A report of <see cref="DispatcherOperation"/>: for a step, <see cref="Duration"/> is its wait in the dispatcher queue.
+/// A report of <see cref="DispatcherOperation"/>: for a step, <see cref="Duration"/> is its wait in the dispatcher queue and
+/// <see cref="RunTime"/> the time that it ran on the UI thread.
 /// </summary>
-internal sealed record DispatcherReport(DispatcherReportKind Kind, string Name, TimeSpan Duration, Exception? Exception);
+internal sealed record DispatcherReport(DispatcherReportKind Kind, string Name, TimeSpan Duration, Exception? Exception, TimeSpan RunTime = default);
 
 /// <summary>
 /// The reports of <see cref="DispatcherOperation"/> in the tests. Each test gives its requests a name of its own and reads

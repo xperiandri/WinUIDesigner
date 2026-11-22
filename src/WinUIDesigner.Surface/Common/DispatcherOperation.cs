@@ -181,7 +181,14 @@ internal static partial class DispatcherOperation
                 }
 
                 long finished = time.GetTimestamp();
-                ReportStep(request, time.GetElapsedTime(enqueued, started), time.GetElapsedTime(started, finished));
+
+                // The steps of the work on a document are traced. The requests of Visual Studio that wait for their answer
+                // (hit tests, properties, snap lines) are not: they follow the user's pointing, and a trace is a write to the
+                // log file, on the UI thread.
+                if (timeout == Timeout.InfiniteTimeSpan)
+                {
+                    ReportFinishedStep(request, time.GetElapsedTime(enqueued, started), time.GetElapsedTime(started, finished));
+                }
 
                 // The request gave up while the callback ran: what the callback changed stays, but its result or
                 // exception reaches nobody.
@@ -228,13 +235,34 @@ internal static partial class DispatcherOperation
         }
     }
 
+    private static void ReportFinishedStep(string step, TimeSpan queueWait, TimeSpan runTime)
+    {
+        // Longer than a synchronous request would have waited: before the steps had no time limit, this one would have
+        // timed out.
+        if (queueWait + runTime > InteractiveTimeout)
+        {
+            ReportSlowStep(step, queueWait, runTime);
+        }
+        else
+        {
+            // Within that limit: only traced.
+            ReportStep(step, queueWait, runTime);
+        }
+    }
 
     // The surface writes these reports to its log (DispatcherOperation.Log.cs); the test project records them instead.
 
     /// <summary>
-    /// A step ran on the UI thread after <paramref name="queueWait"/> in the dispatcher queue, for <paramref name="runTime"/>.
+    /// A step of the work on a document ran on the UI thread after <paramref name="queueWait"/> in the dispatcher queue,
+    /// for <paramref name="runTime"/>.
     /// </summary>
     static partial void ReportStep(string step, TimeSpan queueWait, TimeSpan runTime);
+
+    /// <summary>
+    /// A step of the work on a document took longer than <see cref="InteractiveTimeout"/> altogether: it waited
+    /// <paramref name="queueWait"/> in the dispatcher queue and ran for <paramref name="runTime"/>.
+    /// </summary>
+    static partial void ReportSlowStep(string step, TimeSpan queueWait, TimeSpan runTime);
 
     /// <summary>
     /// A request stopped waiting for the UI thread after <paramref name="waited"/> because of <paramref name="reason"/>.
