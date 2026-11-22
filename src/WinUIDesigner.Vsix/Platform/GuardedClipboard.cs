@@ -79,12 +79,14 @@ internal sealed class GuardedClipboard : IClipboard
 
     public bool ContainsData(string format)
     {
+        // Windows answers this without opening the clipboard, so it is never delayed and its answer ends no outage.
         try
         {
             return _clipboard.ContainsData(format);
         }
         catch (Exception exception) when (IsClipboardFailure(exception))
         {
+            // WPF fails it only when Windows cannot register a format name it has not seen before.
             MarkUnavailable(exception);
             return false;
         }
@@ -92,11 +94,13 @@ internal sealed class GuardedClipboard : IClipboard
 
     public object? GetData(string format)
     {
+        // Within the retry delay: an empty clipboard, without waiting for it again.
         if (IsInRetryDelay)
         {
             return null;
         }
 
+        // Otherwise ask: an answer ends an outage, and a failure starts one or makes it last.
         try
         {
             object? data = _clipboard.GetData(format);
@@ -110,15 +114,17 @@ internal sealed class GuardedClipboard : IClipboard
         }
     }
 
+    // Never null: some of Visual Studio's paste code uses the result without checking it.
+    // With an object that holds no format, pasting ends with the "cannot paste" message.
     public IDataObject GetDataObject()
     {
-        // Not null: some of Visual Studio's paste code uses the result without checking it.
-        // With an object that holds no format, pasting ends with the "cannot paste" message.
+        // Within the retry delay: an empty clipboard, without waiting for it again.
         if (IsInRetryDelay)
         {
             return new DataObject();
         }
 
+        // Otherwise ask: an answer ends an outage, and a failure starts one or makes it last.
         try
         {
             IDataObject data = _clipboard.GetDataObject();
@@ -134,11 +140,13 @@ internal sealed class GuardedClipboard : IClipboard
 
     public bool IsCurrent(IDataObject data)
     {
+        // Within the retry delay: an empty clipboard, without waiting for it again.
         if (IsInRetryDelay)
         {
             return false;
         }
 
+        // Otherwise ask: an answer ends an outage, and a failure starts one or makes it last.
         try
         {
             bool isCurrent = _clipboard.IsCurrent(data);
@@ -168,10 +176,7 @@ internal sealed class GuardedClipboard : IClipboard
 
     // The failures Visual Studio's own guarded read (SafeDataObject.FromClipboard) takes for an unreadable
     // clipboard. COMException, which carries CLIPBRD_E_CANT_OPEN, is an ExternalException.
-    private static bool IsClipboardFailure(Exception exception)
-    {
-        return exception is ExternalException or UnauthorizedAccessException;
-    }
+    private static bool IsClipboardFailure(Exception exception) => exception is ExternalException or UnauthorizedAccessException;
 
     private void MarkAvailable()
     {

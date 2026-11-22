@@ -26,7 +26,7 @@ public sealed class GuardedClipboardTests
         Assert.AreEqual("text", guarded.GetData(DataFormats.Text));
         Assert.AreSame(data, guarded.GetDataObject());
         Assert.IsTrue(guarded.IsCurrent(data));
-        Assert.AreEqual(0, reports.Count);
+        Assert.IsEmpty(reports);
     }
 
     [TestMethod]
@@ -40,7 +40,7 @@ public sealed class GuardedClipboardTests
 
         IDataObject data = new GuardedClipboard(clipboard).GetDataObject();
         Assert.IsNotNull(data, "Visual Studio uses the data object without checking it.");
-        Assert.AreEqual(0, data.GetFormats().Length);
+        Assert.IsEmpty(data.GetFormats());
         Assert.AreEqual(3, clipboard.Opens);
     }
 
@@ -183,19 +183,19 @@ public sealed class GuardedClipboardTests
         guarded.GetDataObject();
         now = GuardedClipboard.RetryDelay;
         guarded.GetData(DataFormats.Text);
-        Assert.AreEqual(1, reports.Count);
+        Assert.HasCount(1, reports);
         Assert.AreSame(failure, reports[0]);
 
         clipboard.Failure = null;
         now += GuardedClipboard.RetryDelay;
         guarded.GetDataObject();
         guarded.GetDataObject();
-        Assert.AreEqual(2, reports.Count);
+        Assert.HasCount(2, reports);
         Assert.IsNull(reports[1]);
 
         clipboard.Failure = failure;
         guarded.GetDataObject();
-        Assert.AreEqual(3, reports.Count);
+        Assert.HasCount(3, reports);
         Assert.AreSame(failure, reports[2]);
     }
 
@@ -218,10 +218,7 @@ public sealed class GuardedClipboardTests
         Assert.IsNull(reports[1]);
     }
 
-    private static COMException CreateCannotOpenFailure()
-    {
-        return new COMException("OpenClipboard Failed", _ClipboardCannotBeOpened);
-    }
+    private static COMException CreateCannotOpenFailure() => new COMException("OpenClipboard Failed", _ClipboardCannotBeOpened);
 
     // Behaves like Visual Studio's OleClipboard over WPF: ContainsData asks Windows whether a format is available
     // without opening the clipboard, so a clipboard that cannot be opened fails only the other reads and the writes.

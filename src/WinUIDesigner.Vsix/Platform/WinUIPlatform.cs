@@ -193,10 +193,12 @@ public sealed class WinUIPlatform : XamlPlatform
     {
         if (failure is null)
         {
+            // The end of an outage: a read or a write has opened the clipboard.
             WinUIDesignerLogger.LogInformation("Platform", "The clipboard can be read again.");
         }
         else
         {
+            // The start of an outage: a read has failed.
             WinUIDesignerLogger.LogWarning("Platform", $"The clipboard cannot be read ({failure.Message}); the designer treats it as empty until it can be read again.");
         }
     }
