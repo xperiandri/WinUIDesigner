@@ -169,7 +169,8 @@ internal static class AssemblyReferenceCompatibility
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // The copy cannot be loaded either; the reference fails as it would without this handler.
+            // The surface's copy cannot be loaded, or the reference cannot be examined: nothing is served here, and
+            // the other handlers (Visual Studio's, then the project's) decide, as they would without this one.
             return null;
         }
 
