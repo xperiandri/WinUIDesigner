@@ -55,12 +55,14 @@ internal sealed class PreparedResourceDictionaryCache(int capacity = PreparedRes
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(readFile);
 
+        // Nothing is kept for the path.
         dictionary = null;
         if (!_entries.TryGetValue(path, out Entry? entry))
         {
             return false;
         }
 
+        // The copy or a copy merged into it has another text now.
         if (!string.Equals(entry.Text, text, StringComparison.Ordinal) || !AreCurrent(entry.Dictionary.Dependencies, readFile))
         {
             _entries.Remove(path);

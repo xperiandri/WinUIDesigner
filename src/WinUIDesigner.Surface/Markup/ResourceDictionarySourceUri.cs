@@ -205,16 +205,19 @@ internal static class ResourceDictionarySourceUri
         ArgumentNullException.ThrowIfNull(uri);
         ArgumentNullException.ThrowIfNull(contentDirectory);
 
+        // A relative value is no address.
         if (!Uri.TryCreate(uri.Trim(), UriKind.Absolute, out Uri? parsed))
         {
             return null;
         }
 
+        // A file is its own path.
         if (parsed.IsFile)
         {
             return parsed.LocalPath;
         }
 
+        // Only the package of the application names files of the designer.
         if (!string.Equals(parsed.Scheme, _AppxScheme, StringComparison.OrdinalIgnoreCase))
         {
             return null;
@@ -222,11 +225,13 @@ internal static class ResourceDictionarySourceUri
 
         // The host of "ms-appx://name/..." names a package; the designer has one, as the surface reads documents.
         string relativePath = Uri.UnescapeDataString(parsed.AbsolutePath).TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+        // The root of the package is no file.
         if (relativePath.Length == 0)
         {
             return null;
         }
 
+        // The path has to stay below the content directory.
         try
         {
             string root = Path.GetFullPath(contentDirectory);
