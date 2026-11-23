@@ -177,7 +177,26 @@ internal sealed partial class SurfaceService
                     FrameworkElement root = result.Root as FrameworkElement
                         ?? throw new InvalidOperationException("The document root must be a WinUI FrameworkElement.");
                     XamlRuntimeUtilities.RegisterNameScope(root);
-                    var surface = new DesignerSurface(root, _DefaultSurfaceSize.Width, _DefaultSurfaceSize.Height);
+                    // The first layout pass runs the code of the project's controls, and the framework hands its failure on
+                    // as an HRESULT without the message ("Catastrophic failure"): the verbose log names what was thrown.
+                    DesignerSurface surface;
+                    using (FirstChanceExceptionTrace? trace = WinUIDesignerLogger.IsVerboseLoggingEnabled ? new() : null)
+                    {
+                        try
+                        {
+                            surface = new DesignerSurface(root, _DefaultSurfaceSize.Width, _DefaultSurfaceSize.Height);
+                        }
+                        catch
+                        {
+                            foreach (string thrown in trace?.Exceptions ?? [])
+                            {
+                                WinUIDesignerLogger.LogTrace("Surface", $"CreateSurface {documentId}: thrown while the surface was created: {thrown}");
+                            }
+
+                            throw;
+                        }
+                    }
+
                     surface.BoundsInvalidated += (_, _) =>
                     {
                         if (_surfaces.TryGetValue(documentId, out DesignerSurface? currentSurface)

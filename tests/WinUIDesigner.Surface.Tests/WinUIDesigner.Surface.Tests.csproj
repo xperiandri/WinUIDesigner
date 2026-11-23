@@ -17,6 +17,7 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/AttachedPropertyGetter.cs" Link="AttachedPropertyGetter.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/ConstructionFallbacks.cs" Link="ConstructionFallbacks.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/FailedActionContext.cs" Link="FailedActionContext.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/FirstChanceExceptionTrace.cs" Link="FirstChanceExceptionTrace.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ObjectIdentityRegistry.cs" Link="ObjectIdentityRegistry.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DocumentScope.cs" Link="DocumentScope.cs" Visible="false" />
 	</ItemGroup>
