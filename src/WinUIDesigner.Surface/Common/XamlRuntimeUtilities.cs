@@ -162,6 +162,12 @@ internal static class XamlRuntimeUtilities
             return property.GetValue(target);
         }
 
+        // An attached collection that has a static accessor and no property field (VisualStateManager.VisualStateGroups).
+        if (TryGetAttachedPropertyValue(target, fullPropertyName, out object? attachedValue))
+        {
+            return attachedValue;
+        }
+
         int propertySeparator = fullPropertyName.IndexOf(':');
         throw new MissingMemberException(target.GetType().FullName, propertySeparator < 0 ? fullPropertyName : fullPropertyName[..propertySeparator]);
     }
@@ -702,11 +708,15 @@ internal static class XamlRuntimeUtilities
     // Reads the property through the static Get<Name> accessor of the type that declares it, when that type has one.
     private static object? GetAttachedPropertyValue(object target, string fullPropertyName)
     {
+        return TryGetAttachedPropertyValue(target, fullPropertyName, out object? value) ? value : null;
+    }
+
+    private static bool TryGetAttachedPropertyValue(object target, string fullPropertyName, out object? value)
+    {
+        value = null;
         int propertySeparator = fullPropertyName.IndexOf(':');
         Type? declaringType = propertySeparator < 0 ? null : ResolveType(fullPropertyName[(propertySeparator + 1)..]);
-        return declaringType is not null && AttachedPropertyGetter.TryGetValue(declaringType, fullPropertyName.AsSpan(0, propertySeparator), target, out object? value)
-            ? value
-            : null;
+        return declaringType is not null && AttachedPropertyGetter.TryGetValue(declaringType, fullPropertyName.AsSpan(0, propertySeparator), target, out value);
     }
 
     private static DependencyProperty? FindDependencyProperty(Type type, string propertyName)

@@ -24,6 +24,17 @@ public sealed class AttachedPropertyGetterTests
     }
 
     [TestMethod]
+    public void CollectionWithAnAccessorAndNoPropertyFieldIsRead()
+    {
+        var element = new FakeElement();
+
+        // VisualStateManager.VisualStateGroups has a static accessor and no DependencyProperty field.
+        Assert.IsTrue(AttachedPropertyGetter.TryGetValue(typeof(FakeVisualStateManager), "VisualStateGroups", element, out object? groups));
+        Assert.IsInstanceOfType<List<object>>(groups);
+        Assert.IsNull(typeof(FakeVisualStateManager).GetField("VisualStateGroupsProperty"));
+    }
+
+    [TestMethod]
     public void AccessorMustAcceptTheElement()
     {
         // GetTriggers takes a FakeOtherOwner, which a FakeElement is not.
@@ -74,6 +85,12 @@ public sealed class AttachedPropertyGetterTests
 
     public sealed class FakeOtherOwner
     {
+    }
+
+    // Shaped like Microsoft.UI.Xaml.VisualStateManager: the attached collection has an accessor and no property field.
+    public static class FakeVisualStateManager
+    {
+        public static List<object> GetVisualStateGroups(FakeDependencyObject owner) => [];
     }
 
     // Shaped like Microsoft.Xaml.Interactivity.Interaction: the attached collection is created by its accessor.
