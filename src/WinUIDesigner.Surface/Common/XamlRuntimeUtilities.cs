@@ -157,6 +157,15 @@ internal static class XamlRuntimeUtilities
     public static object? GetPropertyValue(object target, string fullPropertyName)
     {
         ResolveProperty(target, fullPropertyName, out PropertyInfo? property, out DependencyProperty? dependencyProperty);
+
+        // The property of the element gives the value its own type, which GetValue does not: a native collection that
+        // GetValue returns is a bare DependencyObject (CommandBar.PrimaryCommands), and a collection that the getter
+        // creates on first use is null there (Trigger.Actions of Microsoft.Xaml.Interactivity), so AddChild fails on both.
+        if (property?.CanRead == true && property.DeclaringType!.IsInstanceOfType(target) && TryGetPropertyValue(property, target, out object? typedValue) && typedValue is not null)
+        {
+            return typedValue;
+        }
+
         if (dependencyProperty is not null && target is DependencyObject dependencyObject)
         {
             // An attached collection can be null until its static accessor creates it (Interaction.Behaviors);
@@ -717,6 +726,22 @@ internal static class XamlRuntimeUtilities
             ?? declaringType?.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
         dependencyProperty = FindDependencyProperty(declaringType ?? targetType, propertyName)
             ?? FindDependencyProperty(targetType, propertyName);
+    }
+
+    // Reads a property of the element through its getter. The getter of a property of the project can fail at design
+    // time, and then the dependency property is what is left to read.
+    private static bool TryGetPropertyValue(PropertyInfo property, object target, out object? value)
+    {
+        try
+        {
+            value = property.GetValue(target);
+            return true;
+        }
+        catch (TargetInvocationException)
+        {
+            value = null;
+            return false;
+        }
     }
 
     // Reads the property through the static Get<Name> accessor of the type that declares it, when that type has one.
