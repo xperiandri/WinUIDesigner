@@ -5,6 +5,7 @@ using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Markup;
 using WinUIDesigner.Surface.Markup;
+using static ShadowCache;
 
 /// <summary>
 /// Merging the dictionaries that prepared XAML names through <c>DT.ResourceDictionarySource</c>, with Visual Studio's
@@ -17,9 +18,7 @@ public sealed class ResourceDictionarySourceExpanderTests
 {
     private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private const string _XamlLanguage = "http://schemas.microsoft.com/winfx/2006/xaml";
-    private const string _ContentDirectory = @"C:\DesignerCache\1-1868410451x64DA";
     private const string _PageUri = "ms-appx:///App/Views/~vs]~10~Page.xaml";
-    private const string _Contract = "Windows.Foundation.UniversalApiContract";
 
     private const string _Colors = "ms-appx:///App/Themes/~vs]~11~Colors.xaml";
     private const string _Styles = "ms-appx:///App/Themes/~vs]~12~Styles.xaml";
@@ -253,7 +252,7 @@ public sealed class ResourceDictionarySourceExpanderTests
         CollectionAssert.AreEqual(new[] { "B" }, AllKeys(page));
         Assert.AreEqual(1, cache.Warnings.Count);
         Assert.Contains("Resource dictionary 'App/Themes/Colors.xaml' merged by document 10 is left empty", cache.Warnings[0]);
-        StringAssert.Contains(cache.Warnings[0], _ContentDirectory + @"\App\Themes\~vs]~11~Colors.xaml");
+        StringAssert.Contains(cache.Warnings[0], ShadowCache.ContentDirectory + @"\App\Themes\~vs]~11~Colors.xaml");
         StringAssert.Contains(cache.Warnings[0], "does not exist");
         AssertReadableByTheXamlReader(page);
     }
@@ -539,10 +538,10 @@ public sealed class ResourceDictionarySourceExpanderTests
         var cache = new ShadowCache();
         cache.Add(_Colors, $"""
             <ResourceDictionary xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}"
-                xmlns:contract7NotPresent="{_Presentation}?IsApiContractNotPresent({_Contract},7)"
-                xmlns:contract7Present="{_Presentation}?IsApiContractPresent({_Contract},7)"
-                xmlns:contract99NotPresent="{_Presentation}?IsApiContractNotPresent({_Contract},99)"
-                xmlns:contract99Present="{_Presentation}?IsApiContractPresent({_Contract},99)">
+                xmlns:contract7NotPresent="{_Presentation}?IsApiContractNotPresent({ShadowCache.Contract},7)"
+                xmlns:contract7Present="{_Presentation}?IsApiContractPresent({ShadowCache.Contract},7)"
+                xmlns:contract99NotPresent="{_Presentation}?IsApiContractNotPresent({ShadowCache.Contract},99)"
+                xmlns:contract99Present="{_Presentation}?IsApiContractPresent({ShadowCache.Contract},99)">
               <SolidColorBrush x:Key="ConditionalAccentBrush" contract7NotPresent:Color="Firebrick" contract7Present:Color="SeaGreen" />
               <Style x:Key="ConditionalCardStyle" TargetType="Border">
                 <Setter Property="Padding" Value="12" />
@@ -756,36 +755,6 @@ public sealed class ResourceDictionarySourceExpanderTests
         CollectionAssert.AreEqual(new[] { "CardPadding" }, AllKeys(page));
     }
 
-    private static string Dictionary(string body)
-    {
-        return $"""<ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}">{body}</ResourceDictionary>""";
-    }
-
-    private static string Merge(string uri)
-    {
-        return $"""<ResourceDictionary _0:DT.ResourceDictionarySource="{uri}" />""";
-    }
-
-    /// <summary>
-    /// A page as Visual Studio prepares it, with <paramref name="resources"/> inside the dictionary of its resources.
-    /// </summary>
-    private static XElement Page(string resources)
-    {
-        return XElement.Parse($"""
-            <Page xmlns:_0="using:XSurfUwp" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}">
-              <Page.Resources>
-                <ResourceDictionary>{resources}</ResourceDictionary>
-              </Page.Resources>
-              <Border />
-            </Page>
-            """, LoadOptions.PreserveWhitespace);
-    }
-
-    private static string? KeyOf(XElement element)
-    {
-        return (string?)element.Attribute(_X + "Key");
-    }
-
     /// <summary>
     /// Returns the keys of the entries of a dictionary element.
     /// </summary>
@@ -819,64 +788,5 @@ public sealed class ResourceDictionarySourceExpanderTests
         List<string> mismatches = XamlFragmentGrafterTests.ResolveAsWinUIReader(xaml);
         Assert.AreEqual(0, mismatches.Count, string.Join(Environment.NewLine, mismatches));
         Assert.IsFalse(reloaded.Descendants().Attributes(XName.Get("Ignorable", "http://schemas.openxmlformats.org/markup-compatibility/2006")).Any(), xaml);
-    }
-
-    /// <summary>
-    /// Visual Studio's shadow cache in memory, the WinUI runtime as a list of answers, and what the expander reported.
-    /// </summary>
-    private sealed class ShadowCache
-    {
-        private readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
-        private readonly XamlConditionService _conditions = new(new XamlConditionProbeSet
-        {
-            IsApiContractPresent = (name, major, _) => name == _Contract && major <= 10,
-        });
-
-        public ShadowCache(int maxDepth = ResourceDictionarySourceOptions.DefaultMaxDepth)
-        {
-            Expander = new ResourceDictionarySourceExpander(new ResourceDictionarySourceOptions
-            {
-                ContentDirectory = _ContentDirectory,
-                ReadFile = path => _files.TryGetValue(path, out string? text) ? text : null,
-                Parse = (xaml, description) =>
-                {
-                    Parsed.Add(description);
-                    XDocument document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
-                    XamlNamespaceRewriter.Rewrite(document, new XamlNamespaceRewriteOptions { SourceXaml = xaml, EvaluateCondition = _conditions.Evaluate });
-                    return document;
-                },
-                IsDictionaryType = name => DictionaryTypes.Contains(name.NamespaceName + ":" + name.LocalName),
-                LoadWithRuntime = uri =>
-                {
-                    RuntimeLoads.Add(uri);
-                    return RuntimeErrors.TryGetValue(uri, out string? error) ? error : null;
-                },
-                MaxDepth = maxDepth,
-                ReportWarning = Warnings.Add,
-                Report = Reports.Add,
-            });
-        }
-
-        public ResourceDictionarySourceExpander Expander { get; }
-
-        public List<string> Warnings { get; } = [];
-
-        public List<string> Reports { get; } = [];
-
-        public List<string> Parsed { get; } = [];
-
-        public List<string> RuntimeLoads { get; } = [];
-
-        public Dictionary<string, string> RuntimeErrors { get; } = new(StringComparer.Ordinal);
-
-        public HashSet<string> DictionaryTypes { get; } = new(StringComparer.Ordinal);
-
-        /// <summary>
-        /// Writes the prepared copy of the dictionary <paramref name="uri"/> names, as Visual Studio does.
-        /// </summary>
-        public void Add(string uri, string xaml)
-        {
-            _files[ResourceDictionarySourceUri.TryGetLocalPath(uri, _ContentDirectory)!] = xaml;
-        }
     }
 }

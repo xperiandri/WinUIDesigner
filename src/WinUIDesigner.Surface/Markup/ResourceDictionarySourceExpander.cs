@@ -57,6 +57,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
 
     private readonly ResourceDictionarySourceOptions _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly PreparedResourceDictionaryCache _cache = new();
+    private readonly ResourceCopyOrigins _origins = new();
 
     // The sources outside the solution that the WinUI runtime loaded in the surface.
     private readonly HashSet<string> _runtimeLoadable = new(StringComparer.Ordinal);
@@ -69,6 +70,11 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     /// Gets the dictionaries kept from earlier expansions.
     /// </summary>
     public PreparedResourceDictionaryCache Cache => _cache;
+
+    /// <summary>
+    /// Gets where the copies of dictionaries that expansions inserted come from.
+    /// </summary>
+    public ResourceCopyOrigins Origins => _origins;
 
     /// <summary>
     /// Starts a request: a source that the runtime could not load is asked for again.
@@ -155,7 +161,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         }
 
         // Read on its own, the dictionary stays the root of a document: mc:Ignorable keeps working there.
-        var dictionary = new XElement(prepared.Template);
+        XElement dictionary = _origins.CopyTemplate(prepared.Template);
         RemoveDesignTimeAttributes(dictionary);
         XamlFragmentGrafter.RemoveClassDirectives(dictionary);
         return ResourceDictionarySourceContent.FromPrepared(uri, dictionary);
@@ -208,7 +214,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
                     continue;
                 }
 
-                fragment = new XElement(prepared.Template);
+                fragment = _origins.CopyTemplate(prepared.Template);
                 RemoveDesignTimeAttributes(fragment);
                 XamlFragmentGrafter.PrepareAsNestedElement(fragment);
                 session.Prepared++;
@@ -224,6 +230,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
                 }
 
                 fragment = new XElement(_Presentation + "ResourceDictionary", new XAttribute("Source", uri));
+                _origins.Add(fragment, new ResourceCopyOrigin(null, ResourceDictionarySourceUri.GetDisplayName(uri), uri));
                 session.Runtime++;
             }
 
@@ -318,6 +325,9 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             return null;
         }
 
+        // Every copy of this dictionary that is made from here on knows where it comes from.
+        _origins.Add(root, new ResourceCopyOrigin(path, name, uri));
+
         var nested = new List<KeyValuePair<string, string?>>();
         bool isOuterCut = session.IsCut;
         int failedBefore = session.Failed;
@@ -401,7 +411,11 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         return element.Attribute(SourceAttributeName) is not null || (element.Attribute(_PlainSourceName) is not null && IsDictionaryRoot(element.Name));
     }
 
-    private bool IsDictionaryRoot(XName name)
+    /// <summary>
+    /// Returns whether an element named <paramref name="name"/> is a resource dictionary: one of the dictionary types
+    /// of WinUI, or a class of the project that derives from <c>ResourceDictionary</c>.
+    /// </summary>
+    public bool IsDictionaryRoot(XName name)
     {
         if (name.LocalName is "ResourceDictionary" or "XamlControlsResources" or "ColorPaletteResources")
         {

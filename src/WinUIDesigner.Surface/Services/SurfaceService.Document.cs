@@ -491,57 +491,40 @@ internal sealed partial class SurfaceService
         {
             try
             {
-                return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+                // The text is read again for each resource of a merged dictionary that the reader rejects and that is
+                // left out (see ResourceEntryQuarantine), and each read is an operation of its own: one operation may
+                // take only so long, and the reads of a long text add up.
+                PreparedLoad? prepared = null;
+                ResourceEntryQuarantine quarantine = CreateResourceEntryQuarantine();
+                while (true)
                 {
-                    using var scope = _objectIdentity.EnterDocument(document.DocumentId);
-                    string xaml = TryReadPreparedXaml(document) ?? document.InitialXamlContent;
-                    if (string.IsNullOrWhiteSpace(xaml))
+                    LoadedDocument? loaded = await DispatcherOperation.InvokeAsync<LoadedDocument?>(_dispatcherQueue, () =>
                     {
-                        throw new InvalidOperationException("The prepared document has no XAML.");
-                    }
-
-                    // Parse the prepared XAML once. The namespace policies, the clean-up below and the source
-                    // mapping all work on this document, so its line information keeps referring to the prepared file.
-                    XDocument preparedXaml = LoadPreparedXaml(xaml, document.DocumentId);
-                    XElement? runtimeRoot = preparedXaml.Root;
-                    if (resources)
-                    {
-                        XElement resourceRoot = runtimeRoot
-                            ?? throw new InvalidOperationException("The resource document is empty.");
-                        if (resourceRoot.Name.LocalName == "Application")
+                        using var scope = _objectIdentity.EnterDocument(document.DocumentId);
+                        prepared ??= ParsePreparedDocument(document, resources);
+                        string sanitizedXaml = prepared.Serialize();
+                        try
                         {
-                            XElement? property = resourceRoot.Elements().FirstOrDefault(value => value.Name.LocalName == "Application.Resources");
-                            XElement dictionary = property?.Elements().FirstOrDefault(value => value.Name.LocalName == "ResourceDictionary")
-                                ?? new XElement(resourceRoot.Name.Namespace + "ResourceDictionary", property?.Elements() ?? []);
-                            foreach (XAttribute declaration in resourceRoot.Attributes().Where(value => value.IsNamespaceDeclaration))
+                            object root = XamlReader.Load(sanitizedXaml);
+                            _objectIdentity.Track(root);
+                            return new LoadedDocument(root, prepared.Document);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (prepared.Root is { } preparedRoot && TryLeaveOutResource(quarantine, preparedRoot, sanitizedXaml, ex, $"document {document.DocumentId}"))
                             {
-                                if (dictionary.Attribute(declaration.Name) is null)
-                                {
-                                    dictionary.Add(new XAttribute(declaration));
-                                }
+                                return null;
                             }
 
-                            runtimeRoot = dictionary;
+                            throw;
                         }
-                    }
+                    }, _protocolHandler.CancellationToken).ConfigureAwait(false);
 
-                    if (runtimeRoot is not null)
+                    if (loaded is not null)
                     {
-                        // First: the clean-up removes the design-time sources together with the other design-time attributes.
-                        MergeResourceDictionarySources(runtimeRoot, document);
-                        PrepareForXamlReader(runtimeRoot);
+                        return (loaded.Root, loaded.PreparedXaml);
                     }
-
-                    // App.xaml contributes only its resource dictionary; every other document is loaded whole.
-                    string sanitizedXaml = runtimeRoot is null
-                        ? xaml
-                        : ReferenceEquals(runtimeRoot, preparedXaml.Root)
-                            ? preparedXaml.ToString(SaveOptions.DisableFormatting)
-                            : runtimeRoot.ToString(SaveOptions.DisableFormatting);
-                    object root = XamlReader.Load(sanitizedXaml);
-                    _objectIdentity.Track(root);
-                    return (root, (XDocument?)preparedXaml);
-                }, _protocolHandler.CancellationToken).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
@@ -583,6 +566,54 @@ internal sealed partial class SurfaceService
                 Application.Current.Resources = previous;
             }
         }, _protocolHandler.CancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Parses the prepared XAML of a document and makes it ready for the XAML reader: the namespace policies are
+    /// applied, the dictionaries that its dictionaries name as their source are merged, and what the reader does not
+    /// know is removed.
+    /// </summary>
+    private PreparedLoad ParsePreparedDocument(CreateDocumentInfo document, bool resources)
+    {
+        string xaml = TryReadPreparedXaml(document) ?? document.InitialXamlContent;
+        if (string.IsNullOrWhiteSpace(xaml))
+        {
+            throw new InvalidOperationException("The prepared document has no XAML.");
+        }
+
+        // Parse the prepared XAML once. The namespace policies, the clean-up below and the source
+        // mapping all work on this document, so its line information keeps referring to the prepared file.
+        XDocument preparedXaml = LoadPreparedXaml(xaml, document.DocumentId);
+        XElement? runtimeRoot = preparedXaml.Root;
+        if (resources)
+        {
+            XElement resourceRoot = runtimeRoot
+                ?? throw new InvalidOperationException("The resource document is empty.");
+            if (resourceRoot.Name.LocalName == "Application")
+            {
+                XElement? property = resourceRoot.Elements().FirstOrDefault(value => value.Name.LocalName == "Application.Resources");
+                XElement dictionary = property?.Elements().FirstOrDefault(value => value.Name.LocalName == "ResourceDictionary")
+                    ?? new XElement(resourceRoot.Name.Namespace + "ResourceDictionary", property?.Elements() ?? []);
+                foreach (XAttribute declaration in resourceRoot.Attributes().Where(value => value.IsNamespaceDeclaration))
+                {
+                    if (dictionary.Attribute(declaration.Name) is null)
+                    {
+                        dictionary.Add(new XAttribute(declaration));
+                    }
+                }
+
+                runtimeRoot = dictionary;
+            }
+        }
+
+        if (runtimeRoot is not null)
+        {
+            // First: the clean-up removes the design-time sources together with the other design-time attributes.
+            MergeResourceDictionarySources(runtimeRoot, document);
+            PrepareForXamlReader(runtimeRoot);
+        }
+
+        return new PreparedLoad(xaml, preparedXaml, runtimeRoot);
     }
 
     private void CloseSurfaceDocument(int documentId)

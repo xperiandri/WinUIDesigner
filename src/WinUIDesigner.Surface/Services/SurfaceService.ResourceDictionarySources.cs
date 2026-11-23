@@ -42,6 +42,9 @@ internal sealed partial class SurfaceService
     // The document whose construction actions are being executed, for messages.
     private int _actionDocumentId;
 
+    // The time that leaving out the resources the reader rejects may take in a request, in all documents and dictionaries.
+    private readonly RetryBudget _resourceRetryBudget = new(TimeSpan.FromSeconds(10));
+
     private ResourceDictionarySourceExpander ResourceDictionarySources => _resourceDictionarySources ??= new(new ResourceDictionarySourceOptions
     {
         ContentDirectory = Program.ContentDirectory,
@@ -59,7 +62,51 @@ internal sealed partial class SurfaceService
     private void BeginResourceDictionaryReports()
     {
         _reportedResourceDictionaryProblems.Clear();
+        _resourceRetryBudget.Reset();
         _resourceDictionarySources?.BeginRequest();
+    }
+
+    private ResourceEntryQuarantine CreateResourceEntryQuarantine()
+    {
+        ResourceDictionarySourceExpander dictionaries = ResourceDictionarySources;
+        return new ResourceEntryQuarantine(dictionaries.Origins, dictionaries.IsDictionaryRoot);
+    }
+
+    /// <summary>
+    /// Leaves out the resource of a merged dictionary that the XAML reader rejected, when it can be found with
+    /// certainty, and reports it; the caller reads the text again.
+    /// </summary>
+    /// <param name="quarantine">Counts the resources left out of this text.</param>
+    /// <param name="root">The tree that was serialized.</param>
+    /// <param name="xaml">The text the reader was given.</param>
+    /// <param name="rejection">What the reader threw.</param>
+    /// <param name="owner">The document or dictionary being loaded, as messages name it.</param>
+    /// <returns><see langword="false"/> when nothing was left out and the rejection stands.</returns>
+    private bool TryLeaveOutResource(ResourceEntryQuarantine quarantine, XElement root, string xaml, Exception rejection, string owner)
+    {
+        // Each retry reads the whole text again, and the operation that does it has only so much time.
+        if (!_resourceRetryBudget.TrySpend())
+        {
+            return false;
+        }
+
+        try
+        {
+            QuarantinedResource? resource = quarantine.TryQuarantine(root, xaml, rejection.Message);
+            if (resource is null)
+            {
+                return false;
+            }
+
+            ReportResourceDictionaryProblem(resource.Describe(owner));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // A safety net must not become the failure: the reader's rejection stands.
+            WinUIDesignerLogger.LogWarning("Surface", $"Leaving out the resource that the reader rejects failed for {owner}; the rejection stands.", ex);
+            return false;
+        }
     }
 
     /// <summary>
@@ -195,22 +242,36 @@ internal sealed partial class SurfaceService
                     string name = ResourceDictionarySourceUri.GetDisplayName(content.Uri!);
                     XElement dictionary = content.Dictionary!;
                     PrepareForXamlReader(dictionary);
-                    try
+
+                    // The dictionary and everything it merges are one text. When the reader rejects a resource of it,
+                    // the resource is left out and the text is read again; the construction actions of the document
+                    // are one operation, so the number of retries and the time they may take are limited.
+                    ResourceEntryQuarantine quarantine = CreateResourceEntryQuarantine();
+                    while (true)
                     {
-                        if (XamlReader.Load(dictionary.ToString(SaveOptions.DisableFormatting)) is ResourceDictionary loaded)
+                        string xaml = dictionary.ToString(SaveOptions.DisableFormatting);
+                        try
                         {
-                            WinUIDesignerLogger.LogTrace("Surface", $"Resource dictionary '{name}' merged by {owner} was loaded from Visual Studio's prepared copy.");
-                            return loaded;
+                            if (XamlReader.Load(xaml) is ResourceDictionary loaded)
+                            {
+                                WinUIDesignerLogger.LogTrace("Surface", $"Resource dictionary '{name}' merged by {owner} was loaded from Visual Studio's prepared copy.");
+                                return loaded;
+                            }
+
+                            ReportResourceDictionaryProblem($"Resource dictionary '{name}' merged by {owner} is left empty: its prepared copy does not load as a resource dictionary.");
+                            return null;
                         }
+                        catch (Exception ex)
+                        {
+                            if (TryLeaveOutResource(quarantine, dictionary, xaml, ex, owner))
+                            {
+                                continue;
+                            }
 
-                        ReportResourceDictionaryProblem($"Resource dictionary '{name}' merged by {owner} is left empty: its prepared copy does not load as a resource dictionary.");
+                            ReportResourceDictionaryProblem($"Resource dictionary '{name}' merged by {owner} is left empty: the XAML reader rejects its prepared copy: {DescribeException(ex)}");
+                            return null;
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        ReportResourceDictionaryProblem($"Resource dictionary '{name}' merged by {owner} is left empty: the XAML reader rejects its prepared copy: {DescribeException(ex)}");
-                    }
-
-                    return null;
                 }
 
             case ResourceDictionarySourceContentKind.Runtime:
@@ -346,4 +407,38 @@ internal sealed partial class SurfaceService
     /// What a construction action merged into a dictionary for its source.
     /// </summary>
     private sealed record AppliedResourceDictionarySource(string Source, ResourceDictionary Dictionary);
+
+    /// <summary>
+    /// The prepared XAML of a document on its way to the XAML reader, kept between the attempts to load it.
+    /// </summary>
+    /// <param name="xaml">The text of the prepared document, which is loaded as it is when there is no tree.</param>
+    /// <param name="document">The parsed document; its line information refers to the prepared file.</param>
+    /// <param name="root">The element that is loaded, or <see langword="null"/> when there is none.</param>
+    private sealed class PreparedLoad(string xaml, XDocument document, XElement? root)
+    {
+        public XDocument Document { get; } = document;
+
+        public XElement? Root { get; } = root;
+
+        /// <summary>
+        /// Returns the text for the reader: App.xaml contributes only its resource dictionary, and every other
+        /// document is loaded whole.
+        /// </summary>
+        public string Serialize()
+        {
+            if (Root is null)
+            {
+                return xaml;
+            }
+
+            return ReferenceEquals(Root, Document.Root)
+                ? Document.ToString(SaveOptions.DisableFormatting)
+                : Root.ToString(SaveOptions.DisableFormatting);
+        }
+    }
+
+    /// <summary>
+    /// The object that the reader returned for a document, with the prepared XAML it was made from.
+    /// </summary>
+    private sealed record LoadedDocument(object Root, XDocument? PreparedXaml);
 }
