@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
@@ -32,11 +33,40 @@ internal static class ProjectRuntimeResolver
 
     private static bool _providersInitialized;
 
+    // Failures of the project's metadata providers already written to the log; XAML asks the same questions again and again.
+    private static readonly ReportedFailures _ReportedFailures = new();
+
+    // The assemblies the surface carries itself.
+    private static readonly SurfaceAssemblies _SurfaceAssemblies = new(AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string, ReadAssemblyVersion);
+
+    // The simple names of the references that the surface's own, older copy has served; each is written to the log once.
+    private static readonly HashSet<string> _ServedReferences = new(StringComparer.OrdinalIgnoreCase);
+
     [ThreadStatic] private static HashSet<string>? _resolving;
+
+    /// <summary>
+    /// Lets the surface's own copy of a WinRT projection serve a project's reference to a newer version of it, which
+    /// the runtime does not bind to that copy by itself. The handler that serves it is
+    /// <see cref="AssemblyReferenceCompatibility.ServeFromSurfaceCopy"/>, and
+    /// <see cref="AssemblyReferenceCompatibility.Resolve"/> decides which references it serves.
+    /// </summary>
+    /// <remarks>
+    /// Call it before any other handler of <see cref="AssemblyLoadContext.Resolving"/> is added. Visual Studio's handler
+    /// would otherwise try a file of the same name from Visual Studio's folders first, and the runtime refuses to load
+    /// a copy that is newer than the surface's.
+    /// </remarks>
+    public static void ServeNewerProjectionReferences()
+    {
+        // A newer reference to a projection that the surface carries is served by its own copy and logged once.
+        AssemblyLoadContext.Default.Resolving += (context, name) =>
+            AssemblyReferenceCompatibility.ServeFromSurfaceCopy(context, name, _SurfaceAssemblies, ReportServedOnce);
+    }
 
     public static void Initialize(string directory)
     {
         _PriFiles.AddRange(Directory.EnumerateFiles(directory, "*.pri", SearchOption.AllDirectories));
+
+        var references = new List<(string Assembly, List<AssemblyReferenceInfo> References)>();
 
         foreach (string file in Directory.EnumerateFiles(directory, "*.dll", SearchOption.AllDirectories)
             .OrderBy(file => Path.GetRelativePath(directory, file).Count(character => character == Path.DirectorySeparatorChar))
@@ -72,7 +102,17 @@ internal static class ProjectRuntimeResolver
                     continue;
                 }
 
-                _Assemblies.TryAdd(assemblyName, file);
+                // The project's copy of an assembly the surface carries is never loaded, neither for a reference nor for a
+                // type: the runtime binds only the surface's copy, and cannot load a newer one beside it.
+                if (_SurfaceAssemblies.Contains(assemblyName))
+                {
+                    continue;
+                }
+
+                if (_Assemblies.TryAdd(assemblyName, file))
+                {
+                    references.Add((assemblyName, ReadReferences(metadata)));
+                }
 
                 foreach (TypeDefinitionHandle handle in metadata.TypeDefinitions)
                 {
@@ -106,10 +146,14 @@ internal static class ProjectRuntimeResolver
             }
         }
 
+        ReportUnsatisfiedReferences(references);
+
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
-            return name.Name is string simpleName && _Assemblies.TryGetValue(simpleName, out string? file)
-                ? AssemblyLoadContext.Default.LoadFromAssemblyPath(file)
+            // A staged assembly that the surface does not carry is loaded from its staged path; every other reference (a
+            // carried assembly, or one that is not staged) is left to the other handlers.
+            return AssemblyReferenceCompatibility.Resolve(name, _SurfaceAssemblies, _Assemblies.ContainsKey) == ReferenceResolution.ProjectCopy
+                ? AssemblyLoadContext.Default.LoadFromAssemblyPath(_Assemblies[name.Name!])
                 : null;
         };
 
@@ -176,18 +220,29 @@ internal static class ProjectRuntimeResolver
 
         foreach (string name in _ProviderTypes.Distinct())
         {
-            var type = ResolveType(name);
-            // A generated metadata provider is safe to construct independently;
-            // constructing a second Application would replace the designer process.
-
-            if (type is null || type.IsAbstract || typeof(Application).IsAssignableFrom(type))
+            // XAML asks for these providers from inside its own code. An exception that leaves here, such as the
+            // FileLoadException of an assembly that was compiled against a newer version of an assembly than the
+            // surface carries, is not reported to anyone: the process ends. One provider that cannot be created
+            // must not take the others, or the designer, with it.
+            try
             {
-                continue;
+                var type = ResolveType(name);
+                // A generated metadata provider is safe to construct independently;
+                // constructing a second Application would replace the designer process.
+
+                if (type is null || type.IsAbstract || typeof(Application).IsAssignableFrom(type))
+                {
+                    continue;
+                }
+
+                if (Activator.CreateInstance(type) is IXamlMetadataProvider provider)
+                {
+                    _Providers.Add(provider);
+                }
             }
-
-            if (Activator.CreateInstance(type) is IXamlMetadataProvider provider)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                _Providers.Add(provider);
+                ReportFailureOnce($"create|{name}", $"The XAML metadata provider '{name}' of the project cannot be created, so the types it describes are not available to the designer.", ex);
             }
         }
     }
@@ -206,7 +261,14 @@ internal static class ProjectRuntimeResolver
 
             foreach (IXamlMetadataProvider provider in _Providers)
             {
-                if (provider.GetXamlType(name) is { } type) return type;
+                try
+                {
+                    if (provider.GetXamlType(name) is { } type) return type;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    ReportFailureOnce($"type|{provider.GetType().FullName}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to describe the type '{name}', and the designer cannot use the types that it fails to describe.", ex);
+                }
             }
 
             return null;
@@ -221,6 +283,98 @@ internal static class ProjectRuntimeResolver
     {
         EnsureProviders();
 
-        return [.. _Providers.SelectMany(value => value.GetXmlnsDefinitions() ?? [])];
+        var definitions = new List<XmlnsDefinition>();
+        foreach (IXamlMetadataProvider provider in _Providers)
+        {
+            try
+            {
+                definitions.AddRange(provider.GetXmlnsDefinitions() ?? []);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                ReportFailureOnce($"xmlns|{provider.GetType().FullName}", $"The XAML metadata provider '{provider.GetType().FullName}' of the project failed to list its XML namespaces, so the designer does not know them.", ex);
+            }
+        }
+
+        return [.. definitions];
+    }
+
+    // A failure is known by what failed (the situation and the provider) and by its cause: the type, the HRESULT and the
+    // file name of the exception (AssemblyLoadFailures.GetCauseKey). Not by its message, which is empty in the
+    // single-file surface, and not by the type XAML asked for: a provider that cannot load an assembly fails in the
+    // same way for every type that needs it.
+    private static void ReportFailureOnce(string situation, string message, Exception exception)
+    {
+        if (!_ReportedFailures.TryAdd(situation, exception))
+        {
+            return;
+        }
+
+        WinUIDesignerLogger.LogWarning("Surface", $"{message} {AssemblyLoadFailures.DescribeCause(exception)} Later failures with the same cause are not logged.", exception);
+    }
+
+    private static void ReportServedOnce(AssemblyName reference, Assembly surfaceCopy)
+    {
+        lock (_ServedReferences)
+        {
+            if (!_ServedReferences.Add(reference.Name!))
+            {
+                return;
+            }
+        }
+
+        WinUIDesignerLogger.LogInformation("Surface", $"{reference.Name} {reference.Version} is served by the design surface's own copy, {surfaceCopy.GetName().Version}; code that uses a type or member that only the newer version has fails.");
+    }
+
+    private static List<AssemblyReferenceInfo> ReadReferences(MetadataReader metadata)
+    {
+        var references = new List<AssemblyReferenceInfo>(metadata.AssemblyReferences.Count);
+        foreach (AssemblyReferenceHandle handle in metadata.AssemblyReferences)
+        {
+            AssemblyReference reference = metadata.GetAssemblyReference(handle);
+            references.Add(new AssemblyReferenceInfo(metadata.GetString(reference.Name), reference.Version));
+        }
+
+        return references;
+    }
+
+    /// <summary>
+    /// Writes a warning for each reference of a staged assembly that the surface's own, older copy of the referenced
+    /// assembly does not satisfy. Code that needs such a reference fails unless that copy serves it
+    /// (<see cref="ServeNewerProjectionReferences"/>), and a failure inside XAML can end the process without a word in
+    /// the log; this names the cause at startup.
+    /// </summary>
+    private static void ReportUnsatisfiedReferences(List<(string Assembly, List<AssemblyReferenceInfo> References)> staged)
+    {
+        try
+        {
+            var findings = new List<UnsatisfiedAssemblyReference>();
+            foreach ((string assembly, List<AssemblyReferenceInfo> references) in staged)
+            {
+                findings.AddRange(AssemblyReferenceCompatibility.FindUnsatisfied(assembly, references, _SurfaceAssemblies.GetVersion));
+            }
+
+            foreach (string line in AssemblyReferenceCompatibility.Describe(findings))
+            {
+                WinUIDesignerLogger.LogWarning("Surface", line);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            WinUIDesignerLogger.LogTrace("Surface", "Checking the assembly references of the project failed.", ex);
+        }
+    }
+
+    private static Version? ReadAssemblyVersion(string path)
+    {
+        try
+        {
+            return AssemblyName.GetAssemblyName(path).Version;
+        }
+        catch (Exception ex) when (ex is IOException or BadImageFormatException)
+        {
+            // Not a managed assembly, or not readable: it cannot be compared.
+            return null;
+        }
     }
 }

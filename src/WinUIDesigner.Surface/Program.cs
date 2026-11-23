@@ -60,6 +60,13 @@ internal static class Program
         }
 
         WinUIDesignerLogger.ConfigureVerboseLogging(verboseLoggingEnabled);
+        if (verboseLoggingEnabled)
+        {
+            LogAssemblyLoadFailures();
+        }
+
+        // Before the handler for Visual Studio's assemblies, which would try a file of the same name from its folders.
+        ProjectRuntimeResolver.ServeNewerProjectionReferences();
 
         if (!string.IsNullOrWhiteSpace(args[4]))
         {
@@ -124,5 +131,37 @@ internal static class Program
         {
             app?.Dispose();
         }
+    }
+
+    [ThreadStatic]
+    private static bool _isLoggingLoadFailure;
+
+    /// <summary>
+    /// Writes the failures to load an assembly or a type to the log at the moment they are thrown. XAML calls into the
+    /// code of the project, and an exception that leaves that code ends the process with nothing in the log; this
+    /// tells which assembly could not be loaded.
+    /// </summary>
+    private static void LogAssemblyLoadFailures()
+    {
+        AppDomain.CurrentDomain.FirstChanceException += (_, args) =>
+        {
+            // A failure while one is being written, or one that is not worth the log.
+            Exception exception = args.Exception;
+            if (_isLoggingLoadFailure || !AssemblyLoadFailures.IsWorthLogging(exception))
+            {
+                return;
+            }
+
+            // A failure to load an assembly or a type.
+            _isLoggingLoadFailure = true;
+            try
+            {
+                WinUIDesignerLogger.LogTrace("Surface", AssemblyLoadFailures.Describe(exception));
+            }
+            finally
+            {
+                _isLoggingLoadFailure = false;
+            }
+        };
     }
 }
