@@ -74,7 +74,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
     private readonly TextBlock _summaryText;
     private readonly Button _resetAllButton;
     private readonly DispatcherTimer _textChangedTimer;
-    private readonly List<RowView> _rowViews = [];
+    private readonly List<ConditionalXamlSwitchRowView> _rowViews = [];
 
     private IMarkupTextBuffer? _buffer;
     private EventHandler<MarkupTextChangedEventArgs>? _textChangedHandler;
@@ -258,21 +258,6 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
             return null;
         }
-    }
-
-    /// <summary>
-    /// Returns the first column of <paramref name="grid"/> that no child occupies and that lies after every
-    /// occupied one; it equals the number of columns when there is no such column.
-    /// </summary>
-    internal static int FindFreeColumn(Grid grid)
-    {
-        int next = 0;
-        foreach (UIElement child in grid.Children)
-        {
-            next = Math.Max(next, Grid.GetColumn(child) + Math.Max(1, Grid.GetColumnSpan(child)));
-        }
-
-        return next;
     }
 
     public void Dispose()
@@ -479,7 +464,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
             return false;
         }
 
-        int column = FindFreeColumn(grid);
+        int column = ConditionalXamlSwitchButton.FindFreeColumn(grid);
         if (column >= grid.ColumnDefinitions.Count)
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -539,7 +524,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         ScanDocument();
 
         XamlConditionOverrides overrides = ReadOverrides();
-        bool isShown = _isEnabled && (_switches.Count != 0 || !overrides.IsEmpty);
+        bool isShown = ConditionalXamlSwitchButton.IsShown(_isEnabled, _switches.Count, overrides.Count);
         _button.Visibility = isShown ? Visibility.Visible : Visibility.Collapsed;
         _buttonText.Text = ConditionalXamlSwitchRow.FormatButtonLabel(overrides.Count);
         AutomationProperties.SetItemStatus(_button, ConditionalXamlSwitchRow.FormatOverrideSummary(overrides.Count));
@@ -718,7 +703,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
             return;
         }
 
-        foreach (RowView row in _rowViews)
+        foreach (ConditionalXamlSwitchRowView row in _rowViews)
         {
             if (row.CheckBox.IsEnabled && row.CheckBox.Focus())
             {
@@ -732,7 +717,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
     private void OnButtonPreviewKeyDown(object sender, KeyEventArgs e)
     {
         Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if ((key == Key.Down || key == Key.F4) && _button.IsChecked != true)
+        if (ConditionalXamlSwitchButton.GetKeyAction(key, isOpen: _button.IsChecked == true) == ConditionalXamlSwitchButton.KeyAction.Open)
         {
             e.Handled = true;
             Guard("opening the conditions", () => _button.IsChecked = true);
@@ -776,7 +761,11 @@ internal sealed class ConditionalXamlSwitches : IDisposable
             _rowViews.Clear();
             foreach (ConditionalXamlSwitchRow row in rows)
             {
-                var view = new RowView(this, row.Key);
+                var view = new ConditionalXamlSwitchRowView(
+                    row.Key,
+                    (switchedRow, holds) => Guard("switching a condition", () => SetOverride(switchedRow.Key, switchedRow.Title, holds)),
+                    resetRow => Guard("resetting a condition", () => ResetOverride(resetRow.Key, resetRow.Title))
+                );
                 _rowViews.Add(view);
                 _rowsPanel.Children.Add(view.Root);
             }
@@ -889,110 +878,6 @@ internal sealed class ConditionalXamlSwitches : IDisposable
             if (_owner.TryGetTarget(out ConditionalXamlSwitches? target))
             {
                 target.OnDesignTimeOptionsChanged();
-            }
-        }
-    }
-
-    /// <summary>
-    /// The controls of one row of the list.
-    /// </summary>
-    private sealed class RowView
-    {
-        private readonly ConditionalXamlSwitches _owner;
-        private readonly TextBlock _title;
-        private readonly TextBlock _branches;
-        private readonly TextBlock _status;
-        private readonly Button _reset;
-        private string _titleText = string.Empty;
-
-        // Set while Update writes the check box, so that only the user's switching sets an override.
-        private bool _updating;
-
-        public RowView(ConditionalXamlSwitches owner, string key)
-        {
-            _owner = owner;
-            Key = key;
-
-            // The text of the list keeps the theme's color whatever the check box style does with its content.
-            _title = new TextBlock { TextWrapping = TextWrapping.Wrap };
-            _title.SetResourceReference(TextBlock.ForegroundProperty, EnvironmentColors.CommandBarTextActiveBrushKey);
-            CheckBox = new CheckBox { Content = _title, VerticalContentAlignment = VerticalAlignment.Top };
-            CheckBox.SetResourceReference(FrameworkElement.StyleProperty, VsResourceKeys.CheckBoxStyleKey);
-
-            // Checked and Unchecked rather than Click: switching through UI Automation (screen readers, UI tests)
-            // toggles the check box without a click.
-            CheckBox.Checked += (_, _) => OnSwitched();
-            CheckBox.Unchecked += (_, _) => OnSwitched();
-
-            _branches = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(20, 2, 0, 0) };
-            _status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(20, 1, 0, 0) };
-
-            _reset = new Button
-            {
-                Content = "Reset",
-                Margin = new Thickness(12, 0, 0, 0),
-                Padding = new Thickness(8, 1, 8, 1),
-                VerticalAlignment = VerticalAlignment.Top,
-            };
-            _reset.SetResourceReference(FrameworkElement.StyleProperty, VsResourceKeys.ButtonStyleKey);
-            _reset.Click += (_, _) => _owner.Guard("resetting a condition", () => _owner.ResetOverride(Key, _titleText));
-
-            var details = new StackPanel();
-            details.Children.Add(CheckBox);
-            details.Children.Add(_branches);
-            details.Children.Add(_status);
-
-            var root = new Grid { Margin = new Thickness(0, 4, 0, 6) };
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetColumn(_reset, 1);
-            root.Children.Add(details);
-            root.Children.Add(_reset);
-            Root = root;
-        }
-
-        public string Key { get; }
-
-        public FrameworkElement Root { get; }
-
-        public CheckBox CheckBox { get; }
-
-        public void Update(ConditionalXamlSwitchRow row, bool canSwitch)
-        {
-            _titleText = row.Title;
-            _title.Text = row.Title;
-            _updating = true;
-            try
-            {
-                CheckBox.IsChecked = row.Value == true;
-            }
-            finally
-            {
-                _updating = false;
-            }
-
-            CheckBox.IsEnabled = row.IsSwitchable && canSwitch;
-            _title.Opacity = CheckBox.IsEnabled ? 1.0 : 0.6;
-            AutomationProperties.SetName(CheckBox, row.Title);
-            AutomationProperties.SetHelpText(CheckBox, row.Branches.Length == 0 ? row.Status : row.Branches + ". " + row.Status);
-            AutomationProperties.SetItemStatus(CheckBox, row.IsOverridden ? "Overridden" : "Evaluated");
-
-            _branches.Text = row.Branches;
-            _branches.Visibility = row.Branches.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-            _status.Text = row.Status;
-            _status.FontWeight = row.IsOverridden ? FontWeights.SemiBold : FontWeights.Normal;
-
-            _reset.Visibility = row.IsOverridden ? Visibility.Visible : Visibility.Collapsed;
-            _reset.IsEnabled = canSwitch;
-            AutomationProperties.SetName(_reset, "Reset " + row.Title);
-            AutomationProperties.SetHelpText(_reset, "Lets this condition follow its evaluation again.");
-        }
-
-        private void OnSwitched()
-        {
-            if (!_updating)
-            {
-                _owner.Guard("switching a condition", () => _owner.SetOverride(Key, _titleText, CheckBox.IsChecked == true));
             }
         }
     }

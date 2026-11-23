@@ -24,6 +24,8 @@
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlConditionAnswers.cs" Link="XamlConditionAnswers.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/DesignTimeOptionsSettings.cs" Link="DesignTimeOptionsSettings.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/ConditionalXamlSwitchRow.cs" Link="ConditionalXamlSwitchRow.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/ConditionalXamlSwitchRowView.cs" Link="ConditionalXamlSwitchRowView.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/ConditionalXamlSwitchButton.cs" Link="ConditionalXamlSwitchButton.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -52,6 +54,8 @@
 		<Reference Include="PresentationFramework" />
 		<Reference Include="PresentationCore" />
 		<Reference Include="WindowsBase" />
+		<Reference Include="UIAutomationProvider" />
+		<Reference Include="UIAutomationTypes" />
 		<Reference Include="Microsoft.VisualStudio.Shell.Framework">
 			<HintPath>$(VsInstallRoot)/Common7/IDE/PublicAssemblies/Microsoft.VisualStudio.Shell.Framework.dll</HintPath>
 		</Reference>
