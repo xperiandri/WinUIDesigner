@@ -43,6 +43,8 @@ public sealed class VsDesignerApiShapeTests
     private const string _DocumentNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentNode";
     private const string _DocumentCompositeNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentCompositeNode";
     private const string _MarkupUtility = "Microsoft.VisualStudio.DesignTools.Markup.MarkupUtility";
+    private const string _DesignerInstanceBuilder = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.DesignerInstanceBuilder";
+    private const string _DesignTimePropertiesHelper = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Metadata.DesignTimePropertiesHelper";
 
     private static readonly Lazy<DesignerAssemblies> _Assemblies = new(DesignerAssemblies.Load);
 
@@ -391,8 +393,8 @@ public sealed class VsDesignerApiShapeTests
     }
 
     // The surface merges a dictionary named through ResourceDictionary.Source from the copy Visual Studio prepares
-    // for it. The tests below pin what that relies on: who prepares the copy, how its URI looks, and under which
-    // name the source reaches the surface on either path.
+    // for it. The tests below pin what that relies on: who prepares the copy, how its URI looks, and how the source
+    // is passed on: as the attribute of prepared XAML, and as a property in construction actions.
 
     [TestMethod]
     public void MarkupProviderPreparesTheDictionariesADocumentMerges()
@@ -472,13 +474,51 @@ public sealed class VsDesignerApiShapeTests
     }
 
     [TestMethod]
-    public void DesignTimePropertiesAreSerializedWithTheXSurfUwpOwner()
+    public void DesignerInstanceBuilderPlatformCreatesItsBuilderForTheXSurfUwpOwner()
     {
-        // Construction actions name the property "ResourceDictionarySource:XSurfUwp.DT".
+        // The owner that the builder writes for a design-time property: "ResourceDictionarySource:XSurfUwp.DT".
         TypeDefinition type = RequireType(_UwpDesignerInstanceBuilderPlatform);
         MethodDefinition[] constructors = type.Methods.Where(method => method.IsConstructor && !method.IsStatic).ToArray();
 
         Assert.IsTrue(constructors.Any(constructor => LoadsString(constructor, "XSurfUwp.DT")), $"No constructor of {_UwpDesignerInstanceBuilderPlatform} creates the design-time builder for \"XSurfUwp.DT\".");
+    }
+
+    [TestMethod]
+    [DataRow("SetDesignTimeResourceDictionarySource", "DesignerInstanceBuilderContext,DocumentNode,DocumentNode,IProperty,Boolean")]
+    [DataRow("ClearDesignTimeResourceDictionarySource", "DesignerInstanceBuilderContext,DocumentNode,IProperty")]
+    public void ConstructionActionsSerializeTheDictionarySourceThroughThePlatform(string methodName, string parameterTypes)
+    {
+        // The wire name is whatever the platform makes of the design-time property, which is what IsSourceProperty reads.
+        MethodDefinition method = RequireMethod(_DesignerInstanceBuilderUtility, methodName, parameterTypes.Split(','));
+
+        Assert.IsTrue(Calls(method, "get_ResourceDictionarySourceProperty"), $"{Describe(method)} no longer uses the design-time property of the dictionary source.");
+        Assert.IsTrue(Calls(method, "SerializeProperty"), $"{Describe(method)} no longer lets the platform serialize the property.");
+    }
+
+    [TestMethod]
+    public void PlatformGivesADesignTimePropertyTheDesignTimeOwner()
+    {
+        // The UWP platform hands the property to the DesignerInstanceBuilder it created for "XSurfUwp.DT", which names
+        // a member flagged as a design-time property with that owner and any other with its declaring type.
+        MethodDefinition platform = RequireMethod(_UwpDesignerInstanceBuilderPlatform, "SerializeProperty", "IProperty");
+        MethodDefinition builder = RequireMethod(_DesignerInstanceBuilder, "SerializeProperty", "IProperty", "String");
+
+        Assert.AreEqual(_UwpDesignerInstanceBuilderPlatform, platform.DeclaringType.FullName, $"The platform no longer serializes properties itself: {Describe(platform)}");
+        Assert.IsTrue(CallsOn(platform, _DesignerInstanceBuilder, "SerializeProperty"), $"{Describe(platform)} no longer hands the property to the DesignerInstanceBuilder.");
+        Assert.IsTrue(Calls(builder, "HasFlag"), $"{Describe(builder)} no longer looks at the member type of the property.");
+        Assert.IsTrue(builder.Body.Instructions.Any(instruction => instruction.OpCode == OpCodes.Ldfld && instruction.Operand is FieldReference { Name: "designTimeTypeName" }), $"{Describe(builder)} no longer names a design-time property with its design-time owner.");
+        Assert.IsTrue(Calls(builder, "FormatFullMemberName"), $"{Describe(builder)} no longer formats \"Member:Owner\".");
+    }
+
+    [TestMethod]
+    public void DictionarySourceIsNotMappedToARuntimePropertyBySerialization()
+    {
+        // The platform replaces a design-time property by the runtime property it stands for. It does that for
+        // DesignStyle and DesignSource only; the dictionary source keeps its own name, which the surface handles.
+        TypeDefinition helper = RequireType(_DesignTimePropertiesHelper);
+        MethodDefinition initializer = helper.Methods.Single(method => method.IsConstructor && method.IsStatic);
+
+        Assert.IsFalse(Calls(initializer, "get_ResourceDictionarySourceProperty"), $"{_DesignTimePropertiesHelper} maps the dictionary source to a runtime property now.");
     }
 
     private static bool LoadsString(MethodDefinition method, string value)
@@ -489,6 +529,11 @@ public sealed class VsDesignerApiShapeTests
     private static bool Calls(MethodDefinition method, string methodName)
     {
         return method.HasBody && method.Body.Instructions.Any(instruction => instruction.Operand is MethodReference called && called.Name == methodName);
+    }
+
+    private static bool CallsOn(MethodDefinition method, string typeName, string methodName)
+    {
+        return method.HasBody && method.Body.Instructions.Any(instruction => instruction.Operand is MethodReference called && called.Name == methodName && called.DeclaringType.FullName == typeName);
     }
 
     private static TypeDefinition RequireType(string fullName)
