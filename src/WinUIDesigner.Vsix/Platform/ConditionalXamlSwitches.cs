@@ -754,6 +754,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         Key key = e.Key == Key.System ? e.SystemKey : e.Key;
         switch (ConditionalXamlSwitchButton.GetKeyAction(key, isOpen: _button.IsChecked == true))
         {
+            // The list is closed: Down and F4 open it, as they open the list of a combo box.
             case ConditionalXamlSwitchButton.KeyAction.Open:
                 e.Handled = true;
                 Guard("opening the conditions", () => _button.IsChecked = true);
@@ -845,13 +846,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         );
     }
 
-    private void ResetAllOverrides()
-    {
-        ChangeOverrides(
-            _ => XamlConditionOverrides.Empty,
-            "every condition follows its evaluation again"
-        );
-    }
+    private void ResetAllOverrides() => ChangeOverrides(_ => XamlConditionOverrides.Empty, "every condition follows its evaluation again");
 
     private void ChangeOverrides(Func<XamlConditionOverrides, XamlConditionOverrides> change, string description)
     {

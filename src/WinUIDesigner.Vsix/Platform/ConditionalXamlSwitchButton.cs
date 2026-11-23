@@ -71,6 +71,8 @@ internal static class ConditionalXamlSwitchButton
 
         // The focus stays on the button when no control of the list can take it, so Escape reaches the button, not the list.
         (Key.Escape, true) => KeyAction.Close,
+
+        // Any other key, and Down or F4 on an open list or Escape on a closed one, is not for the list.
         _ => KeyAction.None,
     };
 }
