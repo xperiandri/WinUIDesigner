@@ -162,6 +162,33 @@ internal static class ResourceDictionarySourceUri
     }
 
     /// <summary>
+    /// Returns the path of the copy of the same file that the build laid out in the shadow cache, beside Visual
+    /// Studio's prepared copy: the same folder, and the file name without the marker.
+    /// </summary>
+    /// <param name="preparedPath">The path of a prepared copy, <c>...\~vs]~{id}~{file name}</c>.</param>
+    /// <returns>The path, or <see langword="null"/> when the name of the file has no marker.</returns>
+    public static string? TryGetBuildLayoutPath(string preparedPath)
+    {
+        ArgumentNullException.ThrowIfNull(preparedPath);
+
+        try
+        {
+            string fileName = Path.GetFileName(preparedPath);
+            if (!TryGetDesignTimeDocumentId(fileName, out _) || !fileName.StartsWith(DesignTimeFileMarker, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            int end = fileName.IndexOf('~', DesignTimeFileMarker.Length);
+            return end + 1 < fileName.Length ? Path.Combine(Path.GetDirectoryName(preparedPath) ?? string.Empty, fileName[(end + 1)..]) : null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Returns the local file that holds the XAML an absolute URI addresses in the surface process.
     /// </summary>
     /// <param name="uri">An absolute URI.</param>

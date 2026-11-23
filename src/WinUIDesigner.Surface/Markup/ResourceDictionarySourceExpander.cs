@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace WinUIDesigner.Surface.Markup;
@@ -299,6 +300,14 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         if (_cache.TryGet(path, text, _options.ReadFile, out PreparedResourceDictionary? cached))
         {
             dependencies.AddRange(cached.Dependencies);
+
+            // The warnings of the dictionary and of those it merges are reported by every request that uses it.
+            foreach (string notice in cached.Notices)
+            {
+                Warn(notice);
+                session.Notices.Add(notice);
+            }
+
             return cached;
         }
 
@@ -328,6 +337,15 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         // Every copy of this dictionary that is made from here on knows where it comes from.
         _origins.Add(root, new ResourceCopyOrigin(path, name, uri));
 
+        // What Visual Studio left out of the copy, which only the file that the build laid out can tell. It is no
+        // failure and the dictionary is kept, but it is said again whenever the dictionary is used.
+        int noticesBefore = session.Notices.Count;
+        if (DescribeLeftOutResources(path, name, text) is { } leftOut)
+        {
+            Warn(leftOut);
+            session.Notices.Add(leftOut);
+        }
+
         var nested = new List<KeyValuePair<string, string?>>();
         bool isOuterCut = session.IsCut;
         int failedBefore = session.Failed;
@@ -349,12 +367,60 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         // reason may be gone by then (a source the runtime could not load a moment ago).
         bool isCut = session.IsCut;
         session.IsCut = isOuterCut || isCut;
+        List<string> notices = session.Notices.GetRange(noticesBefore, session.Notices.Count - noticesBefore);
         PreparedResourceDictionary prepared = isCut || session.Failed != failedBefore
-            ? new PreparedResourceDictionary(root, nested)
-            : _cache.Store(path, text, root, nested);
+            ? new PreparedResourceDictionary(root, nested, notices)
+            : _cache.Store(path, text, root, nested, notices);
 
         dependencies.AddRange(prepared.Dependencies);
         return prepared;
+    }
+
+    /// <summary>
+    /// Compares Visual Studio's prepared copy with the copy of the same file that the build laid out beside it, and
+    /// names the resources that only the second has.
+    /// </summary>
+    /// <returns><see langword="null"/> when there is nothing to say, no built copy among it.</returns>
+    private string? DescribeLeftOutResources(string path, string name, string preparedText)
+    {
+        if (ResourceDictionarySourceUri.TryGetBuildLayoutPath(path) is not { } layoutPath)
+        {
+            return null;
+        }
+
+        string? builtText;
+        try
+        {
+            builtText = _options.ReadFile(layoutPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return null;
+        }
+
+        if (builtText is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            // As written: the namespace policies drop members that the file has, which Visual Studio did not remove.
+            XElement? prepared = XDocument.Parse(preparedText).Root;
+            XElement? built = XDocument.Parse(builtText).Root;
+            if (prepared is null || built is null)
+            {
+                return null;
+            }
+
+            IReadOnlyList<LeftOutResource> leftOut = PreparedCopyComparison.FindLeftOut(prepared, built, out int resourcesInBuilt);
+            return leftOut.Count == 0 ? null : PreparedCopyComparison.Describe(name, leftOut, resourcesInBuilt);
+        }
+        catch (XmlException)
+        {
+            // A file that is no XML has nothing to compare; the prepared copy reports its own malformation.
+            return null;
+        }
     }
 
     private string? GetRuntimeLoadError(string uri)
@@ -487,6 +553,11 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     private sealed class Session
     {
         public List<ChainMember> Chain { get; } = [];
+
+        /// <summary>
+        /// Gets the warnings about dictionaries that are merged all the same, in the order they were met.
+        /// </summary>
+        public List<string> Notices { get; } = [];
 
         /// <summary>
         /// Gets or sets the number of dictionaries being read; the document at the start of the chain does not count.

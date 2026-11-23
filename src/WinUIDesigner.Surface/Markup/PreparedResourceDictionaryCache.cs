@@ -81,7 +81,16 @@ internal sealed class PreparedResourceDictionaryCache(int capacity = PreparedRes
     /// The prepared copies merged into the dictionary, at any depth, with their text, or <see langword="null"/> for
     /// a copy that was missing.
     /// </param>
-    public PreparedResourceDictionary Store(string path, string text, XElement template, IEnumerable<KeyValuePair<string, string?>> dependencies)
+    /// <param name="notices">
+    /// What the dictionary, and those it merges, said about themselves while they were read, to be said again by every
+    /// use of the dictionary.
+    /// </param>
+    public PreparedResourceDictionary Store(
+        string path,
+        string text,
+        XElement template,
+        IEnumerable<KeyValuePair<string, string?>> dependencies,
+        IReadOnlyList<string>? notices = null)
     {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(text);
@@ -103,7 +112,7 @@ internal sealed class PreparedResourceDictionaryCache(int capacity = PreparedRes
             _entries.Clear();
         }
 
-        var dictionary = new PreparedResourceDictionary(template, new List<KeyValuePair<string, string?>>(unique));
+        var dictionary = new PreparedResourceDictionary(template, new List<KeyValuePair<string, string?>>(unique), notices ?? []);
         _entries[path] = new Entry(text, dictionary);
         return dictionary;
     }
@@ -147,7 +156,7 @@ internal sealed class PreparedResourceDictionaryCache(int capacity = PreparedRes
 /// A resource dictionary read from a prepared copy: the root element with the namespace policies applied and the
 /// dictionaries it merges expanded, and the prepared copies it was made from besides its own.
 /// </summary>
-internal sealed class PreparedResourceDictionary(XElement template, IReadOnlyList<KeyValuePair<string, string?>> dependencies)
+internal sealed class PreparedResourceDictionary(XElement template, IReadOnlyList<KeyValuePair<string, string?>> dependencies, IReadOnlyList<string> notices)
 {
     /// <summary>
     /// Gets the root element of the dictionary. Callers copy it before they change or insert it.
@@ -159,4 +168,10 @@ internal sealed class PreparedResourceDictionary(XElement template, IReadOnlyLis
     /// <see langword="null"/> stands for a copy that was missing.
     /// </summary>
     public IReadOnlyList<KeyValuePair<string, string?>> Dependencies { get; } = dependencies;
+
+    /// <summary>
+    /// Gets what the dictionary, and those it merges, said about themselves while they were read: warnings about
+    /// dictionaries that are merged all the same.
+    /// </summary>
+    public IReadOnlyList<string> Notices { get; } = notices;
 }

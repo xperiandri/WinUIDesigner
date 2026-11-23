@@ -755,6 +755,97 @@ public sealed class ResourceDictionarySourceExpanderTests
         CollectionAssert.AreEqual(new[] { "CardPadding" }, AllKeys(page));
     }
 
+    [TestMethod]
+    public void CopyThatLacksResourcesOfTheBuiltCopyIsReportedOnceAndStillMerged()
+    {
+        // Visual Studio removed the styles whose target type it could not resolve when it prepared the copy, before
+        // the project was loaded. The page that uses them fails on a missing key, and nothing in the log says why.
+        var cache = new ShadowCache();
+        cache.Add(_Cards, Dictionary("""<Style x:Key="PlainStyle" TargetType="Border" />"""));
+        cache.AddBuilt(_Cards, BuiltDictionary("""
+            <Style x:Key="PlainStyle" TargetType="Border" />
+            <Style x:Key="LoadingStyle" TargetType="local:LoadingTextBox" />
+            <Style x:Key="ComboStyle" TargetType="sfe:SfComboBox" />
+            """));
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 0), expansion);
+        CollectionAssert.AreEqual(new[] { "PlainStyle" }, AllKeys(page));
+        Assert.HasCount(1, cache.Warnings);
+        Assert.Contains("Visual Studio's prepared copy of 'Library/Styles/Cards.xaml' lacks 2 of the 3 resources that the built copy of the file has", cache.Warnings[0]);
+        Assert.Contains("LoadingStyle (Style of local:LoadingTextBox), ComboStyle (Style of sfe:SfComboBox)", cache.Warnings[0]);
+        Assert.Contains("reload the designer", cache.Warnings[0]);
+    }
+
+    [TestMethod]
+    public void WhatWasLeftOutIsSaidAgainWhenTheDictionaryComesFromTheCache()
+    {
+        var cache = new ShadowCache();
+        cache.Add(_Cards, Dictionary("""<Style x:Key="PlainStyle" TargetType="Border" />"""));
+        cache.AddBuilt(_Cards, BuiltDictionary("""<Style x:Key="PlainStyle" TargetType="Border" /><Style x:Key="LoadingStyle" TargetType="local:LoadingTextBox" />"""));
+
+        foreach (string owner in new[] { "document 10", "document 11" })
+        {
+            cache.Warnings.Clear();
+            XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+            cache.Expander.Expand(page, _PageUri, owner);
+
+            Assert.HasCount(1, cache.Warnings, owner);
+        }
+
+        // Nothing failed, so the dictionary is kept: the second request did not read the file again.
+        Assert.AreEqual(1, cache.Expander.Cache.Count);
+        Assert.AreEqual(1, cache.Parsed.Count);
+    }
+
+    [TestMethod]
+    public void WhatWasLeftOutOfAMergedDictionaryIsSaidByEveryRequestThatMergesTheOneThatMergesIt()
+    {
+        var cache = new ShadowCache();
+        cache.Add(_Margins, Dictionary("""<Thickness x:Key="CardPadding">12</Thickness>"""));
+        cache.AddBuilt(_Margins, BuiltDictionary("""<Thickness x:Key="CardPadding">12</Thickness><Style x:Key="LoadingStyle" TargetType="local:LoadingTextBox" />"""));
+        cache.Add(_Cards, Dictionary($"""<ResourceDictionary.MergedDictionaries>{Merge(_Margins)}</ResourceDictionary.MergedDictionaries>"""));
+
+        foreach (string owner in new[] { "document 10", "document 11" })
+        {
+            cache.Warnings.Clear();
+            XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+            cache.Expander.Expand(page, _PageUri, owner);
+
+            Assert.HasCount(1, cache.Warnings, owner);
+            Assert.Contains("'Library/Margins.xaml'", cache.Warnings[0]);
+        }
+
+        Assert.AreEqual(2, cache.Parsed.Count, "Both dictionaries are read once.");
+    }
+
+    [TestMethod]
+    public void NothingIsSaidWhenThereIsNoBuiltCopyOrNothingIsMissing()
+    {
+        var cache = new ShadowCache();
+        cache.Add(_Cards, Dictionary("""<Style x:Key="PlainStyle" TargetType="Border" />"""));
+        cache.Add(_Margins, Dictionary("""<Thickness x:Key="CardPadding">12</Thickness><Style x:Key="PreparedOnly" TargetType="Border" />"""));
+        cache.AddBuilt(_Margins, BuiltDictionary("""<Thickness x:Key="CardPadding">12</Thickness>"""));
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}{Merge(_Margins)}</ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(2, 0, 0), expansion);
+        Assert.IsEmpty(cache.Warnings);
+    }
+
+    /// <summary>
+    /// A dictionary as the project has it in its source, which is what the build lays out in the shadow cache.
+    /// </summary>
+    private static string BuiltDictionary(string body)
+    {
+        return $"""<ResourceDictionary xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:local="using:Library.Controls" xmlns:sfe="using:Syncfusion.WinUI.Editors">{body}</ResourceDictionary>""";
+    }
+
     /// <summary>
     /// Returns the keys of the entries of a dictionary element.
     /// </summary>

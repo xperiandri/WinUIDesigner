@@ -67,6 +67,16 @@ internal sealed class ShadowCache
     }
 
     /// <summary>
+    /// Writes the copy of the file of the dictionary <paramref name="uri"/> names that the build laid out, beside
+    /// the prepared copy and without the marker in its name.
+    /// </summary>
+    public void AddBuilt(string uri, string xaml)
+    {
+        string prepared = ResourceDictionarySourceUri.TryGetLocalPath(uri, ContentDirectory)!;
+        _files[ResourceDictionarySourceUri.TryGetBuildLayoutPath(prepared)!] = xaml;
+    }
+
+    /// <summary>
     /// Returns a prepared dictionary with <paramref name="body"/> in it, as Visual Studio 18 writes it: the prefix of
     /// its own design-time properties is <c>_0</c>.
     /// </summary>

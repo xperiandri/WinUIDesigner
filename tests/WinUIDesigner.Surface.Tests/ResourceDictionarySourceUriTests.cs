@@ -125,6 +125,26 @@ public sealed class ResourceDictionarySourceUriTests
     }
 
     [TestMethod]
+    [DataRow(@"C:\DesignerCache\Ecierge.Console.UI\Styles\~vs]~359453~ErrorStyles.xaml", @"C:\DesignerCache\Ecierge.Console.UI\Styles\ErrorStyles.xaml")]
+    [DataRow(@"C:\DesignerCache\~vs]~359056~App.xaml", @"C:\DesignerCache\App.xaml")]
+    [DataRow(@"C:\DesignerCache\My Folder\~VS]~7~A B.xaml", @"C:\DesignerCache\My Folder\A B.xaml")]
+    public void BuildLayoutCopyIsBesideThePreparedCopyWithoutTheMarker(string preparedPath, string expected)
+    {
+        Assert.AreEqual(expected, ResourceDictionarySourceUri.TryGetBuildLayoutPath(preparedPath));
+    }
+
+    [TestMethod]
+    [DataRow(@"C:\DesignerCache\Styles\ErrorStyles.xaml")]
+    [DataRow(@"C:\DesignerCache\Styles\~vs]~abc~ErrorStyles.xaml")]
+    [DataRow(@"C:\DesignerCache\Styles\~vs]~12~")]
+    [DataRow(@"C:\DesignerCache\Styles\")]
+    [DataRow("")]
+    public void OtherPathsHaveNoBuildLayoutCopy(string path)
+    {
+        Assert.IsNull(ResourceDictionarySourceUri.TryGetBuildLayoutPath(path));
+    }
+
+    [TestMethod]
     public void FileUriIsItsLocalPath()
     {
         Assert.AreEqual(@"C:\Elsewhere\~vs]~1~A.xaml", ResourceDictionarySourceUri.TryGetLocalPath("file:///C:/Elsewhere/~vs]~1~A.xaml", _ContentDirectory));
