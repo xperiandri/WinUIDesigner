@@ -203,7 +203,7 @@ internal static class XamlRuntimeUtilities
             if (value is BindingBase binding)
                 BindingOperations.SetBinding(dependencyObject, dependencyProperty, binding);
             else
-                dependencyObject.SetValue(dependencyProperty, value);
+                dependencyObject.SetValue(dependencyProperty, GetBrushOfColor(value, property?.PropertyType) ?? value);
             return;
         }
 
@@ -978,6 +978,21 @@ internal static class XamlRuntimeUtilities
             return ConvertString(targetType, text);
         }
 
+        if (GetBrushOfColor(value, targetType) is { } brush)
+        {
+            return brush;
+        }
+
         return Convert.ChangeType(value, Nullable.GetUnderlyingType(targetType) ?? targetType, CultureInfo.InvariantCulture);
+    }
+
+    // The XAML parser gives a property of a brush the brush of a color that a resource holds (Foreground="{StaticResource
+    // TextFillColorPrimary}", where the resource is a Color). Setting the color itself is refused by the framework with
+    // E_FAIL ("Unspecified error").
+    private static Microsoft.UI.Xaml.Media.SolidColorBrush? GetBrushOfColor(object? value, Type? propertyType)
+    {
+        return value is Windows.UI.Color color && propertyType is not null && typeof(Microsoft.UI.Xaml.Media.Brush).IsAssignableFrom(propertyType)
+            ? new Microsoft.UI.Xaml.Media.SolidColorBrush(color)
+            : null;
     }
 }
