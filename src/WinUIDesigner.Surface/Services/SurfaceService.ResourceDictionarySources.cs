@@ -57,11 +57,13 @@ internal sealed partial class SurfaceService
     });
 
     /// <summary>
-    /// Starts the reports of a new request: each problem is reported once per request.
+    /// Starts a new request: each problem is reported once per request, and a source that the runtime could not
+    /// load is asked for again.
     /// </summary>
     private void BeginResourceDictionaryReports()
     {
         _reportedResourceDictionaryProblems.Clear();
+        _resourceDictionarySources?.BeginRequest();
     }
 
     /// <summary>

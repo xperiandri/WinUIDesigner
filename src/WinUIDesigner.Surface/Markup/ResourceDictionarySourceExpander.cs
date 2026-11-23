@@ -57,13 +57,25 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     private readonly ResourceDictionarySourceOptions _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly PreparedResourceDictionaryCache _cache = new();
 
-    // Whether the WinUI runtime loads a source in the surface does not change while the surface runs.
-    private readonly Dictionary<string, string?> _runtimeLoadErrors = new(StringComparer.Ordinal);
+    // The sources outside the solution that the WinUI runtime loaded in the surface.
+    private readonly HashSet<string> _runtimeLoadable = new(StringComparer.Ordinal);
+
+    // Why it could not load the others, in the request that asked. Whether a load works depends on what is loaded
+    // at that moment (a dictionary may need the resources of one merged before it), so the next request asks again.
+    private readonly Dictionary<string, string> _runtimeLoadErrors = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Gets the dictionaries kept from earlier expansions.
     /// </summary>
     public PreparedResourceDictionaryCache Cache => _cache;
+
+    /// <summary>
+    /// Starts a request: a source that the runtime could not load is asked for again.
+    /// </summary>
+    public void BeginRequest()
+    {
+        _runtimeLoadErrors.Clear();
+    }
 
     /// <summary>
     /// Returns whether <paramref name="element"/> belongs to the content of a merged dictionary that an expansion
@@ -335,11 +347,19 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
 
     private string? GetRuntimeLoadError(string uri)
     {
-        if (_runtimeLoadErrors.TryGetValue(uri, out string? error))
+        // A source that loaded is asked no more; what it brings does not go away while the surface runs.
+        if (_runtimeLoadable.Contains(uri))
         {
-            return error;
+            return null;
         }
 
+        // A failure is kept for the request that met it, so that a dictionary merged ten times is asked once.
+        if (_runtimeLoadErrors.TryGetValue(uri, out string? known))
+        {
+            return known;
+        }
+
+        string? error;
         if (_options.LoadWithRuntime is not { } load)
         {
             error = "the designer cannot load dictionaries by URI.";
@@ -356,7 +376,15 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             }
         }
 
-        _runtimeLoadErrors[uri] = error;
+        if (error is null)
+        {
+            _runtimeLoadable.Add(uri);
+        }
+        else
+        {
+            _runtimeLoadErrors[uri] = error;
+        }
+
         return error;
     }
 

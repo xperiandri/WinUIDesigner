@@ -330,7 +330,10 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.AreEqual(2, inserted.Length);
         Assert.IsTrue(inserted.All(element => (string?)element.Attribute("Source") == segmented));
 
-        // Whether the runtime loads a source does not change while the surface runs.
+        // A source that loaded is not asked about again, not even by a later request.
+        CollectionAssert.AreEqual(new[] { segmented }, cache.RuntimeLoads);
+        cache.Expander.BeginRequest();
+        cache.Expander.Expand(Page($"""<ResourceDictionary.MergedDictionaries>{Merge(segmented)}</ResourceDictionary.MergedDictionaries>"""), _PageUri, "document 11");
         CollectionAssert.AreEqual(new[] { segmented }, cache.RuntimeLoads);
     }
 
@@ -348,6 +351,47 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.AreEqual(1, cache.Warnings.Count);
         StringAssert.Contains(cache.Warnings[0], "Visual Studio did not find it in the solution");
         StringAssert.Contains(cache.Warnings[0], "Cannot locate resource");
+    }
+
+    [TestMethod]
+    public void SourceTheRuntimeCouldNotLoadIsAskedAgainByTheNextRequest()
+    {
+        // Whether a dictionary loads depends on what is loaded at that moment: it may need the resources of one
+        // that is merged before it. A failure is not a fact about the dictionary for the rest of the process.
+        const string package = "ms-appx:///Pkg/Styles.xaml";
+        var cache = new ShadowCache { RuntimeErrors = { [package] = "Cannot find a Resource with the Name/Key PkgAccent." } };
+        XElement first = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(package)}{Merge(package)}</ResourceDictionary.MergedDictionaries>""");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(0, 0, 2), cache.Expander.Expand(first, _PageUri, "document 10"));
+        Assert.HasCount(1, cache.RuntimeLoads, "A request asks about a source once, however often it merges it.");
+
+        cache.RuntimeErrors.Clear();
+        cache.Expander.BeginRequest();
+        XElement second = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(package)}</ResourceDictionary.MergedDictionaries>""");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(0, 1, 0), cache.Expander.Expand(second, _PageUri, "document 10"));
+        Assert.HasCount(2, cache.RuntimeLoads);
+        Assert.AreEqual(package, (string?)second.Descendants(_P + "ResourceDictionary").Single(ResourceDictionarySourceExpander.IsInserted).Attribute("Source"));
+    }
+
+    [TestMethod]
+    public void DictionaryThatLeftARuntimeSourceOutIsExpandedAgainByTheNextRequest()
+    {
+        // The omission must not stay in the dictionary that merges the source once the source loads.
+        const string package = "ms-appx:///Pkg/Styles.xaml";
+        var cache = new ShadowCache { RuntimeErrors = { [package] = "Cannot find a Resource with the Name/Key PkgAccent." } };
+        cache.Add(_Cards, Dictionary($"""<ResourceDictionary.MergedDictionaries>{Merge(package)}</ResourceDictionary.MergedDictionaries><SolidColorBrush x:Key="A" Color="Red" />"""));
+        XElement first = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), cache.Expander.Expand(first, _PageUri, "document 10"));
+        Assert.AreEqual(0, cache.Expander.Cache.Count);
+
+        cache.RuntimeErrors.Clear();
+        cache.Expander.BeginRequest();
+        XElement second = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 1, 0), cache.Expander.Expand(second, _PageUri, "document 11"));
+        Assert.IsTrue(second.Descendants(_P + "ResourceDictionary").Any(element => (string?)element.Attribute("Source") == package));
     }
 
     [TestMethod]
