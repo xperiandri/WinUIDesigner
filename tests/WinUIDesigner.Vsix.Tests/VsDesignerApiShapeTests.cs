@@ -539,8 +539,9 @@ public sealed class VsDesignerApiShapeTests
         // The platform replaces a design-time property by the runtime property it stands for. It does that for
         // DesignStyle and DesignSource only; the dictionary source keeps its own name, which the surface handles.
         TypeDefinition helper = RequireType(_DesignTimePropertiesHelper);
-        MethodDefinition initializer = helper.Methods.Single(method => method.IsConstructor && method.IsStatic);
+        MethodDefinition? initializer = helper.Methods.SingleOrDefault(method => method.IsConstructor && method.IsStatic);
 
+        Assert.IsNotNull(initializer, $"{_DesignTimePropertiesHelper} has no type initializer in this Visual Studio, so this test cannot see how it maps design-time properties: look at where it builds the map.");
         Assert.IsFalse(Calls(initializer, "get_ResourceDictionarySourceProperty"), $"{_DesignTimePropertiesHelper} maps the dictionary source to a runtime property now.");
     }
 
@@ -674,11 +675,20 @@ public sealed class VsDesignerApiShapeTests
     public void MarkupProviderPreparesADocumentOnlyOnce()
     {
         // The reason a library is registered only when its project knows its types: a document that has been prepared
-        // keeps its copy, and a second request to prepare it returns at once.
+        // keeps its copy, and a second request to prepare it returns at once. The method reads the construction state,
+        // decides on it and leaves, and only after that marks the document as being prepared.
         MethodDefinition method = RequireMethod(_SurfaceProcessMarkupProvider, "PrepareForLoading", "SurfaceProcessDocument");
+        Instruction[] code = [.. method.Body.Instructions];
+        int read = Array.FindIndex(code, instruction => instruction.Operand is MethodReference { Name: "get_ConstructionState" });
+        int write = Array.FindIndex(code, instruction => instruction.Operand is MethodReference { Name: "set_ConstructionState" });
 
-        Assert.IsTrue(Calls(method, "get_ConstructionState"), $"{Describe(method)} no longer looks at the construction state of the document.");
-        Assert.IsTrue(Calls(method, "set_ConstructionState"), $"{Describe(method)} no longer marks the document as being prepared.");
+        Assert.IsGreaterThan(-1, read, $"{Describe(method)} no longer looks at the construction state of the document.");
+        Assert.IsGreaterThan(-1, write, $"{Describe(method)} no longer marks the document as being prepared.");
+        Assert.IsLessThan(write, read, $"{Describe(method)} sets the construction state before it looks at it.");
+
+        Instruction[] between = [.. code.Skip(read + 1).Take(write - read - 1)];
+        Assert.Contains(instruction => instruction.OpCode.FlowControl == FlowControl.Cond_Branch, between, $"{Describe(method)} no longer decides on the construction state before it marks the document.");
+        Assert.Contains(instruction => instruction.OpCode.Code is Code.Ret or Code.Leave or Code.Leave_S, between, $"{Describe(method)} no longer leaves when the document has been prepared.");
     }
 
     [TestMethod]
