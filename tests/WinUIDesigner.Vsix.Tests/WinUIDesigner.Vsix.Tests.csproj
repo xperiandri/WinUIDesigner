@@ -6,10 +6,21 @@
 		<TestingExtensionsProfile>None</TestingExtensionsProfile>
 	</PropertyGroup>
 
+	<PropertyGroup Condition="'$(VisualStudioVersion)' == '17.0'">
+		<!-- Built with Visual Studio 2022 (17.14), as the extension defines it. -->
+		<DefineConstants>$(DefineConstants);VS2022</DefineConstants>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<Compile Include="../../src/WinUIDesigner.Vsix/Toolbox/ToolboxItemData.cs" Link="ToolboxItemData.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Toolbox/ProvideStaticXamlToolboxItemsAttribute.cs" Link="ProvideStaticXamlToolboxItemsAttribute.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Toolbox/ProvideStaticWinUIToolboxItemsAttribute.cs" Link="ProvideStaticWinUIToolboxItemsAttribute.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlSourcePrefixReader.cs" Link="XamlSourcePrefixReader.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XmlElementReferenceExtensions.cs" Link="XmlElementReferenceExtensions.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlMemberDispositionService.cs" Link="XamlMemberDispositionService.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlLostValueFinder.cs" Link="XamlLostValueFinder.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlVerdictLedger.cs" Link="XamlVerdictLedger.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlRebuildTargets.cs" Link="XamlRebuildTargets.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/XamlConditionAnswers.cs" Link="XamlConditionAnswers.cs" Visible="false" />
 	</ItemGroup>
 
@@ -45,6 +56,9 @@
 		</Reference>
 		<Reference Include="Microsoft.VisualStudio.Interop">
 			<HintPath>$(VsInstallRoot)/Common7/IDE/PublicAssemblies/Microsoft.VisualStudio.Interop.dll</HintPath>
+		</Reference>
+		<Reference Include="Microsoft.VisualStudio.DesignTools.Markup">
+			<HintPath>$(VsInstallRoot)/Common7/IDE/PrivateAssemblies/Microsoft.VisualStudio.DesignTools.Markup.dll</HintPath>
 		</Reference>
 		<Reference Include="Microsoft.VisualStudio.DesignTools.Utility">
 			<HintPath>$(VsInstallRoot)/Common7/IDE/PrivateAssemblies/Microsoft.VisualStudio.DesignTools.Utility.dll</HintPath>

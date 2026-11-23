@@ -84,8 +84,8 @@ public sealed class XamlConditionExchangeTests
         // The protocol reads a message without a payload as "{}".
         EvaluateXamlConditionsRequest request = Deserialize<EvaluateXamlConditionsRequest>("{}");
 
-        Assert.AreEqual(0, XamlConditionExchange.ReadQueries(request).Count);
-        Assert.AreEqual(0, XamlConditionExchange.ReadQueries(null).Count);
+        Assert.IsEmpty(XamlConditionExchange.ReadQueries(request));
+        Assert.IsEmpty(XamlConditionExchange.ReadQueries(null));
     }
 
     [TestMethod]

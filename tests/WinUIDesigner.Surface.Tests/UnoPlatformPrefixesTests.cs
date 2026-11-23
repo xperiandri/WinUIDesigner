@@ -12,8 +12,6 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class UnoPlatformPrefixesTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-
     [TestMethod]
     public void DesignerPreviewsWindowsByDefault()
     {
@@ -28,7 +26,7 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("http://uno.ui/android#using:My.Droid", true)]
     [DataRow("http://uno.ui", false)]
     [DataRow("HTTP://UNO.UI/android", false)]
-    [DataRow(_Presentation, false)]
+    [DataRow(XamlNamespaces.Presentation, false)]
     [DataRow("using:My.App", false)]
     [DataRow("", false)]
     [DataRow(null, false)]
@@ -38,8 +36,8 @@ public sealed class UnoPlatformPrefixesTests
     }
 
     [TestMethod]
-    [DataRow("win", _Presentation, false)]
-    [DataRow("not_android", _Presentation, false)]
+    [DataRow("win", XamlNamespaces.Presentation, false)]
+    [DataRow("not_android", XamlNamespaces.Presentation, false)]
     [DataRow("not_win", "http://uno.ui/not_win", true)]
     [DataRow("android", "http://uno.ui/android", true)]
     [DataRow("android", "http://uno.ui/android#using:My.Droid", true)]
@@ -50,7 +48,8 @@ public sealed class UnoPlatformPrefixesTests
             Assert.AreEqual(
                 XamlPrefixDisposition.Leave,
                 UnoPlatformPrefixes.Classify(prefix, XamlNamespaceUri.Parse(uri), isIgnorable, platform),
-                $"Prefix '{prefix}' on platform '{platform}'.");
+                $"Prefix '{prefix}' on platform '{platform}'."
+            );
         }
     }
 
@@ -58,11 +57,11 @@ public sealed class UnoPlatformPrefixesTests
     public void DocumentWithPlatformMembersIsNotRewritten()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}"
-                  xmlns:win="{_Presentation}"
-                  xmlns:not_win="http://uno.ui/not_win"
-                  xmlns:android="http://uno.ui/android"
-                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            <Page xmlns="{XamlNamespaces.Presentation}"
+                  xmlns:win="{XamlNamespaces.Presentation}"
+                  xmlns:not_win="{TestXamlNamespaces.NotWin}"
+                  xmlns:android="{TestXamlNamespaces.Android}"
+                  xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
                   mc:Ignorable="not_win android">
               <win:Border win:Tag="windows" android:Tag="droid" />
               <not_win:Border />

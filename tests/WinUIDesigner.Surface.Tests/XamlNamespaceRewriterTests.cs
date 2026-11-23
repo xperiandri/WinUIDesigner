@@ -14,20 +14,14 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class XamlNamespaceRewriterTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _XamlLanguage = "http://schemas.microsoft.com/winfx/2006/xaml";
-    private const string _MarkupCompatibility = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-    private const string _Android = "http://uno.ui/android";
-    private const string _Conditional = _Presentation + "?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)";
-
-    private static readonly XNamespace _P = _Presentation;
-    private static readonly XNamespace _X = _XamlLanguage;
+    private static readonly XNamespace _P = XamlNamespaces.Presentation;
+    private static readonly XNamespace _X = XamlNamespaces.XamlLanguage;
 
     [TestMethod]
     public void DroppedElementIsRemovedWithItsSubtree()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:android="{_Android}">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}">
               <StackPanel>
                 <android:Border>
                   <TextBlock Text="inside" />
@@ -43,15 +37,15 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(0, result.DroppedAttributes);
         Assert.AreEqual(0, result.NormalizedMembers);
-        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "Border"));
+        Assert.DoesNotContain(element => element.Name.LocalName == "Border", document.Descendants());
         CollectionAssert.AreEqual(new[] { "outside" }, document.Descendants(_P + "TextBlock").Select(element => (string?)element.Attribute("Text")).ToArray());
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("android:Border", StringComparison.Ordinal) && message.Contains("line 3", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("android:Border", StringComparison.Ordinal) && message.Contains("line 3", StringComparison.Ordinal), result.Diagnostics);
     }
 
     [TestMethod]
     public void DroppedAttributeIsRemovedFromItsElement()
     {
-        string xaml = $"""<TextBlock xmlns="{_Presentation}" xmlns:android="{_Android}" Text="everywhere" android:Text="droid" FontSize="12" />""";
+        string xaml = $"""<TextBlock xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}" Text="everywhere" android:Text="droid" FontSize="12" />""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("android", XamlPrefixDisposition.Drop), out XDocument document);
 
@@ -65,7 +59,7 @@ public sealed class XamlNamespaceRewriterTests
     public void KeptMembersBecomePlainMembersOfTheirBareNamespace()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:c7="{_Conditional}">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{TestXamlNamespaces.Conditional}">
               <c7:Border c7:CornerRadius="4" Tag="t" c7:Grid.Row="1" />
             </Page>
             """;
@@ -84,14 +78,14 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual(0, result.DroppedAttributes);
 
         string rewritten = document.ToString(SaveOptions.DisableFormatting);
-        Assert.IsFalse(rewritten.Contains('?'), rewritten);
+        Assert.DoesNotContain("?", rewritten, rewritten);
     }
 
     [TestMethod]
     public void MemberThatAlreadyIsInItsBareNamespaceIsNotChanged()
     {
         // "win" is bound to the presentation namespace itself: there is nothing to normalize on an element.
-        string xaml = $"""<Grid xmlns="{_Presentation}" xmlns:win="{_Presentation}"><win:Border /></Grid>""";
+        string xaml = $"""<Grid xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}"><win:Border /></Grid>""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("win", XamlPrefixDisposition.Keep), out XDocument document);
 
@@ -103,7 +97,7 @@ public sealed class XamlNamespaceRewriterTests
     public void PropertyElementsFollowTheirPrefix()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:c7="{_Conditional}" xmlns:android="{_Android}">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{TestXamlNamespaces.Conditional}" xmlns:android="{TestXamlNamespaces.Android}">
               <Border>
                 <c7:Border.Background>Red</c7:Border.Background>
                 <android:Border.Child><Grid /></android:Border.Child>
@@ -119,12 +113,13 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         XElement border = document.Root!.Elements().Single();
         CollectionAssert.AreEqual(new[] { _P + "Border.Background" }, border.Elements().Select(element => element.Name).ToArray());
         Assert.AreEqual("Red", border.Elements().Single().Value);
-        Assert.IsFalse(document.Descendants(_P + "Grid").Any());
+        Assert.IsEmpty(document.Descendants(_P + "Grid"));
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(1, result.NormalizedMembers);
     }
@@ -133,7 +128,7 @@ public sealed class XamlNamespaceRewriterTests
     public void UsingSuffixNamesTheNamespaceKeptMembersMoveTo()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:droid="{_Android}#using:My.Droid;My.Other">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:droid="{TestXamlNamespaces.Android}#using:My.Droid;My.Other">
               <droid:NativeView droid:Tag="x" />
             </Page>
             """;
@@ -148,20 +143,20 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual(1, result.RepointedDeclarations);
 
         // The declaration that was re-pointed is the one the element is written with again.
-        StringAssert.Contains(document.ToString(SaveOptions.DisableFormatting), "<droid:NativeView Tag=\"x\" />");
+        Assert.Contains("<droid:NativeView Tag=\"x\" />", document.ToString(SaveOptions.DisableFormatting));
     }
 
     [TestMethod]
     public void PlatformNamespaceStandsForThePresentationNamespace()
     {
-        string xaml = $"""<Page xmlns="{_Presentation}" xmlns:android="{_Android}"><android:Border android:Tag="1" /></Page>""";
+        string xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}"><android:Border android:Tag="1" /></Page>""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("android", XamlPrefixDisposition.Keep), out XDocument document);
 
         XElement border = document.Root!.Elements().Single();
         Assert.AreEqual(_P + "Border", border.Name);
         CollectionAssert.AreEqual(new[] { "Tag=1" }, PlainAttributes(border));
-        Assert.AreEqual(_Presentation, (string?)document.Root!.Attribute(XNamespace.Xmlns + "android"));
+        Assert.AreEqual(XamlNamespaces.Presentation, (string?)document.Root!.Attribute(XNamespace.Xmlns + "android"));
         Assert.AreEqual(2, result.NormalizedMembers);
     }
 
@@ -169,7 +164,7 @@ public sealed class XamlNamespaceRewriterTests
     public void KeptDeclarationIsRepointedSoThatPrefixedValuesStillResolve()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:c7="{_Conditional}" xmlns:android="{_Android}">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{TestXamlNamespaces.Conditional}" xmlns:android="{TestXamlNamespaces.Android}">
               <Page.Resources>
                 <Style TargetType="c7:Button" />
               </Page.Resources>
@@ -184,7 +179,8 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         Assert.IsTrue(result.Changed);
         Assert.AreEqual(1, result.RepointedDeclarations);
@@ -195,24 +191,24 @@ public sealed class XamlNamespaceRewriterTests
         XElement style = reloaded.Descendants(_P + "Style").Single();
         Assert.AreEqual("c7:Button", (string?)style.Attribute("TargetType"));
         Assert.AreEqual(_P, style.GetNamespaceOfPrefix("c7"));
-        Assert.AreEqual(XNamespace.Get(_Android), style.GetNamespaceOfPrefix("android"));
+        Assert.AreEqual(XNamespace.Get(TestXamlNamespaces.Android), style.GetNamespaceOfPrefix("android"));
     }
 
     [TestMethod]
     public void RootIsNeverDropped()
     {
-        string xaml = $"""<android:Page xmlns="{_Presentation}" xmlns:android="{_Android}" android:Tag="1"><Grid /></android:Page>""";
+        string xaml = $"""<android:Page xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}" android:Tag="1"><Grid /></android:Page>""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("android", XamlPrefixDisposition.Drop), out XDocument document);
 
-        Assert.AreEqual(XNamespace.Get(_Android) + "Page", document.Root!.Name);
-        Assert.AreEqual(1, document.Root.Elements(_P + "Grid").Count());
+        Assert.AreEqual(XNamespace.Get(TestXamlNamespaces.Android) + "Page", document.Root!.Name);
+        Assert.HasCount(1, document.Root.Elements(_P + "Grid"));
         Assert.AreEqual(0, result.DroppedElements);
 
         // Its attribute under the same prefix is an ordinary member and goes.
         Assert.AreEqual(1, result.DroppedAttributes);
-        Assert.AreEqual(0, PlainAttributes(document.Root).Length);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("root", StringComparison.OrdinalIgnoreCase)));
+        Assert.IsEmpty(PlainAttributes(document.Root));
+        Assert.Contains(message => message.Contains("root", StringComparison.OrdinalIgnoreCase), result.Diagnostics);
     }
 
     [TestMethod]
@@ -220,7 +216,7 @@ public sealed class XamlNamespaceRewriterTests
     {
         // "win", "not_android" and the default namespace are all the presentation namespace.
         string xaml = $"""
-            <Grid xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" xmlns:win="{_Presentation}" xmlns:not_android="{_Presentation}">
+            <Grid xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:win="{XamlNamespaces.Presentation}" xmlns:not_android="{XamlNamespaces.Presentation}">
               <win:Border x:Name="a" />
               <Border x:Name="b" win:Tag="w" not_android:Opacity="1" Margin="2" />
               <not_android:Border x:Name="c" />
@@ -243,7 +239,7 @@ public sealed class XamlNamespaceRewriterTests
     public void WithoutTheSourceTextPrefixesThatShareANamespaceAreLeftAlone()
     {
         string xaml = $"""
-            <Grid xmlns="{_Presentation}" xmlns:win="{_Presentation}" xmlns:not_android="{_Presentation}" xmlns:android="{_Android}">
+            <Grid xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}" xmlns:not_android="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}">
               <win:Border win:Tag="w" />
               <android:Border />
             </Grid>
@@ -253,7 +249,8 @@ public sealed class XamlNamespaceRewriterTests
             xaml,
             prefix => prefix is "win" or "android" ? XamlPrefixDisposition.Drop : XamlPrefixDisposition.Leave,
             out XDocument document,
-            options => options.SourceXaml = null);
+            options => options.SourceXaml = null
+        );
 
         // Nothing tells <win:Border> from <Border>, or win:Tag from not_android:Tag, any more, so they stay.
         // "android" is the only prefix of its namespace and is still recognized.
@@ -262,14 +259,14 @@ public sealed class XamlNamespaceRewriterTests
         Assert.AreEqual("w", (string?)border.Attribute(_P + "Tag"));
         Assert.AreEqual(1, result.DroppedElements);
         Assert.AreEqual(0, result.DroppedAttributes);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("unknown", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("unknown", StringComparison.Ordinal), result.Diagnostics);
     }
 
     [TestMethod]
     public void LineInformationOfSurvivingElementsIsKept()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:c7="{_Conditional}" xmlns:android="{_Android}">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{TestXamlNamespaces.Conditional}" xmlns:android="{TestXamlNamespaces.Android}">
               <android:Border />
               <c7:Grid>
                 <TextBlock c7:Text="a" android:Tag="b" />
@@ -290,7 +287,8 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         Assert.IsTrue(result.Changed);
         CollectionAssert.AreEqual(new[] { ("Page", 1, 2), ("Grid", 3, 4), ("TextBlock", 4, 6) }, expected);
@@ -301,7 +299,7 @@ public sealed class XamlNamespaceRewriterTests
     public void DocumentWithoutPolicyNamespacesIsNotTouched()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" xmlns:local="using:My.App" xmlns:mc="{_MarkupCompatibility}" mc:Ignorable="d">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:local="using:My.App" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" mc:Ignorable="d">
               <local:Card x:Name="card" Title="Why?" />
             </Page>
             """;
@@ -312,14 +310,14 @@ public sealed class XamlNamespaceRewriterTests
 
         Assert.IsFalse(result.Changed);
         Assert.AreSame(XamlNamespaceRewriteResult.Unchanged, result);
-        Assert.AreEqual(0, result.Diagnostics.Count);
+        Assert.IsEmpty(result.Diagnostics);
         Assert.AreEqual(before, document.ToString(SaveOptions.DisableFormatting));
     }
 
     [TestMethod]
     public void DocumentWhosePrefixesAreAllLeftAloneIsNotTouched()
     {
-        string xaml = $"""<Page xmlns="{_Presentation}" xmlns:c7="{_Conditional}" xmlns:android="{_Android}"><c7:Border android:Tag="1" /></Page>""";
+        string xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{TestXamlNamespaces.Conditional}" xmlns:android="{TestXamlNamespaces.Android}"><c7:Border android:Tag="1" /></Page>""";
         string before = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace).ToString(SaveOptions.DisableFormatting);
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, _ => XamlPrefixDisposition.Leave, out XDocument document);
@@ -340,9 +338,9 @@ public sealed class XamlNamespaceRewriterTests
     public void PrefixRedeclaredOnANestedElementIsClassifiedByTheDeclarationInScope()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:p="using:My.App">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:p="using:My.App">
               <p:Card Title="before" />
-              <Grid xmlns:p="{_Android}">
+              <Grid xmlns:p="{TestXamlNamespaces.Android}">
                 <p:Border />
               </Grid>
               <p:Card Title="after" />
@@ -351,21 +349,23 @@ public sealed class XamlNamespaceRewriterTests
 
         XamlNamespaceRewriteResult result = Rewrite(
             xaml,
-            (_, uri, _) => uri.BaseUri == _Android ? XamlPrefixDisposition.Drop : XamlPrefixDisposition.Leave,
-            out XDocument document);
+            (_, uri, _) => uri.BaseUri == TestXamlNamespaces.Android ? XamlPrefixDisposition.Drop : XamlPrefixDisposition.Leave,
+            out XDocument document
+        );
 
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "Border"));
+        Assert.DoesNotContain(element => element.Name.LocalName == "Border", document.Descendants());
         CollectionAssert.AreEqual(
             new[] { "before", "after" },
-            document.Descendants(XNamespace.Get("using:My.App") + "Card").Select(element => (string?)element.Attribute("Title")).ToArray());
+            document.Descendants(XNamespace.Get("using:My.App") + "Card").Select(element => (string?)element.Attribute("Title")).ToArray()
+        );
     }
 
     [TestMethod]
     public void IgnorableStateIsThatOfTheElementWhereThePrefixIsUsed()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}" xmlns:mc="{_MarkupCompatibility}" xmlns:android="{_Android}" xmlns:ios="http://uno.ui/ios" mc:Ignorable="ios">
+            <Page xmlns="{XamlNamespaces.Presentation}" xmlns:mc="{XamlNamespaces.MarkupCompatibility}" xmlns:android="{TestXamlNamespaces.Android}" xmlns:ios="{TestXamlNamespaces.Ios}" mc:Ignorable="ios">
               <android:Border Tag="outside" />
               <ios:Border Tag="ios" />
               <Grid mc:Ignorable="android">
@@ -378,18 +378,20 @@ public sealed class XamlNamespaceRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(
             xaml,
             (_, _, isIgnorable) => isIgnorable ? XamlPrefixDisposition.Drop : XamlPrefixDisposition.Leave,
-            out XDocument document);
+            out XDocument document
+        );
 
         CollectionAssert.AreEqual(
             new[] { "outside", "after" },
-            document.Descendants().Where(element => element.Name.LocalName == "Border").Select(element => (string?)element.Attribute("Tag")).ToArray());
+            document.Descendants().Where(element => element.Name.LocalName == "Border").Select(element => (string?)element.Attribute("Tag")).ToArray()
+        );
         Assert.AreEqual(2, result.DroppedElements);
     }
 
     [TestMethod]
     public void NormalizedAttributeCanBeDroppedByTheFilter()
     {
-        string xaml = $"""<Button xmlns="{_Presentation}" xmlns:win="{_Presentation}" win:Click="OnClick" win:Content="Go" Tag="t" />""";
+        string xaml = $"""<Button xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}" win:Click="OnClick" win:Content="Go" Tag="t" />""";
         var seen = new List<string>();
 
         XamlNamespaceRewriteResult result = Rewrite(
@@ -400,7 +402,8 @@ public sealed class XamlNamespaceRewriterTests
             {
                 seen.Add($"{element.Name.LocalName}.{name}={value}");
                 return name == "Click";
-            });
+            }
+        );
 
         // Only attributes that were normalized are offered to the filter, under their plain names.
         CollectionAssert.AreEqual(new[] { "Button.Click=OnClick", "Button.Content=Go" }, seen);
@@ -412,7 +415,7 @@ public sealed class XamlNamespaceRewriterTests
     [TestMethod]
     public void AttributeOrderIsKept()
     {
-        string xaml = $"""<TextBox xmlns="{_Presentation}" xmlns:win="{_Presentation}" xmlns:android="{_Android}" A="1" win:B="2" C="3" android:X="x" win:D="4" E="5" />""";
+        string xaml = $"""<TextBox xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}" A="1" win:B="2" C="3" android:X="x" win:D="4" E="5" />""";
 
         Rewrite(
             xaml,
@@ -422,12 +425,14 @@ public sealed class XamlNamespaceRewriterTests
                 "android" => XamlPrefixDisposition.Drop,
                 _ => XamlPrefixDisposition.Leave,
             },
-            out XDocument document);
+            out XDocument document
+        );
 
         CollectionAssert.AreEqual(new[] { "A=1", "B=2", "C=3", "D=4", "E=5" }, PlainAttributes(document.Root!));
         CollectionAssert.AreEqual(
             new[] { "xmlns", "win", "android" },
-            document.Root!.Attributes().Where(attribute => attribute.IsNamespaceDeclaration).Select(attribute => attribute.Name.LocalName).ToArray());
+            document.Root!.Attributes().Where(attribute => attribute.IsNamespaceDeclaration).Select(attribute => attribute.Name.LocalName).ToArray()
+        );
     }
 
     [TestMethod]
@@ -435,11 +440,11 @@ public sealed class XamlNamespaceRewriterTests
     [DataRow("c7:Text=\"conditional\" Text=\"plain\"", "plain")]
     public void LaterAttributeWinsWhenNormalizingSetsAMemberTwice(string attributes, string expected)
     {
-        string xaml = $"""<TextBlock xmlns="{_Presentation}" xmlns:c7="{_Conditional}" {attributes} />""";
+        string xaml = $"""<TextBlock xmlns="{XamlNamespaces.Presentation}" xmlns:c7="{TestXamlNamespaces.Conditional}" {attributes} />""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("c7", XamlPrefixDisposition.Keep), out XDocument document);
 
-        CollectionAssert.AreEqual(new[] { "Text=" + expected }, PlainAttributes(document.Root!));
+        CollectionAssert.AreEqual(new[] { $"Text={expected}" }, PlainAttributes(document.Root!));
         Assert.AreEqual(1, result.DroppedAttributes);
     }
 
@@ -447,33 +452,33 @@ public sealed class XamlNamespaceRewriterTests
     public void AttachedPropertyKeepsItsNamespaceWhenTheDefaultNamespaceIsAnotherOne()
     {
         // Without a prefix, Grid.Row would be looked up in "using:My.App".
-        string xaml = $"""<Card xmlns="using:My.App" xmlns:c7="{_Conditional}" c7:Grid.Row="1" c7:Opacity="0.5" />""";
+        string xaml = $"""<Card xmlns="using:My.App" xmlns:c7="{TestXamlNamespaces.Conditional}" c7:Grid.Row="1" c7:Opacity="0.5" />""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("c7", XamlPrefixDisposition.Keep), out XDocument document);
 
         Assert.AreEqual("1", (string?)document.Root!.Attribute(_P + "Grid.Row"));
         Assert.AreEqual("0.5", (string?)document.Root.Attribute("Opacity"));
         Assert.AreEqual(2, result.NormalizedMembers);
-        StringAssert.Contains(document.ToString(SaveOptions.DisableFormatting), $"xmlns:c7=\"{_Presentation}\" c7:Grid.Row=\"1\" Opacity=\"0.5\"");
+        Assert.Contains($"xmlns:c7=\"{XamlNamespaces.Presentation}\" c7:Grid.Row=\"1\" Opacity=\"0.5\"", document.ToString(SaveOptions.DisableFormatting));
     }
 
     [TestMethod]
     public void DirectiveStaysInTheXamlLanguageNamespace()
     {
-        string xaml = $"""<Grid xmlns="{_Presentation}" xmlns:x7="{_XamlLanguage}?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)" x7:Name="root" />""";
+        string xaml = $"""<Grid xmlns="{XamlNamespaces.Presentation}" xmlns:x7="{XamlNamespaces.XamlLanguage}?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)" x7:Name="root" />""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, Only("x7", XamlPrefixDisposition.Keep), out XDocument document);
 
         Assert.AreEqual("root", (string?)document.Root!.Attribute(_X + "Name"));
         Assert.IsNull(document.Root.Attribute("Name"));
-        Assert.AreEqual(_XamlLanguage, (string?)document.Root.Attribute(XNamespace.Xmlns + "x7"));
+        Assert.AreEqual(XamlNamespaces.XamlLanguage, (string?)document.Root.Attribute(XNamespace.Xmlns + "x7"));
         Assert.AreEqual(1, result.NormalizedMembers);
     }
 
     [TestMethod]
     public void FailingClassificationLeavesThePrefixAloneAndIsReported()
     {
-        string xaml = $"""<Page xmlns="{_Presentation}" xmlns:android="{_Android}" xmlns:ios="http://uno.ui/ios"><android:Border /><ios:Border /></Page>""";
+        string xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}" xmlns:ios="{TestXamlNamespaces.Ios}"><android:Border /><ios:Border /></Page>""";
         var reported = new List<string>();
 
         XamlNamespaceRewriteResult result = Rewrite(
@@ -485,20 +490,22 @@ public sealed class XamlNamespaceRewriterTests
                 _ => XamlPrefixDisposition.Leave,
             },
             out XDocument document,
-            options => options.Report = reported.Add);
+            options => options.Report = reported.Add
+        );
 
         CollectionAssert.AreEqual(
-            new[] { XNamespace.Get(_Android) + "Border" },
-            document.Root!.Elements().Select(element => element.Name).ToArray());
+            new[] { XNamespace.Get(TestXamlNamespaces.Android) + "Border" },
+            document.Root!.Elements().Select(element => element.Name).ToArray()
+        );
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("'android'", StringComparison.Ordinal) && message.Contains("no verdict", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("'android'", StringComparison.Ordinal) && message.Contains("no verdict", StringComparison.Ordinal), result.Diagnostics);
         CollectionAssert.AreEqual(result.Diagnostics.ToArray(), reported);
     }
 
     [TestMethod]
     public void FailingCallbacksDoNotStopTheRewrite()
     {
-        string xaml = $"""<Button xmlns="{_Presentation}" xmlns:win="{_Presentation}" xmlns:android="{_Android}" win:Content="Go"><android:Border /></Button>""";
+        string xaml = $"""<Button xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}" xmlns:android="{TestXamlNamespaces.Android}" win:Content="Go"><android:Border /></Button>""";
 
         XamlNamespaceRewriteResult result = Rewrite(
             xaml,
@@ -513,19 +520,20 @@ public sealed class XamlNamespaceRewriterTests
             {
                 options.ShouldDropNormalizedAttribute = (_, _, _) => throw new InvalidOperationException("filter failed");
                 options.Report = _ => throw new InvalidOperationException("report failed");
-            });
+            }
+        );
 
         // The attribute the filter could not judge is kept, and the walk goes on.
         CollectionAssert.AreEqual(new[] { "Content=Go" }, PlainAttributes(document.Root!));
         Assert.IsFalse(document.Root!.HasElements);
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.IsTrue(result.Diagnostics.Any(message => message.Contains("filter failed", StringComparison.Ordinal)));
+        Assert.Contains(message => message.Contains("filter failed", StringComparison.Ordinal), result.Diagnostics);
     }
 
     [TestMethod]
     public void SourcePrefixesAreOnlyCapturedFromTheTextOfTheDocument()
     {
-        string xaml = $"""<Grid xmlns="{_Presentation}" xmlns:win="{_Presentation}"><win:Border win:Tag="1" /></Grid>""";
+        string xaml = $"""<Grid xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}"><win:Border win:Tag="1" /></Grid>""";
 
         Assert.IsTrue(XamlNamespaceRewriter.CaptureSourcePrefixes(XDocument.Parse(xaml), xaml));
         Assert.IsFalse(XamlNamespaceRewriter.CaptureSourcePrefixes(XDocument.Parse(xaml), xaml.Replace("win:Tag=\"1\"", string.Empty, StringComparison.Ordinal)));
@@ -536,17 +544,18 @@ public sealed class XamlNamespaceRewriterTests
     [TestMethod]
     public void TextOfAnotherDocumentIsNotUsedToTellPrefixesApart()
     {
-        string xaml = $"""<Grid xmlns="{_Presentation}" xmlns:win="{_Presentation}"><win:Border /></Grid>""";
+        string xaml = $"""<Grid xmlns="{XamlNamespaces.Presentation}" xmlns:win="{XamlNamespaces.Presentation}"><win:Border /></Grid>""";
 
         XamlNamespaceRewriteResult result = Rewrite(
             xaml,
             Only("win", XamlPrefixDisposition.Drop),
             out XDocument document,
-            options => options.SourceXaml = "<Other />");
+            options => options.SourceXaml = "<Other />"
+        );
 
         Assert.IsFalse(result.Changed);
         Assert.IsTrue(document.Root!.HasElements);
-        Assert.AreEqual(1, result.Diagnostics.Count);
+        Assert.HasCount(1, result.Diagnostics);
     }
 
     [TestMethod]
@@ -554,7 +563,7 @@ public sealed class XamlNamespaceRewriterTests
     {
         const int depth = 5000;
         var xaml = new StringBuilder();
-        xaml.Append("<Grid xmlns=\"").Append(_Presentation).Append("\" xmlns:android=\"").Append(_Android).Append("\">");
+        xaml.Append("<Grid xmlns=\"").Append(XamlNamespaces.Presentation).Append("\" xmlns:android=\"").Append(TestXamlNamespaces.Android).Append("\">");
         for (int index = 0; index < depth; index++)
         {
             xaml.Append("<Grid>");
@@ -571,7 +580,7 @@ public sealed class XamlNamespaceRewriterTests
         XamlNamespaceRewriteResult result = Rewrite(xaml.ToString(), Only("android", XamlPrefixDisposition.Drop), out XDocument document);
 
         Assert.AreEqual(1, result.DroppedElements);
-        Assert.AreEqual(1, document.Descendants().Count(element => element.Name.LocalName == "Border"));
+        Assert.HasCount(1, document.Descendants().Where(element => element.Name.LocalName == "Border"));
     }
 
     private static Func<string, XamlPrefixDisposition> Only(string prefix, XamlPrefixDisposition disposition)

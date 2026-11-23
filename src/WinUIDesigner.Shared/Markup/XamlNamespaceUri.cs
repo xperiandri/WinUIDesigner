@@ -18,11 +18,6 @@ namespace WinUIDesigner.Markup;
 internal readonly struct XamlNamespaceUri
 {
     /// <summary>
-    /// The default WinUI presentation namespace.
-    /// </summary>
-    public const string PresentationNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-
-    /// <summary>
     /// The scheme of a CLR-namespace URI such as <c>using:My.Controls</c>.
     /// </summary>
     public const string UsingScheme = "using:";
@@ -75,11 +70,13 @@ internal readonly struct XamlNamespaceUri
     /// </summary>
     public static XamlNamespaceUri Parse(string? value)
     {
+        // No value declares the empty namespace.
         if (value is null || value.Length == 0)
         {
             return default;
         }
 
+        // Without a condition and a using list, the namespace is its own base URI.
         int conditionIndex = value.IndexOf(_ConditionSeparator);
         int usingIndex = value.IndexOf(_UsingSuffix, StringComparison.Ordinal);
         if (conditionIndex < 0 && usingIndex < 0)
@@ -112,31 +109,34 @@ internal readonly struct XamlNamespaceUri
         {
             int start = usingIndex + _UsingSuffix.Length;
             int end = conditionIndex > usingIndex ? conditionIndex : value.Length;
-            usingNamespaces = SplitNamespaces(value.Substring(start, end - start));
+            usingNamespaces = SplitNamespaces(value.AsSpan(start, end - start));
         }
 
         return new XamlNamespaceUri(value, value.Substring(0, baseLength), condition, usingNamespaces);
     }
 
     /// <inheritdoc/>
-    public override string ToString()
-    {
-        return Original;
-    }
+    public override string ToString() => Original;
 
-    private static string[] SplitNamespaces(string value)
+    private static string[] SplitNamespaces(ReadOnlySpan<char> value)
     {
-        string[] parts = value.Split(';');
-        var namespaces = new List<string>(parts.Length);
-        foreach (string part in parts)
+        // The list is only read; a string is created for each name that is kept.
+        List<string>? namespaces = null;
+        while (true)
         {
-            string name = part.Trim();
-            if (name.Length != 0)
+            int separator = value.IndexOf(';');
+            ReadOnlySpan<char> name = (separator < 0 ? value : value.Slice(0, separator)).Trim();
+            if (!name.IsEmpty)
             {
-                namespaces.Add(name);
+                (namespaces ??= []).Add(name.ToString());
             }
-        }
 
-        return namespaces.Count == 0 ? _NoNamespaces : namespaces.ToArray();
+            if (separator < 0)
+            {
+                return namespaces is null ? _NoNamespaces : namespaces.ToArray();
+            }
+
+            value = value.Slice(separator + 1);
+        }
     }
 }
