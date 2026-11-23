@@ -148,6 +148,60 @@ public sealed class XamlMemberDispositionServiceTests
     }
 
     [TestMethod]
+    [DataRow("IsTypePresent(My.App.Card)", "IsTypeNotPresent(My.App.Card)")]
+    [DataRow("IsTypeNotPresent(My.App.Card)", "IsTypePresent(My.App.Card)")]
+    [DataRow("IsApiContractPresent(Windows.Foundation.UniversalApiContract,99)", "IsApiContractNotPresent(Windows.Foundation.UniversalApiContract,99)")]
+    public void HalvesOfAnIfElsePairHaveOneAnswerWhileTheirVerdictsAreKept(string judgedFirst, string judgedLater)
+    {
+        var outcomes = new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal);
+        bool? answer = null;
+        int calls = 0;
+        XamlConditionEvaluator? pinned = XamlMemberDispositionService.Pin(
+            (condition, _) =>
+            {
+                calls++;
+
+                // The negated half is answered the other way round, as the evaluator of the answers does.
+                return condition.Contains("NotPresent") ? !answer : answer;
+            },
+            outcomes
+        );
+
+        // One prefix of the pair is judged before the surface answers, the other one after it: they ask one question.
+        bool? first = pinned!(judgedFirst, _ => null);
+        answer = false;
+        bool? later = pinned(judgedLater, _ => null);
+
+        Assert.IsNull(first);
+        Assert.IsNull(later);
+        Assert.AreEqual(1, calls);
+    }
+
+    [TestMethod]
+    [DataRow("IsTypePresent(My.App.Card)", "IsTypeNotPresent(My.App.Card)", false)]
+    [DataRow("IsTypeNotPresent(My.App.Card)", "IsTypePresent(My.App.Card)", false)]
+    [DataRow("IsTypePresent(My.App.Card)", "IsTypeNotPresent(My.App.Card)", true)]
+    [DataRow("IsTypeNotPresent(My.App.Card)", "IsTypePresent(My.App.Card)", true)]
+    public void HalvesOfAnIfElsePairAreEachOthersOppositeWhateverIsJudgedFirst(string judgedFirst, string judgedLater, bool isPresent)
+    {
+        var outcomes = new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal);
+        bool? answer = isPresent;
+        XamlConditionEvaluator? pinned = XamlMemberDispositionService.Pin(
+            (condition, _) => condition.Contains("NotPresent") ? !answer : answer,
+            outcomes
+        );
+
+        bool? first = pinned!(judgedFirst, _ => null);
+
+        // A later answer changes nothing while the verdicts are kept.
+        answer = !isPresent;
+        bool? later = pinned(judgedLater, _ => null);
+
+        Assert.AreEqual(judgedFirst.Contains("NotPresent") ? !isPresent : isPresent, first);
+        Assert.AreEqual(judgedLater.Contains("NotPresent") ? !isPresent : isPresent, later);
+    }
+
+    [TestMethod]
     public void ConditionIsNotPinnedWithoutAnEvaluator()
     {
         Assert.IsNull(XamlMemberDispositionService.Pin(null, new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal)));

@@ -26,9 +26,10 @@ namespace WinUIDesigner.Platform;
 /// <para>
 /// A document is judged with one set of answers to its conditions for as long as its verdicts are kept: until
 /// its text changes, the policy inputs change (<see cref="TargetPlatform"/>, <see cref="EvaluateCondition"/>),
-/// or <see cref="Refresh"/> is called for it. A condition has one answer within that time, whenever it is
-/// asked and whichever node asks. New answers (<see cref="AnswersChanged"/>) do not replace the verdicts of a
-/// document that may be being built, on another thread, in the middle of its construction.
+/// or <see cref="Refresh"/> is called for it. A question has one answer within that time, whenever it is
+/// asked and whichever node asks, so the two branches of an if/else pair always agree. New answers
+/// (<see cref="AnswersChanged"/>) do not replace the verdicts of a document that may be being built, on
+/// another thread, in the middle of its construction.
 /// </para>
 /// </remarks>
 internal sealed class XamlMemberDispositionService
@@ -313,12 +314,15 @@ internal sealed class XamlMemberDispositionService
     }
 
     /// <summary>
-    /// Returns an evaluator that answers a condition once and gives the same answer afterwards.
+    /// Returns an evaluator that answers a question once and gives the same answer afterwards.
     /// </summary>
     /// <remarks>
     /// The answer to a condition may change while a document is being built, when the surface answers. The
     /// element and the attributes written under one prefix are judged at different moments, and judging one
-    /// of them differently from the others builds an element without a property it needs.
+    /// of them differently from the others builds an element without a property it needs. The two prefixes of
+    /// an if/else pair, <c>IsTypePresent(X)</c> and <c>IsTypeNotPresent(X)</c>, ask one question as well: the
+    /// answer is kept in its positive form and negated for a negated condition, so that the two branches
+    /// never come from different answers.
     /// </remarks>
     internal static XamlConditionEvaluator? Pin(XamlConditionEvaluator? evaluator, ConcurrentDictionary<string, bool?> outcomes)
     {
@@ -330,19 +334,16 @@ internal sealed class XamlMemberDispositionService
         return (condition, resolveNamespace) =>
         {
             // The same text can name another condition type where the prefix is bound differently.
-            string? predicateNamespace;
-            try
-            {
-                predicateNamespace = resolveNamespace(XamlCondition.Parse(condition).Prefix);
-            }
-            catch (Exception)
-            {
-                predicateNamespace = null;
-            }
+            XamlConditionQuery query = XamlConditionQuery.Create(condition, resolveNamespace);
 
-            return outcomes.GetOrAdd($"{condition}\u0001{predicateNamespace}", _ => evaluator(condition, resolveNamespace));
+            // The first condition that asks the question gives the answer, which is kept in its positive form.
+            bool? positive = outcomes.GetOrAdd(query.Key, _ => ApplyNegation(evaluator(condition, resolveNamespace), query.Condition));
+            return ApplyNegation(positive, query.Condition);
         };
     }
+
+    // The answer to a negated condition is the opposite of the answer to the question, and the other way round.
+    private static bool? ApplyNegation(bool? outcome, XamlCondition condition) => outcome.HasValue && condition.IsNegated ? !outcome.Value : outcome;
 
     private static string? ReadText(IMarkupTextBuffer buffer, int length)
     {
@@ -416,7 +417,7 @@ internal sealed class XamlMemberDispositionService
 
         public XamlNamespaceScanResult Namespaces { get; } = namespaces;
 
-        // The answer of each condition that was asked while this state was current; see Pin.
+        // The answer of each question that was asked while this state was current; see Pin.
         public ConcurrentDictionary<string, bool?> Outcomes { get; } = outcomes;
 
         // Keyed by source reference, of which there is one per element and per attribute in the text.
