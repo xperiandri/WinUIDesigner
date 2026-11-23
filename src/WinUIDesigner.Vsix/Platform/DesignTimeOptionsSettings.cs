@@ -55,6 +55,7 @@ internal static class DesignTimeOptionsSettings
     /// <param name="source">Describes where the options came from, for the log.</param>
     public static DesignTimeOptions Load(IDesignTimeOptionsProject? project, Action<string, Exception?> warn, out string source)
     {
+        // Without a project only the defaults apply.
         if (project is null)
         {
             source = "no project to read them from";
@@ -71,24 +72,29 @@ internal static class DesignTimeOptionsSettings
         {
             if (!DesignTimeOptions.TryReadFields(userOverride, out _, out _, out string? conditionOverrides))
             {
+                // The override stored for the project is not in the text form of the options.
                 warn($"The stored design-time options '{userOverride}' of project '{settingsProject}' are not understood and are ignored.", null);
             }
             else if (!XamlConditionOverrides.TryParse(conditionOverrides, out _))
             {
+                // The options are in the text form, but some of the conditions the user forces in them are not.
                 warn($"Some of the conditional XAML conditions forced in the stored design-time options '{userOverride}' of project '{settingsProject}' cannot be read and are ignored.", null);
             }
         }
 
+        // The target platform property names no known target.
         if (!IsUnset(targetPlatform) && !DesignTimeTargetPlatform.TryParse(targetPlatform, out _))
         {
             warn($"{DesignTimeOptionsResolver.TargetPlatformPropertyName} '{targetPlatform}' of project '{settingsProject}' is not a known target platform and is ignored.", null);
         }
 
+        // The Windows version property names no known contract version, build or release.
         if (!IsUnset(windowsVersion) && !WindowsVersionCatalog.TryParse(windowsVersion, out _))
         {
             warn($"{DesignTimeOptionsResolver.WindowsVersionPropertyName} '{windowsVersion}' of project '{settingsProject}' is not a known Windows version and is ignored.", null);
         }
 
+        // Where the options came from, for the log line of the surface start.
         source = $"user override {Describe(userOverride)}, {DesignTimeOptionsResolver.TargetPlatformPropertyName} {Describe(targetPlatform)}, "
             + $"{DesignTimeOptionsResolver.WindowsVersionPropertyName} {Describe(windowsVersion)}, read from project '{settingsProject}'";
 
@@ -141,7 +147,7 @@ internal static class DesignTimeOptionsSettings
 
     private static string? TryReadBuildProperty(IDesignTimeOptionsProject project, string propertyName, Action<string, Exception?> warn)
     {
-        return TryRead(warn, "reading " + propertyName, () => project.ReadBuildProperty(propertyName));
+        return TryRead(warn, $"reading {propertyName}", () => project.ReadBuildProperty(propertyName));
     }
 
     private static string? TryRead(Action<string, Exception?> warn, string action, Func<string?> read)
@@ -157,13 +163,7 @@ internal static class DesignTimeOptionsSettings
         }
     }
 
-    private static bool IsUnset(string? value)
-    {
-        return value is null || value.Trim().Length == 0;
-    }
+    private static bool IsUnset(string? value) => string.IsNullOrWhiteSpace(value);
 
-    private static string Describe(string? value)
-    {
-        return IsUnset(value) ? "not set" : "'" + value + "'";
-    }
+    private static string Describe(string? value) => IsUnset(value) ? "not set" : $"'{value}'";
 }

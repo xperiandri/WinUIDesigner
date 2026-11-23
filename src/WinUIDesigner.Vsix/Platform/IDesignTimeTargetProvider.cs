@@ -60,10 +60,7 @@ internal static class DesignTimeTargetProvider
     /// <summary>
     /// Returns the options <paramref name="project"/> is previewed with; the defaults when it has no WinUI surface process.
     /// </summary>
-    public static DesignTimeOptions GetDesignTimeOptions(IProjectContext? project)
-    {
-        return Read(Get(project));
-    }
+    public static DesignTimeOptions GetDesignTimeOptions(IProjectContext? project) => Read(Get(project));
 
     /// <summary>
     /// Returns the options the documents of <paramref name="surfaceProcessContext"/> are previewed with.

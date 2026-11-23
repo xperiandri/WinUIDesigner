@@ -73,29 +73,34 @@ internal sealed class WinUISurfaceProcessContext : UwpSurfaceProcessContext, IDe
             return;
         }
 
+        // The context is disposed: a restart now would leave the timer of the base class running.
         if (_isDisposed)
         {
             return;
         }
 
+        // The surface cannot receive options, so it previews with the defaults whatever is chosen.
         if (!WinUICreateSurfaceRequestInfo.IsTransportEnabled)
         {
             WinUIDesignerLogger.LogWarning(_Category, $"The design-time options '{options}' are ignored because the options cannot be sent to the surface.");
             return;
         }
 
+        // The options are in effect already.
         DesignTimeOptions current = DesignTimeOptions;
         if (options.Equals(current))
         {
             return;
         }
 
+        // Visual Studio did not keep the choice, which would then be lost at the next surface start.
         if (!_designTimeOptionsStore.Save(options))
         {
             WinUIDesignerLogger.LogWarning(_Category, $"The design-time options '{options}' could not be stored; the design surface keeps '{current}'.");
             return;
         }
 
+        // A new choice that is stored: use it, tell the listeners and reload.
         Volatile.Write(ref _designTimeOptions, options);
         WinUIDesignerLogger.LogInformation(_Category, $"Design-time options of '{ProjectContext?.ProjectName}' changed from '{current}' to '{options}'; reloading the design surface.");
 
@@ -169,7 +174,8 @@ internal sealed class WinUISurfaceProcessContext : UwpSurfaceProcessContext, IDe
                 _Category,
                 $"Design-time options of the surface for '{ProjectContext?.ProjectName}': {options} "
                     + $"({options.TargetPlatform.DisplayName}, {WindowsVersionCatalog.Describe(options.ContractVersion)}, "
-                    + $"{options.ConditionOverrides.Count} conditional XAML condition(s) forced; {source}).");
+                    + $"{options.ConditionOverrides.Count} conditional XAML condition(s) forced; {source})."
+            );
 
             if (previous is not null && !previous.Equals(options))
             {

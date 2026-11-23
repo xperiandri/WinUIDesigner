@@ -117,6 +117,7 @@ internal static class WindowsVersionCatalog
                 && TryGetContractOfBuild(version.Build, out contractVersion);
         }
 
+        // A release name with letters (24H2) or a display name (Windows 11 22H2).
         return TryGetContractByName(value, out contractVersion);
     }
 
@@ -149,9 +150,9 @@ internal static class WindowsVersionCatalog
             return "installed Windows version";
         }
 
-        string contract = "contract " + version.ToString(CultureInfo.InvariantCulture);
+        string contract = FormattableString.Invariant($"contract {version}");
         return FindByContract(version) is { } release
-            ? release.DisplayName + " (" + contract + ")"
+            ? $"{release.DisplayName} ({contract})"
             : contract;
     }
 

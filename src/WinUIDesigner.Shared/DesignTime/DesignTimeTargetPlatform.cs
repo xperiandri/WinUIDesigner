@@ -86,10 +86,7 @@ internal sealed class DesignTimeTargetPlatform
     /// Returns the target with the identifier <paramref name="id"/>, or <see cref="Windows"/> when there is none.
     /// </summary>
     /// <param name="id">The identifier, in any letter case; a display name is accepted as well.</param>
-    public static DesignTimeTargetPlatform FromId(string? id)
-    {
-        return TryParse(id, out DesignTimeTargetPlatform platform) ? platform : Windows;
-    }
+    public static DesignTimeTargetPlatform FromId(string? id) => TryParse(id, out DesignTimeTargetPlatform platform) ? platform : Windows;
 
     /// <summary>
     /// Finds a target by its identifier, its display name or another name it has, ignoring letter case, white space
@@ -128,10 +125,7 @@ internal sealed class DesignTimeTargetPlatform
         return false;
     }
 
-    public override string ToString()
-    {
-        return Id;
-    }
+    public override string ToString() => Id;
 
     private static string Normalize(string text)
     {

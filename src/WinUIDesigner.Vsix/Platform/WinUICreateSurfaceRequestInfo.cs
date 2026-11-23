@@ -113,11 +113,13 @@ internal sealed class WinUICreateSurfaceRequestInfo : CreateSurfaceRequestInfo
             return "the request cannot be read back";
         }
 
+        // The serializer left the options out.
         if (!string.Equals(probe.SerializedDesignTimeOptions, options, StringComparison.Ordinal))
         {
             return $"the member '{DesignTimeOptions.WireMemberName}' is not part of the serialized request";
         }
 
+        // The serializer lost a member of Visual Studio's own request.
         if (probe.Document?.DocumentId != documentId)
         {
             return "the document is not part of the serialized request";

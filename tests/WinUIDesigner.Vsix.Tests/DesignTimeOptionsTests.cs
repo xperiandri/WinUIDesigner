@@ -17,10 +17,12 @@ public sealed class DesignTimeOptionsTests
     {
         CollectionAssert.AreEqual(
             new[] { "win", "android", "ios", "tvos", "wasm", "desktop", "androidskia", "iosskia", "wasmskia" },
-            DesignTimeTargetPlatform.All.Select(platform => platform.Id).ToArray());
+            DesignTimeTargetPlatform.All.Select(platform => platform.Id).ToArray()
+        );
         CollectionAssert.AreEqual(
             new[] { "Windows", "Android", "iOS", "tvOS", "WebAssembly", "Skia Desktop", "Android (Skia)", "iOS (Skia)", "WebAssembly (Skia)" },
-            DesignTimeTargetPlatform.All.Select(platform => platform.DisplayName).ToArray());
+            DesignTimeTargetPlatform.All.Select(platform => platform.DisplayName).ToArray()
+        );
         Assert.AreSame(DesignTimeTargetPlatform.Windows, DesignTimeTargetPlatform.All[0]);
     }
 
@@ -293,7 +295,7 @@ public sealed class DesignTimeOptionsTests
     {
         IReadOnlyList<WindowsRelease> releases = WindowsVersionCatalog.Releases;
 
-        Assert.AreEqual(releases.Count, releases.Select(release => release.DisplayName).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.HasCount(releases.Count, releases.Select(release => release.DisplayName).Distinct(StringComparer.OrdinalIgnoreCase));
         for (int index = 0; index < releases.Count; index++)
         {
             WindowsRelease release = releases[index];
@@ -327,7 +329,8 @@ public sealed class DesignTimeOptionsTests
     public void CatalogAgreesWithTheInstalledWindowsSdks()
     {
         string platforms = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Windows Kits", "10", "Platforms", "UAP");
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Windows Kits", "10", "Platforms", "UAP"
+        );
         if (!Directory.Exists(platforms))
         {
             Assert.Inconclusive($"No Windows SDK is installed under '{platforms}'.");
@@ -377,7 +380,7 @@ public sealed class DesignTimeOptionsTests
             Assert.Inconclusive($"The Windows SDKs under '{platforms}' describe no release of the catalog.");
         }
 
-        Console.WriteLine("Verified against the Windows SDK: " + string.Join(", ", verified));
+        Console.WriteLine($"Verified against the Windows SDK: {string.Join(", ", verified)}");
     }
 
     [TestMethod]
@@ -448,7 +451,8 @@ public sealed class DesignTimeOptionsTests
                         Assert.AreEqual(
                             options,
                             DesignTimeOptionsResolver.Resolve(stored, targetPlatformProperty, windowsVersionProperty),
-                            $"'{stored}' with {targetPlatformProperty}/{windowsVersionProperty}");
+                            $"'{stored}' with {targetPlatformProperty}/{windowsVersionProperty}"
+                        );
                     }
                 }
             }
@@ -479,17 +483,15 @@ public sealed class DesignTimeOptionsTests
         // Without a value the member is not written, so the request is byte for byte Visual Studio's own.
         CollectionAssert.AreEqual(
             Serialize(new BaseRequest { Document = new DocumentInfo { DocumentId = 42 } }),
-            Serialize(new SentRequest { Document = new DocumentInfo { DocumentId = 42 } }));
+            Serialize(new SentRequest { Document = new DocumentInfo { DocumentId = 42 } })
+        );
 
         // A request without the member reads as "no options".
         Assert.IsNull(Deserialize<ReceivedRequest>(Serialize(new BaseRequest { Document = new DocumentInfo { DocumentId = 42 } }))?.Options);
     }
 
     // Data rows cannot hold a nullable number, so zero stands for "no contract version".
-    private static int? ToContractVersion(int contractVersion)
-    {
-        return contractVersion == 0 ? null : contractVersion;
-    }
+    private static int? ToContractVersion(int contractVersion) => contractVersion == 0 ? null : contractVersion;
 
     // As Message.SerializeToBuffer does it.
     private static byte[] Serialize(object payload)

@@ -77,14 +77,17 @@ internal sealed partial class SurfaceService
             int documentId = request.Document?.DocumentId ?? 0;
             if (isUnderstood)
             {
+                // The extension sent options in a format this version reads.
                 WinUIDesignerLogger.LogInformation("Surface", $"Design-time options for document {documentId}: {options}.");
             }
             else if (string.IsNullOrWhiteSpace(text))
             {
+                // Visual Studio's own request, which the extension sends while the options are turned off.
                 WinUIDesignerLogger.LogInformation("Surface", $"No design-time options came with document {documentId}; using {options}.");
             }
             else
             {
+                // Options in a format this version does not read.
                 WinUIDesignerLogger.LogWarning("Surface", $"The design-time options '{text}' for document {documentId} are not understood; using {options}.");
             }
 
