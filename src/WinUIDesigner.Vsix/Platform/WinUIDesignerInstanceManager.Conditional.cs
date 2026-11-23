@@ -91,6 +91,15 @@ internal sealed partial class WinUIDesignerInstanceManager
         }
     }
 
+    /// <summary>
+    /// Makes the documents of this request be judged with the answers that took effect.
+    /// </summary>
+    /// <remarks>
+    /// The other documents that the markup provider has registered are scanned for questions as well, but their
+    /// verdicts are left as they are: one of them may be being built for another request right now, on another
+    /// thread, and has to finish with the answers it has. It is judged with the new answers when its text
+    /// changes or when a request is made for it.
+    /// </remarks>
     private void RefreshVerdicts(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
     {
         _memberDispositions.Refresh(targetDocument.Document);

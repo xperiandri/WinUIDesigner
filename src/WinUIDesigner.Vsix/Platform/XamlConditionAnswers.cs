@@ -28,10 +28,11 @@ namespace WinUIDesigner.Platform;
 /// decided from the first document on, without waiting: malformed and empty conditions, which the code both
 /// processes share settles, and contracts and types and properties of the operating system, which both
 /// processes ask the same Windows. The surface is still asked, to confirm, and its answer replaces the local
-/// one. A condition that needs the surface, a custom condition or a type of the application, counts as not
-/// satisfied when it is custom, and is left as written otherwise, until the surface has answered. A surface
-/// that does not know the message never answers, and it loads prepared XAML with its conditional namespaces
-/// as written.
+/// one. A condition that needs the surface, a custom condition or a type or property of the application, is
+/// left as written until the surface has answered anything at all. After that, a custom condition that it has
+/// not answered yet counts as not satisfied, as the surface counts a condition it cannot create, and a type
+/// or property condition is still left as written, until its answer takes effect. A surface that does not
+/// know the message never answers, and it loads prepared XAML with its conditional namespaces as written.
 /// </para>
 /// <para>
 /// Answers are put into effect only in <see cref="AskAsync(IReadOnlyCollection{XamlConditionQuery}, TimeSpan, TimeSpan, TimeSpan)"/>,
