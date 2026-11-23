@@ -33,7 +33,7 @@ internal readonly struct XamlSourcePrefix
             ? default
             : XamlNamespaceUri.Parse(string.IsNullOrEmpty(xmlNamespace.Condition)
                 ? xmlNamespace.Value
-                : xmlNamespace.Value + "?" + xmlNamespace.Condition);
+                : $"{xmlNamespace.Value}?{xmlNamespace.Condition}");
     }
 
     /// <summary>
@@ -85,39 +85,49 @@ internal readonly struct XamlSourcePrefix
 }
 
 /// <summary>
-/// An attribute as it is written in the XAML source text, together with the other attributes of its element.
+/// An attribute or a property element as it is written in the XAML source text, together with the members of
+/// its element that the document model reads before it.
 /// </summary>
-internal readonly struct XamlSourceAttribute
+internal readonly struct XamlSourceMember
 {
-    private readonly IReadOnlyList<XamlAttributeName>? _elementAttributes;
+    private readonly IReadOnlyList<XamlAttributeName>? _members;
     private readonly XmlElementReference? _owner;
 
-    public XamlSourceAttribute(XamlAttributeName name, IReadOnlyList<XamlAttributeName> elementAttributes, XmlElementReference owner)
+    public XamlSourceMember(XamlAttributeName name, IReadOnlyList<XamlAttributeName> members, XmlElementReference owner, bool isPropertyElement)
     {
         Name = name;
-        _elementAttributes = elementAttributes;
+        _members = members;
         _owner = owner;
+        IsPropertyElement = isPropertyElement;
         IsKnown = true;
     }
 
     /// <summary>
-    /// Gets a value indicating whether the source text of the attribute was read.
+    /// Gets a value indicating whether the source text of the member was read.
     /// </summary>
     public bool IsKnown { get; }
 
     /// <summary>
-    /// Gets the name the attribute is written with.
+    /// Gets a value indicating whether the member is a property element, such as <c>&lt;Border.Background&gt;</c>,
+    /// and not an attribute.
+    /// </summary>
+    public bool IsPropertyElement { get; }
+
+    /// <summary>
+    /// Gets the name the member is written with.
     /// </summary>
     public XamlAttributeName Name { get; }
 
     /// <summary>
-    /// Gets the names of all attributes in the start tag of the element, this one included, in the order
-    /// they are written. The document model does not have them all: it keeps one value per property.
+    /// Gets the names of the members of the element in the order the document model reads them: the attributes in
+    /// the order they are written, then the property elements in the order they are written. An attribute is
+    /// listed with the attributes that follow it, a property element only with the members before it. The
+    /// document model does not keep them all: it keeps one value per property, the one it read last.
     /// </summary>
-    public IReadOnlyList<XamlAttributeName> ElementAttributes => _elementAttributes ?? Array.Empty<XamlAttributeName>();
+    public IReadOnlyList<XamlAttributeName> Members => _members ?? Array.Empty<XamlAttributeName>();
 
     /// <summary>
-    /// Returns what <paramref name="prefix"/> is bound to where the attribute is written.
+    /// Returns what <paramref name="prefix"/> is bound to where the member is written.
     /// </summary>
     public XamlSourcePrefix ResolvePrefix(string prefix)
     {
@@ -149,6 +159,9 @@ internal static class XamlSourcePrefixReader
     // Bounds what is read to list the attributes of one element.
     private const int _MaxStartTagLength = 64 * 1024;
 
+    // Bounds what is read to list the property elements in front of one.
+    private const int _MaxContentLength = 256 * 1024;
+
     /// <summary>
     /// Returns the prefix the element of <paramref name="node"/> was written with.
     /// </summary>
@@ -176,18 +189,13 @@ internal static class XamlSourcePrefixReader
     {
         try
         {
+            // There is no property to read.
             if (parentNode is null || property is null)
             {
                 return XamlSourcePrefix.None;
             }
 
-            // A property set through element content has no container of its own.
-            return parentNode.GetContainerContext(property) switch
-            {
-                XmlElementReference propertyElement => ReadElementPrefix(propertyElement),
-                XmlAttributeReference attribute => ReadAttributePrefix(attribute),
-                _ => XamlSourcePrefix.None,
-            };
+            return ReadContainerPrefix(parentNode.GetContainerContext(property));
         }
         catch (Exception)
         {
@@ -196,33 +204,102 @@ internal static class XamlSourcePrefixReader
     }
 
     /// <summary>
-    /// Returns the attribute <paramref name="property"/> was written as on <paramref name="parentNode"/>,
-    /// with the names of all attributes of that element.
+    /// Returns the prefix of the attribute or the property element that the source reference
+    /// <paramref name="container"/> refers to.
+    /// </summary>
+    /// <returns>The prefix, or <see cref="XamlSourcePrefix.None"/> for any other container.</returns>
+    /// <remarks>Unlike the public methods, this one lets a failure of the designer's references through.</remarks>
+    internal static XamlSourcePrefix ReadContainerPrefix(object? container)
+    {
+        // A property set through element content has no container of its own.
+        return container switch
+        {
+            XmlElementReference propertyElement => ReadElementPrefix(propertyElement),
+            XmlAttributeReference attribute => ReadAttributePrefix(attribute),
+            _ => XamlSourcePrefix.None,
+        };
+    }
+
+    /// <summary>
+    /// Returns the attribute or the property element <paramref name="property"/> was written as on
+    /// <paramref name="parentNode"/>, with the other members of that element that the document model reads before it.
     /// </summary>
     /// <returns>
-    /// The attribute; <see cref="XamlSourceAttribute.IsKnown"/> is <see langword="false"/> when the property
-    /// was not written as an attribute or its text cannot be read for any reason.
+    /// The member; <see cref="XamlSourceMember.IsKnown"/> is <see langword="false"/> when the property was not
+    /// written as an attribute or a property element, or its text cannot be read for any reason.
     /// </returns>
-    public static XamlSourceAttribute ReadAttribute(DocumentCompositeNode? parentNode, IProperty? property)
+    public static XamlSourceMember ReadMember(DocumentCompositeNode? parentNode, IProperty? property)
     {
         try
         {
-            if (parentNode is null
-                || property is null
-                || parentNode.GetContainerContext(property) is not XmlAttributeReference attribute
-                || attribute.Parent is not XmlElementReference owner
-                || !XamlStartTagReader.TryReadAttributeName(ReadText(attribute, attribute.TextRange, _MaxNameLength), out XamlAttributeName name))
+            // There is no property to read.
+            if (parentNode is null || property is null)
             {
                 return default;
             }
 
-            string? startTag = ReadText(owner, owner.StartTagRange ?? owner.TextRange, _MaxStartTagLength);
-            return new XamlSourceAttribute(name, XamlStartTagReader.ReadAttributeNames(startTag), owner);
+            return ReadContainerMember(parentNode.GetContainerContext(property));
         }
         catch (Exception)
         {
             return default;
         }
+    }
+
+    /// <summary>
+    /// Returns the attribute or the property element that the source reference <paramref name="container"/>
+    /// refers to, with the other members of its element that the document model reads before it.
+    /// </summary>
+    /// <returns>The member, or an unknown one for any other container.</returns>
+    /// <remarks>Unlike the public methods, this one lets a failure of the designer's references through.</remarks>
+    internal static XamlSourceMember ReadContainerMember(object? container)
+    {
+        switch (container)
+        {
+            // The attributes of an element are read before its property elements.
+            case XmlAttributeReference attribute when attribute.Parent is XmlElementReference attributeOwner
+                && XamlStartTagReader.TryReadAttributeName(ReadText(attribute, attribute.TextRange, _MaxNameLength), out XamlAttributeName attributeName):
+                IReadOnlyList<XamlAttributeName> attributes = ReadAttributeNames(attributeOwner);
+                return new XamlSourceMember(attributeName, attributes, attributeOwner, isPropertyElement: false);
+
+            case XmlElementReference propertyElement when propertyElement.Parent is XmlElementReference elementOwner
+                && XamlStartTagReader.TryReadElementName(ReadText(propertyElement, propertyElement.StartTagRange ?? propertyElement.TextRange, _MaxNameLength), out XamlAttributeName elementName):
+                var members = new List<XamlAttributeName>(ReadAttributeNames(elementOwner));
+                members.AddRange(XamlStartTagReader.ReadPropertyElementNames(ReadContentBefore(elementOwner, propertyElement)));
+                return new XamlSourceMember(elementName, members, elementOwner, isPropertyElement: true);
+
+            // A property set through element content has no container of its own.
+            default:
+                return default;
+        }
+    }
+
+    private static IReadOnlyList<XamlAttributeName> ReadAttributeNames(XmlElementReference element)
+    {
+        return XamlStartTagReader.ReadAttributeNames(ReadText(element, element.StartTagRange ?? element.TextRange, _MaxStartTagLength));
+    }
+
+    /// <summary>
+    /// Reads the content of <paramref name="owner"/> from the end of its start tag up to the start of
+    /// <paramref name="member"/>, one of its children.
+    /// </summary>
+    private static string? ReadContentBefore(XmlElementReference owner, XmlElementReference member)
+    {
+        // An element that has children has a start tag of its own.
+        ITextRange? startTag = owner.StartTagRange;
+        IReadableSelectableTextBuffer? buffer = owner.TextBuffer;
+        ITextRange? range = member.TextRange;
+        if (startTag is null || buffer is null || range is null)
+        {
+            return null;
+        }
+
+        // Nothing is between them, or more than is worth reading: the members before it are not known.
+        int start = startTag.Offset + startTag.Length;
+        int length = range.Offset - start;
+        return start >= 0 && length > 0 && length <= _MaxContentLength && start + length <= buffer.Length
+            ? buffer.GetText(start, length)
+            : null;
     }
 
     private static XamlSourcePrefix ReadElementPrefix(XmlElementReference element)
@@ -234,11 +311,13 @@ internal static class XamlSourcePrefixReader
 
     private static XamlSourcePrefix ReadAttributePrefix(XmlAttributeReference attribute)
     {
+        // An attribute outside an element has no scope to resolve its prefix in.
         if (attribute.Parent is not XmlElementReference owner)
         {
             return XamlSourcePrefix.None;
         }
 
+        // The range does not start with an attribute name.
         string? prefix = XamlNamespaceScanner.ReadAttributePrefix(ReadText(attribute, attribute.TextRange));
         if (prefix is null)
         {
@@ -260,18 +339,21 @@ internal static class XamlSourcePrefixReader
 
     private static string? ReadText(XamlSourceContext context, ITextRange? range, int maxLength = _MaxNameLength)
     {
+        // A reference without text or without a range has nothing to read.
         IReadableSelectableTextBuffer? buffer = context.TextBuffer;
         if (buffer is null || range is null)
         {
             return null;
         }
 
+        // A range that starts before the text does not describe it.
         int offset = range.Offset;
         if (offset < 0)
         {
             return null;
         }
 
+        // Only the start of the range is read, and a range at or past the end of the text has nothing to read.
         int length = Math.Min(Math.Min(range.Length, maxLength), buffer.Length - offset);
         return length > 0 ? buffer.GetText(offset, length) : null;
     }

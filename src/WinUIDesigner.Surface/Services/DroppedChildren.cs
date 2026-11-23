@@ -270,7 +270,7 @@ internal sealed class DroppedChildren : IChildCollectionAccess
         {
             declaringType = XamlRuntimeUtilities.ResolveType(baseUri[XamlNamespaceUri.UsingScheme.Length..] + "." + typeName);
         }
-        else if (baseUri == XamlNamespaceUri.PresentationNamespace)
+        else if (baseUri == XamlNamespaces.Presentation)
         {
             declaringType = typeof(FrameworkElement).Assembly.GetExportedTypes().FirstOrDefault(candidate =>
                 candidate.Name == typeName && candidate.Namespace?.StartsWith("Microsoft.UI.Xaml", StringComparison.Ordinal) == true);

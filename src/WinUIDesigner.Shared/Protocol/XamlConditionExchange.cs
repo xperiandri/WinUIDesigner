@@ -39,6 +39,7 @@ internal static class XamlConditionExchange
     public static List<XamlConditionQuery> ReadQueries(EvaluateXamlConditionsRequest? request)
     {
         var queries = new List<XamlConditionQuery>();
+        // A request without conditions asks nothing.
         List<string?>? conditions = request?.Conditions;
         if (conditions is null)
         {
@@ -48,6 +49,7 @@ internal static class XamlConditionExchange
         List<string?>? namespaces = request!.PredicateNamespaces;
         for (int index = 0; index < conditions.Count; index++)
         {
+            // The namespace is null for a built-in method and for a prefix that is not declared.
             string? predicateNamespace = namespaces is not null && index < namespaces.Count ? namespaces[index] : null;
             queries.Add(XamlConditionQuery.Create(conditions[index], predicateNamespace));
         }
@@ -116,6 +118,7 @@ internal static class XamlConditionExchange
         XamlConditionService conditions,
         out bool changed)
     {
+        // A reply that does not answer the request is not recorded.
         changed = false;
         if (!IsReplyTo(queries, response))
         {
@@ -133,6 +136,8 @@ internal static class XamlConditionExchange
         {
             bool? outcome = outcomes[index];
             XamlConditionQuery query = queries[index];
+
+            // A question that was not answered stays open, and an empty condition has nothing to record.
             if (!outcome.HasValue || query.Condition.Kind == XamlConditionKind.Empty)
             {
                 continue;

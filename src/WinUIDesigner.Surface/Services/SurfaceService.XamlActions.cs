@@ -104,6 +104,7 @@ internal sealed partial class SurfaceService
             }
             else
             {
+                // Any other failure is unexpected.
                 WinUIDesignerLogger.LogError("Surface", $"ExecuteXamlActions ({(int)DesignerMessageId.ExecuteXamlActions}) failed during '{failedAction?.Action}'.", ex);
             }
 
@@ -132,12 +133,14 @@ internal sealed partial class SurfaceService
             return DispatcherOperation.InvokeAsync(_dispatcherQueue, () => ExecuteLookupActions(request, serializer), _protocolHandler.CancellationToken).GetAwaiter().GetResult();
         }
 
+        // The actions build a value for Visual Studio to read, outside the live tree.
+        using IDisposable detachedBuild = _styleEdits.EnterDetachedBuild();
         object? captured = null;
         var deferredSetterInsertions = CreateDeferredSetterInsertions();
         var actions = XamlActionJsonSerializer.Deserialize(request.Actions ?? []);
         foreach (XamlAction action in actions)
         {
-            Execute(action, (_, value) => captured = value, deferredSetterInsertions);
+            Execute(action, deferredSetterInsertions, (_, value) => captured = value);
         }
 
         foreach (DeferredSetterInsertion insertion in deferredSetterInsertions.TakeAll())
@@ -153,6 +156,8 @@ internal sealed partial class SurfaceService
     {
         using var scope = _objectIdentity.EnterDocument(document.DocumentId);
 
+        // The document joins a surface only after it is built.
+        using IDisposable detachedBuild = _styleEdits.EnterDetachedBuild();
         object? root = null;
         var deferredSetterInsertions = CreateDeferredSetterInsertions();
         var actions = XamlActionJsonSerializer.Deserialize(document.Actions ?? []);
@@ -163,7 +168,7 @@ internal sealed partial class SurfaceService
 
             try
             {
-                Execute(action, (id, value) =>
+                Execute(action, deferredSetterInsertions, (id, value) =>
                 {
                     if (id != document.DocumentId)
                     {
@@ -171,7 +176,7 @@ internal sealed partial class SurfaceService
                     }
 
                     root = value;
-                }, deferredSetterInsertions);
+                });
 
                 TrackActionObjects();
             }
@@ -219,20 +224,6 @@ internal sealed partial class SurfaceService
         }
     }
 
-    // Keeps the order of operations on one setter collection: the indices of a batch assume the earlier actions ran.
-    private void InsertDeferredSetters(DeferredInsertionQueue<DeferredSetterInsertion>? deferredSetterInsertions, object? collection)
-    {
-        if (deferredSetterInsertions is null || collection is not SetterBaseCollection)
-        {
-            return;
-        }
-
-        foreach (DeferredSetterInsertion insertion in deferredSetterInsertions.TakeFor(collection))
-        {
-            InsertSetter(insertion);
-        }
-    }
-
     private List<FrameworkElement> GetSurfaceRoots()
     {
         var roots = new List<FrameworkElement>(_surfaces.Count);
@@ -275,8 +266,8 @@ internal sealed partial class SurfaceService
 
     private void Execute(
         XamlAction action,
-        Action<int, object?>? setSurfaceContentOverride = null,
-        DeferredInsertionQueue<DeferredSetterInsertion>? deferredSetterInsertions = null)
+        DeferredInsertionQueue<DeferredSetterInsertion> deferredSetterInsertions,
+        Action<int, object?>? setSurfaceContentOverride = null)
     {
         switch (action)
         {
@@ -412,6 +403,7 @@ internal sealed partial class SurfaceService
                     XamlRuntimeUtilities.SetPropertyValue(propertyOwner, setProperty.FullPropertyName, newValue);
                 }
 
+                _styleEdits.TrackPropertySet(propertyOwner, setProperty.FullPropertyName);
                 break;
             case ClearPropertyAction clearProperty:
                 object clearedOwner = ResolveObject(clearProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearProperty.ParentHandle}.");
@@ -434,14 +426,16 @@ internal sealed partial class SurfaceService
                 }
 
                 object? clearedCollection = XamlRuntimeUtilities.GetPropertyValue(collectionOwner, clearCollection.FullPropertyName);
-                InsertDeferredSetters(deferredSetterInsertions, clearedCollection);
-
-                // Visual Studio adds the children again afterwards, the dropped ones included.
-                _droppedChildren.ForgetCollection(collectionOwner, clearCollection.FullPropertyName);
-                if (!_styleEdits.TryClearSetters(collectionOwner, clearedCollection))
+                deferredSetterInsertions.RunAfterPendingInsertions(clearedCollection, InsertSetter, () =>
                 {
-                    XamlRuntimeUtilities.ClearCollectionProperty(collectionOwner, clearCollection.FullPropertyName);
-                }
+                    // Visual Studio adds the children again afterwards, the dropped ones included.
+                    _droppedChildren.ForgetCollection(collectionOwner, clearCollection.FullPropertyName);
+                    if (!_styleEdits.TryClearSetters(collectionOwner, clearedCollection))
+                    {
+                        XamlRuntimeUtilities.ClearCollectionProperty(collectionOwner, clearCollection.FullPropertyName);
+                    }
+                });
+
                 break;
             case UpdateEventHandlerAction updateEvent:
                 XamlRuntimeUtilities.UpdateEventHandler((ResolveObject(updateEvent.EventOwner) ?? throw new KeyNotFoundException($"No live object is registered for handle {updateEvent.EventOwner}.")), updateEvent.FullEventName, (ResolveObject(updateEvent.HandlerOwner) ?? throw new KeyNotFoundException($"No live object is registered for handle {updateEvent.HandlerOwner}.")), updateEvent.HandlerOwnerType, updateEvent.OldHandler, updateEvent.NewHandler);
@@ -454,8 +448,7 @@ internal sealed partial class SurfaceService
                     break;
                 }
 
-                InsertDeferredSetters(deferredSetterInsertions, lookupOwner);
-                _actionObjects[getChild.ChildHandle] = _droppedChildren.GetChild(lookupOwner, getChild.Index);
+                deferredSetterInsertions.RunAfterPendingInsertions(lookupOwner, InsertSetter, () => _actionObjects[getChild.ChildHandle] = _droppedChildren.GetChild(lookupOwner, getChild.Index));
                 break;
             case AddChildAction addChild:
                 object childOwner = (ResolveObject(addChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {addChild.ParentHandle}."));
@@ -474,15 +467,7 @@ internal sealed partial class SurfaceService
 
                 if (childOwner is SetterBaseCollection setterCollection && child is SetterBase setter)
                 {
-                    var insertion = new DeferredSetterInsertion(action, setterCollection, liveIndex, setter);
-                    if (deferredSetterInsertions is not null)
-                    {
-                        deferredSetterInsertions.Add(insertion);
-                    }
-                    else
-                    {
-                        InsertSetter(insertion);
-                    }
+                    deferredSetterInsertions.Add(new(action, setterCollection, liveIndex, setter));
                 }
                 else
                 {
@@ -496,8 +481,7 @@ internal sealed partial class SurfaceService
                 {
                     // The removal goes through the index translation; a sealed setter collection is changed
                     // through XAML Diagnostics there (see RemoveChildAt).
-                    InsertDeferredSetters(deferredSetterInsertions, removalOwner);
-                    _droppedChildren.RemoveChild(removalOwner, removeChild.Index);
+                    deferredSetterInsertions.RunAfterPendingInsertions(removalOwner, InsertSetter, () => _droppedChildren.RemoveChild(removalOwner, removeChild.Index));
                 }
 
                 break;

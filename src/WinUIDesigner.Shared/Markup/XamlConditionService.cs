@@ -59,12 +59,44 @@ internal sealed class XamlConditionService
             return true;
         }
 
+        // A question is probed once; every condition that asks it gets the answer that is kept.
         if (!_outcomes.TryGetValue(query.Key, out bool? outcome))
         {
             outcome = _outcomes.GetOrAdd(query.Key, Probe(query));
         }
 
         return outcome.HasValue && condition.IsNegated ? !outcome.Value : outcome;
+    }
+
+    /// <summary>
+    /// Returns whether this process can decide a condition without another process: the condition is malformed
+    /// or empty, which the shared grammar settles, or this process has a probe for what the condition asks.
+    /// </summary>
+    /// <remarks>
+    /// A custom condition whose type cannot even be named counts as decided here: it is not satisfied in
+    /// every process. Otherwise only a process that can load the type can tell.
+    /// </remarks>
+    public bool CanEvaluate(XamlConditionQuery query)
+    {
+        XamlCondition condition = query.Condition;
+        switch (condition.Kind)
+        {
+            case XamlConditionKind.ApiContract:
+                return _probes.IsApiContractPresent is not null;
+
+            case XamlConditionKind.Type:
+                return (IsWindowsName(condition.Arguments[0]) ? _probes.IsWindowsTypePresent : _probes.IsManagedTypePresent) is not null;
+
+            case XamlConditionKind.Property:
+                return (IsWindowsName(condition.Arguments[0]) ? _probes.IsWindowsPropertyPresent : _probes.IsManagedPropertyPresent) is not null;
+
+            case XamlConditionKind.Custom:
+                return query.PredicateNamespace is null || query.TypeName is null || _probes.EvaluateCustom is not null;
+
+            default:
+                // Empty and malformed conditions.
+                return true;
+        }
     }
 
     /// <summary>
@@ -105,6 +137,7 @@ internal sealed class XamlConditionService
                 case XamlConditionKind.Custom:
                     return ProbeCustom(query);
 
+                // A text that is no condition at all.
                 default:
                     Report($"'{condition.Text}' is not a condition the XAML reader accepts: {condition.Error}. Its members are skipped.");
                     return false;
@@ -120,6 +153,8 @@ internal sealed class XamlConditionService
     private bool? ProbeCustom(XamlConditionQuery query)
     {
         XamlCondition condition = query.Condition;
+
+        // The prefix is not declared, so the type cannot be named.
         if (query.PredicateNamespace is null)
         {
             Report(condition.Prefix.Length == 0
@@ -128,6 +163,7 @@ internal sealed class XamlConditionService
             return false;
         }
 
+        // The namespace is no CLR namespace, so it has no type of that name.
         if (query.TypeName is null)
         {
             Report(condition.Prefix.Length == 0
@@ -144,6 +180,8 @@ internal sealed class XamlConditionService
         }
 
         bool? outcome = evaluateCustom(query.TypeName, condition.Argument);
+
+        // The probe gave no answer.
         if (outcome is null)
         {
             Report($"The condition type '{query.TypeName}' of '{condition.Text}' could not be evaluated. The condition counts as not satisfied.");
@@ -153,10 +191,7 @@ internal sealed class XamlConditionService
         return outcome;
     }
 
-    private static bool IsWindowsName(string typeName)
-    {
-        return typeName.StartsWith(_WindowsNamespacePrefix, StringComparison.Ordinal);
-    }
+    private static bool IsWindowsName(string typeName) => typeName.StartsWith(_WindowsNamespacePrefix, StringComparison.Ordinal);
 
     private void Report(string message)
     {

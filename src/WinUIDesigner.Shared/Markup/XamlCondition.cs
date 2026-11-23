@@ -63,7 +63,8 @@ internal sealed class XamlCondition
 
     private static readonly string[] _NoArguments = new string[0];
     private static readonly XamlCondition _Empty = new(
-        string.Empty, XamlConditionKind.Empty, isNegated: false, string.Empty, string.Empty, string.Empty, _NoArguments, 0, null, string.Empty, error: null);
+        string.Empty, XamlConditionKind.Empty, isNegated: false, string.Empty, string.Empty, string.Empty, _NoArguments, 0, null, string.Empty, error: null
+    );
 
     private readonly string[] _arguments;
 
@@ -167,17 +168,20 @@ internal sealed class XamlCondition
     /// </summary>
     public static XamlCondition Parse(string? text)
     {
+        // There is no predicate after the '?'.
         if (text is null || text.Length == 0)
         {
             return _Empty;
         }
 
+        // There is no argument list.
         int open = text.IndexOf('(');
         if (open < 0)
         {
             return Invalid(text, "the argument list is missing: a condition is written as Name(arguments)");
         }
 
+        // The argument list is not the end of the text.
         if (text[text.Length - 1] != ')')
         {
             return Invalid(text, text.IndexOf(')', open) < 0
@@ -186,60 +190,57 @@ internal sealed class XamlCondition
         }
 
         // The argument list runs to the last parenthesis, so the argument of a custom condition may contain parentheses.
-        string qualifiedName = text.Substring(0, open);
+        // The name is only looked at: a string is created for each part that is kept.
+        ReadOnlySpan<char> qualifiedName = text.AsSpan(0, open);
         string argument = text.Substring(open + 1, text.Length - open - 2);
 
-        string prefix = string.Empty;
-        string name = qualifiedName;
+        ReadOnlySpan<char> prefix = default;
+        ReadOnlySpan<char> name = qualifiedName;
         int colon = qualifiedName.IndexOf(':');
         if (colon >= 0)
         {
-            prefix = qualifiedName.Substring(0, colon);
-            name = qualifiedName.Substring(colon + 1);
+            prefix = qualifiedName.Slice(0, colon);
+            name = qualifiedName.Slice(colon + 1);
+
+            // The part before the colon is no xmlns prefix.
             if (!IsName(prefix, isPrefix: true))
             {
-                return Invalid(text, $"'{prefix}' is not an xmlns prefix");
+                return Invalid(text, $"'{prefix.ToString()}' is not an xmlns prefix");
             }
         }
 
         if (!IsName(name, isPrefix: false))
         {
             // White space around the name is not skipped by the XAML reader either: it looks for a type of that name.
-            return Invalid(text, $"'{name}' is not a condition name");
+            return Invalid(text, $"'{name.ToString()}' is not a condition name");
         }
 
-        if (prefix.Length != 0 || !IsBuiltInMethod(name))
+        string nameText = name.ToString();
+        if (prefix.Length != 0 || !IsBuiltInMethod(nameText))
         {
             // The argument is opaque to everyone but the condition type, so no white space is dropped from it.
             // The namespace of the type is not part of the key: it depends on where the prefix is declared.
-            string key = name + "(" + argument + ")";
-            return new XamlCondition(text, XamlConditionKind.Custom, isNegated: false, prefix, name, argument, _NoArguments, 0, null, key, error: null);
+            string key = $"{nameText}({argument})";
+            return new XamlCondition(text, XamlConditionKind.Custom, isNegated: false, prefix.ToString(), nameText, argument, _NoArguments, 0, null, key, error: null);
         }
 
-        return ParseBuiltIn(text, name, argument);
+        return ParseBuiltIn(text, nameText, argument);
     }
 
     /// <summary>
     /// Returns this condition as the built-in method its name spells, ignoring the prefix. The XAML reader finds
     /// the built-in methods through any prefix that is bound to the presentation namespace.
     /// </summary>
-    public XamlCondition WithoutPrefix()
-    {
-        return Prefix.Length == 0 ? this : Parse(Name + "(" + Argument + ")");
-    }
+    public XamlCondition WithoutPrefix() => Prefix.Length == 0 ? this : Parse($"{Name}({Argument})");
 
     /// <inheritdoc/>
-    public override string ToString()
-    {
-        return Text;
-    }
+    public override string ToString() => Text;
 
     private static XamlCondition ParseBuiltIn(string text, string name, string argument)
     {
-        string[] arguments = argument.Split(',');
+        string[] arguments = SplitArguments(argument);
         for (int index = 0; index < arguments.Length; index++)
         {
-            arguments[index] = arguments[index].Trim();
             if (arguments[index].Length == 0)
             {
                 return Invalid(text, arguments.Length == 1 ? $"{name} needs arguments" : $"argument {(index + 1).ToString(CultureInfo.InvariantCulture)} of {name} is empty");
@@ -271,8 +272,9 @@ internal sealed class XamlCondition
                     minor = minorValue;
                 }
 
-                string contractKey = _ApiContractPresent + "(" + arguments[0] + "," + major.ToString(CultureInfo.InvariantCulture)
-                    + (minor.HasValue ? "," + minor.Value.ToString(CultureInfo.InvariantCulture) : string.Empty) + ")";
+                // The key is data that is compared again: the numbers are written the same way in every culture.
+                string minorPart = minor.HasValue ? FormattableString.Invariant($",{minor.Value}") : string.Empty;
+                string contractKey = FormattableString.Invariant($"{_ApiContractPresent}({arguments[0]},{major}{minorPart})");
                 return new XamlCondition(text, XamlConditionKind.ApiContract, name == _ApiContractNotPresent, string.Empty, name, argument, arguments, major, minor, contractKey, error: null);
 
             case _TypePresent:
@@ -282,7 +284,7 @@ internal sealed class XamlCondition
                     return Invalid(text, $"{name} takes one argument, a type name");
                 }
 
-                return new XamlCondition(text, XamlConditionKind.Type, name == _TypeNotPresent, string.Empty, name, argument, arguments, 0, null, _TypePresent + "(" + arguments[0] + ")", error: null);
+                return new XamlCondition(text, XamlConditionKind.Type, name == _TypeNotPresent, string.Empty, name, argument, arguments, 0, null, $"{_TypePresent}({arguments[0]})", error: null);
 
             default:
                 if (arguments.Length != 2)
@@ -290,7 +292,26 @@ internal sealed class XamlCondition
                     return Invalid(text, $"{name} takes two arguments, a type name and a property name");
                 }
 
-                return new XamlCondition(text, XamlConditionKind.Property, name == _PropertyNotPresent, string.Empty, name, argument, arguments, 0, null, _PropertyPresent + "(" + arguments[0] + "," + arguments[1] + ")", error: null);
+                return new XamlCondition(text, XamlConditionKind.Property, name == _PropertyNotPresent, string.Empty, name, argument, arguments, 0, null, $"{_PropertyPresent}({arguments[0]},{arguments[1]})", error: null);
+        }
+    }
+
+    // The arguments are kept without the white space around them. The text is only looked at: a string is
+    // created for each argument, not for the untrimmed text before it.
+    private static string[] SplitArguments(string argument)
+    {
+        var arguments = new List<string>();
+        ReadOnlySpan<char> rest = argument.AsSpan();
+        while (true)
+        {
+            int comma = rest.IndexOf(',');
+            arguments.Add((comma < 0 ? rest : rest.Slice(0, comma)).Trim().ToString());
+            if (comma < 0)
+            {
+                return arguments.ToArray();
+            }
+
+            rest = rest.Slice(comma + 1);
         }
     }
 
@@ -305,6 +326,7 @@ internal sealed class XamlCondition
     /// </summary>
     private static bool TryParseVersion(string text, out int version)
     {
+        // A version is one to five digits: the largest number is 65535.
         version = 0;
         if (text.Length == 0 || text.Length > 5)
         {
@@ -313,6 +335,7 @@ internal sealed class XamlCondition
 
         foreach (char character in text)
         {
+            // Anything but a digit makes the text no plain number.
             if (character < '0' || character > '9')
             {
                 return false;
@@ -324,8 +347,9 @@ internal sealed class XamlCondition
         return version <= ushort.MaxValue;
     }
 
-    private static bool IsName(string text, bool isPrefix)
+    private static bool IsName(ReadOnlySpan<char> text, bool isPrefix)
     {
+        // A name begins with a letter or an underscore.
         if (text.Length == 0 || !(char.IsLetter(text[0]) || text[0] == '_'))
         {
             return false;

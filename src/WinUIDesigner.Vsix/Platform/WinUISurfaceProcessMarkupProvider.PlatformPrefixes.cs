@@ -37,6 +37,7 @@ internal sealed partial class WinUISurfaceProcessMarkupProvider
     /// </remarks>
     public bool ReprepareRawPlatformElements(ISurfaceProcessDocument document)
     {
+        // Only a document that Visual Studio prepared, and that has a shadow cache to write to, is prepared again.
         if (document is not SurfaceProcessDocument surfaceDocument
             || surfaceDocument.ConstructionState is not (ConstructionState.Prepared or ConstructionState.Loading)
             || SurfaceInfo?.ShadowCacheContent is not { } shadowCache)
@@ -47,6 +48,8 @@ internal sealed partial class WinUISurfaceProcessMarkupProvider
         IMarkupDocument markupDocument = surfaceDocument.Document;
         IMarkupTextBuffer? textBuffer = markupDocument.TextBuffer;
         IDocumentContext? documentContext = markupDocument.DocumentContext;
+
+        // A document without a text or a context cannot be cleaned.
         if (textBuffer is null || documentContext is null)
         {
             return false;
@@ -55,6 +58,7 @@ internal sealed partial class WinUISurfaceProcessMarkupProvider
         string text = textBuffer.GetText(0, textBuffer.Length);
         IProjectContext project = (documentContext.Project as IProjectContext) ?? Project;
 
+        // Clean the current text again, without the stand-in for the elements that cannot be resolved.
         XamlResult result;
         using (WinUIInstanceBuilderPlatform.KeepUnresolvedElements())
         {
@@ -67,6 +71,7 @@ internal sealed partial class WinUISurfaceProcessMarkupProvider
             return false;
         }
 
+        // Write the result where the surface reads the prepared file.
         string shadowCachePath = GetShadowCachePath(surfaceDocument);
         shadowCache.CacheFileFromText(shadowCachePath, result.Xaml);
 
@@ -77,6 +82,7 @@ internal sealed partial class WinUISurfaceProcessMarkupProvider
             return false;
         }
 
+        // The document takes over the new text and its mapping.
         SetCleaningResult(surfaceDocument, result);
         return true;
     }
@@ -92,6 +98,7 @@ internal sealed partial class WinUISurfaceProcessMarkupProvider
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
+            // A file that cannot be read does not hold the new text.
             return false;
         }
     }

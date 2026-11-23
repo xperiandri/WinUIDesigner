@@ -83,11 +83,8 @@ internal partial class WinUIInstanceBuilderPlatform
     /// </remarks>
     private sealed class DroppedNodeBuilder : UwpInstanceBuilder
     {
-        public override bool CanInstantiate(IInstanceBuilderContext context, DocumentNode node)
-        {
-            // Not being able to create the node would be reported as an error; creating nothing is intended.
-            return true;
-        }
+        // Not being able to create the node would be reported as an error; creating nothing is intended.
+        public override bool CanInstantiate(IInstanceBuilderContext context, DocumentNode node) => true;
 
         public override void Instantiate(IInstanceBuilderContext context, LiveNodeProxy liveNode)
         {

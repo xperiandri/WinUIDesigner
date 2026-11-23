@@ -57,6 +57,7 @@ internal readonly struct XamlNamespaceDeclaration
 internal sealed class XamlNamespaceScanResult
 {
     private readonly HashSet<string> _ignorablePrefixes;
+    private readonly HashSet<(string Prefix, string Namespace)> _usedPlatformNamespaces;
 
     internal XamlNamespaceScanResult(
         IReadOnlyList<XamlNamespaceDeclaration> declarations,
@@ -64,6 +65,7 @@ internal sealed class XamlNamespaceScanResult
         bool hasConditionalNamespaces,
         bool hasPlatformNamespaces,
         bool hasPlatformPrefixedObjectElements,
+        HashSet<(string Prefix, string Namespace)> usedPlatformNamespaces,
         bool isComplete)
     {
         Declarations = declarations;
@@ -71,6 +73,7 @@ internal sealed class XamlNamespaceScanResult
         HasConditionalNamespaces = hasConditionalNamespaces;
         HasPlatformNamespaces = hasPlatformNamespaces;
         HasPlatformPrefixedObjectElements = hasPlatformPrefixedObjectElements;
+        _usedPlatformNamespaces = usedPlatformNamespaces;
         IsComplete = isComplete;
     }
 
@@ -83,7 +86,9 @@ internal sealed class XamlNamespaceScanResult
         hasConditionalNamespaces: false,
         hasPlatformNamespaces: false,
         hasPlatformPrefixedObjectElements: false,
-        isComplete: false);
+        usedPlatformNamespaces: new HashSet<(string Prefix, string Namespace)>(),
+        isComplete: false
+    );
 
     /// <summary>
     /// Gets every <c>xmlns</c> declaration in document order, including those on nested elements.
@@ -120,10 +125,16 @@ internal sealed class XamlNamespaceScanResult
     /// <summary>
     /// Returns whether <paramref name="prefix"/> is listed in any <c>mc:Ignorable</c> attribute of the text.
     /// </summary>
-    public bool IsIgnorable(string prefix)
-    {
-        return _ignorablePrefixes.Contains(prefix);
-    }
+    public bool IsIgnorable(string prefix) => _ignorablePrefixes.Contains(prefix);
+
+    /// <summary>
+    /// Returns whether an element or an attribute of the text is written under <paramref name="prefix"/> while the
+    /// prefix is bound to the Uno platform namespace <paramref name="namespaceUri"/>, so that the declaration is
+    /// used and not only made. Only platform namespaces are tracked; the answer is <see langword="false"/> for any other.
+    /// </summary>
+    /// <param name="prefix">The prefix of the declaration.</param>
+    /// <param name="namespaceUri">The namespace of the declaration as written, a <c>#using:</c> suffix included.</param>
+    public bool IsPlatformNamespaceUsed(string prefix, string namespaceUri) => _usedPlatformNamespaces.Contains((prefix, namespaceUri));
 
     /// <summary>
     /// Returns the namespace of the first declaration of <paramref name="prefix"/>, or <see langword="null"/>.

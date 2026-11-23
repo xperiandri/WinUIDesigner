@@ -9,9 +9,10 @@ namespace WinUIDesigner.Surface.Common;
 /// Pairs a value that an action batch removed from a resource dictionary with the value it adds back under the same key.
 /// </summary>
 /// <remarks>
-/// Visual Studio builds a new Style when the TargetType of a style changes or a setter is removed from an implicit
-/// style, and replaces the dictionary entry by removing the key and adding the new instance. Objects that resolved
-/// <c>{StaticResource}</c> to the old instance keep it; the pair tells the surface which references to move.
+/// Visual Studio builds a new Style when the TargetType of a style changes, when its first setter is added or its last
+/// one removed, or when a setter is removed from an implicit style, and replaces the dictionary entry by removing the
+/// key and adding the new instance. Objects that resolved <c>{StaticResource}</c> to the old instance keep it; the pair
+/// tells the surface which references to move.
 /// </remarks>
 internal sealed class ReplacedValueTracker
 {

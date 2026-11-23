@@ -13,9 +13,11 @@ internal sealed partial class SurfaceService
     /// </summary>
     private void ConfigurePlatformPrefixPolicy(XamlNamespaceRewriteOptions options)
     {
-        // The surface is a WinUI process and previews the Windows flavor of the markup: members under win:
-        // and not_android: become plain members, members under android: or not_win: are dropped.
-        // Previewing another platform means setting another target here; the policy does not change.
+        // The surface is a WinUI process and previews the Windows flavor of the markup: members under a platform
+        // prefix that is bound to the presentation namespace (win:, not_android:) become plain members, members
+        // under one that is bound to an Uno namespace (android:, not_win:) are dropped. The classification is the
+        // same for every target, but another target is only shown by prepared XAML that still has the raw
+        // elements: see UnoPlatformPrefixes.
         options.TargetPlatform = UnoPlatformPrefixes.DefaultTargetPlatform;
     }
 }

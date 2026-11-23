@@ -11,6 +11,7 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DispatcherOperation.cs" Link="DispatcherOperation.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/RuntimeMemberResolver.cs" Link="RuntimeMemberResolver.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/RuntimeTypeNameSerializer.cs" Link="RuntimeTypeNameSerializer.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Runtime/ProjectionMetadataRules.cs" Link="ProjectionMetadataRules.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DocumentConstructionException.cs" Link="DocumentConstructionException.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ObjectIdentityRegistry.cs" Link="ObjectIdentityRegistry.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DocumentScope.cs" Link="DocumentScope.cs" Visible="false" />
@@ -26,6 +27,11 @@
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/DeferredInsertionQueue.cs" Link="DeferredInsertionQueue.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/ReplacedValueTracker.cs" Link="ReplacedValueTracker.cs" Visible="false" />
 		<Compile Include="../../src/WinUIDesigner.Surface/Common/XamlDiagnosticsPropertyName.cs" Link="XamlDiagnosticsPropertyName.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/SetterEditRoute.cs" Link="SetterEditRoute.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/DetachedKeyCounter.cs" Link="DetachedKeyCounter.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ReferenceMover.cs" Link="ReferenceMover.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/StyleReplacementRules.cs" Link="StyleReplacementRules.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/BestEffortSteps.cs" Link="BestEffortSteps.cs" Visible="false" />
 	</ItemGroup>
 
 	<ItemGroup>

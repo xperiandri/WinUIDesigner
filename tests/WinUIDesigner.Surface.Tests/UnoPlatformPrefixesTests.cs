@@ -5,14 +5,13 @@ using WinUIDesigner.Markup;
 using WinUIDesigner.Surface.Markup;
 
 /// <summary>
-/// Covers which Uno platform prefixes apply to which previewed platform. The verdict comes from the prefix:
-/// <c>win</c>, <c>not_android</c> and the default namespace all name the presentation namespace.
+/// Covers which Uno platform prefixes apply to which previewed platform. The verdict comes from the prefix, except
+/// on Windows, where the namespace decides (see <see cref="UnoPlatformPrefixes.Classify"/>): <c>win</c>,
+/// <c>not_android</c> and the default namespace all name the presentation namespace.
 /// </summary>
 [TestClass]
 public sealed class UnoPlatformPrefixesTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-
     // Every positive prefix of the "Available prefixes" tables of the Uno documentation, in all of its versions.
     private static readonly string[] _PositivePrefixes =
     [
@@ -34,7 +33,7 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("http://uno.ui/android#using:My.Droid", true)]
     [DataRow("http://uno.ui", false)]
     [DataRow("HTTP://UNO.UI/android", false)]
-    [DataRow(_Presentation, false)]
+    [DataRow(XamlNamespaces.Presentation, false)]
     [DataRow("using:My.App", false)]
     [DataRow("", false)]
     [DataRow(null, false)]
@@ -52,9 +51,9 @@ public sealed class UnoPlatformPrefixesTests
             Assert.AreEqual(prefix, platform);
             Assert.IsFalse(isNegated, prefix);
 
-            Assert.IsTrue(UnoPlatformPrefixes.TryParse("not_" + prefix, out platform, out isNegated), "not_" + prefix);
+            Assert.IsTrue(UnoPlatformPrefixes.TryParse($"not_{prefix}", out platform, out isNegated), $"not_{prefix}");
             Assert.AreEqual(prefix, platform);
-            Assert.IsTrue(isNegated, "not_" + prefix);
+            Assert.IsTrue(isNegated, $"not_{prefix}");
         }
     }
 
@@ -82,6 +81,8 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("ANDROID")]
     [DataRow("android2")]
     [DataRow("androidNamespace1")]
+    [DataRow("andro")]
+    [DataRow("not_andro")]
     [DataRow("windows")]
     [DataRow("not_")]
     [DataRow("not_used")]
@@ -100,18 +101,18 @@ public sealed class UnoPlatformPrefixesTests
 
     [TestMethod]
     // Included on Windows: the members become plain members.
-    [DataRow("win", _Presentation, false, "Keep")]
-    [DataRow("winappsdk", _Presentation, false, "Keep")]
-    [DataRow("not_android", _Presentation, false, "Keep")]
-    [DataRow("not_ios", _Presentation, false, "Keep")]
-    [DataRow("not_tvos", _Presentation, false, "Keep")]
-    [DataRow("not_macos", _Presentation, false, "Keep")]
-    [DataRow("not_wasm", _Presentation, false, "Keep")]
-    [DataRow("not_desktop", _Presentation, false, "Keep")]
-    [DataRow("not_skia", _Presentation, false, "Keep")]
-    [DataRow("not_androidskia", _Presentation, false, "Keep")]
-    [DataRow("not_iosskia", _Presentation, false, "Keep")]
-    [DataRow("not_wasmskia", _Presentation, false, "Keep")]
+    [DataRow("win", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("winappsdk", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_android", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_ios", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_tvos", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_macos", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_wasm", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_desktop", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_skia", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_androidskia", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_iosskia", XamlNamespaces.Presentation, false, "Keep")]
+    [DataRow("not_wasmskia", XamlNamespaces.Presentation, false, "Keep")]
     // Excluded on Windows: the members are dropped.
     [DataRow("not_win", "http://uno.ui/not_win", true, "Drop")]
     [DataRow("not_winappsdk", "http://uno.ui/not_winappsdk", true, "Drop")]
@@ -154,7 +155,7 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("netstdref", "netstdref")]
     // A target the table does not know, like a plain netX.0 library, sees no positive prefix at all.
     [DataRow("net9.0", "")]
-    public void PreviewingAnotherPlatformIsAMatterOfTheTarget(string target, string included)
+    public void EveryTargetIncludesItsDocumentedPrefixesAndExcludesTheirNegations(string target, string included)
     {
         string[] expected = included.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         foreach (string prefix in _PositivePrefixes)
@@ -164,8 +165,8 @@ public sealed class UnoPlatformPrefixesTests
             AssertClassifiedAsDocumented(prefix, target, isIncluded);
 
             // The negated prefix is the exact opposite on every target.
-            Assert.AreEqual(!isIncluded, UnoPlatformPrefixes.IsIncluded("not_" + prefix, target), $"not_{prefix} on {target}");
-            AssertClassifiedAsDocumented("not_" + prefix, target, !isIncluded);
+            Assert.AreEqual(!isIncluded, UnoPlatformPrefixes.IsIncluded($"not_{prefix}", target), $"not_{prefix} on {target}");
+            AssertClassifiedAsDocumented($"not_{prefix}", target, !isIncluded);
         }
     }
 
@@ -180,13 +181,29 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("not_android", "http://nventive.com/not_android", "win", "Drop")]
     [DataRow("win", "http://uno.ui/win", "win", "Drop")]
     // Uno's compiler includes a prefix whatever its namespace is.
-    [DataRow("android", _Presentation, "android", "Keep")]
+    [DataRow("android", XamlNamespaces.Presentation, "android", "Keep")]
     [DataRow("android", "http://nventive.com/android", "android", "Keep")]
     // A condition is not part of the namespace the prefix is bound to.
-    [DataRow("win", _Presentation + "?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)", "win", "Keep")]
+    [DataRow("win", TestXamlNamespaces.Conditional, "win", "Keep")]
+    // A prefix that the table excludes on Windows, bound to the namespace the Windows XAML compiler resolves: the
+    // compiler includes its members, so the preview does too.
+    [DataRow("not_win", XamlNamespaces.Presentation, "win", "Keep")]
+    [DataRow("not_winappsdk", XamlNamespaces.Presentation, "win", "Keep")]
+    [DataRow("xamarin", XamlNamespaces.Presentation, "win", "Keep")]
+    [DataRow("android", XamlNamespaces.Presentation, "win", "Keep")]
+    [DataRow("skia", XamlNamespaces.Presentation, "win", "Keep")]
+    [DataRow("netstdref", XamlNamespaces.Presentation, "win", "Keep")]
+    [DataRow("not_netstdref", XamlNamespaces.Presentation, "win", "Keep")]
+    [DataRow("not_win", TestXamlNamespaces.Conditional, "win", "Keep")]
+    // On another platform the name decides, wherever the prefix is bound.
+    [DataRow("not_win", XamlNamespaces.Presentation, "android", "Keep")]
+    [DataRow("android", XamlNamespaces.Presentation, "ios", "Drop")]
+    [DataRow("win", XamlNamespaces.Presentation, "ios", "Drop")]
     public void OnWindowsAPrefixIsOnlyKeptInTheNamespaceTheWindowsCompilerResolves(string prefix, string uri, string target, string expected)
     {
+        // A platform prefix decides whether or not it is listed in mc:Ignorable.
         Assert.AreEqual(Enum.Parse<XamlPrefixDisposition>(expected), Classify(prefix, uri, isIgnorable: true, target));
+        Assert.AreEqual(Enum.Parse<XamlPrefixDisposition>(expected), Classify(prefix, uri, isIgnorable: false, target));
     }
 
     [TestMethod]
@@ -194,8 +211,8 @@ public sealed class UnoPlatformPrefixesTests
     {
         (string Prefix, string Uri, bool IsIgnorable)[] declarations =
         [
-            ("win", _Presentation, false),
-            ("not_android", _Presentation, false),
+            ("win", XamlNamespaces.Presentation, false),
+            ("not_android", XamlNamespaces.Presentation, false),
             ("not_win", "http://uno.ui/not_win", true),
             ("android", "http://uno.ui/android", true),
             ("ios", "http://uno.ui/ios", true),
@@ -203,10 +220,12 @@ public sealed class UnoPlatformPrefixesTests
 
         CollectionAssert.AreEqual(
             new[] { XamlPrefixDisposition.Keep, XamlPrefixDisposition.Keep, XamlPrefixDisposition.Drop, XamlPrefixDisposition.Drop, XamlPrefixDisposition.Drop },
-            declarations.Select(declaration => Classify(declaration.Prefix, declaration.Uri, declaration.IsIgnorable, "win")).ToArray());
+            declarations.Select(declaration => Classify(declaration.Prefix, declaration.Uri, declaration.IsIgnorable, "win")).ToArray()
+        );
         CollectionAssert.AreEqual(
             new[] { XamlPrefixDisposition.Drop, XamlPrefixDisposition.Drop, XamlPrefixDisposition.Keep, XamlPrefixDisposition.Keep, XamlPrefixDisposition.Drop },
-            declarations.Select(declaration => Classify(declaration.Prefix, declaration.Uri, declaration.IsIgnorable, "android")).ToArray());
+            declarations.Select(declaration => Classify(declaration.Prefix, declaration.Uri, declaration.IsIgnorable, "android")).ToArray()
+        );
     }
 
     [TestMethod]
@@ -215,7 +234,6 @@ public sealed class UnoPlatformPrefixesTests
     [DataRow("skia", "http://uno.ui/skia#using:My.Skia")]
     // The namespace of an excluded prefix is arbitrary: Uno never looks at it.
     [DataRow("ios", "http://nventive.com/ios")]
-    [DataRow("not_win", _Presentation)]
     public void PlatformPrefixDecidesWhetherOrNotItIsIgnorable(string prefix, string uri)
     {
         // A platform prefix that is missing from mc:Ignorable is dropped all the same; the caller reports it.
@@ -226,14 +244,14 @@ public sealed class UnoPlatformPrefixesTests
     [TestMethod]
     public void WindowsPrefixIsDroppedOnAnotherPlatformAlthoughItNamesThePresentationNamespace()
     {
-        Assert.AreEqual(XamlPrefixDisposition.Keep, Classify("win", _Presentation, isIgnorable: false, "win"));
-        Assert.AreEqual(XamlPrefixDisposition.Drop, Classify("win", _Presentation, isIgnorable: false, "android"));
-        Assert.AreEqual(XamlPrefixDisposition.Keep, Classify("not_android", _Presentation, isIgnorable: false, "win"));
-        Assert.AreEqual(XamlPrefixDisposition.Drop, Classify("not_android", _Presentation, isIgnorable: false, "android"));
+        Assert.AreEqual(XamlPrefixDisposition.Keep, Classify("win", XamlNamespaces.Presentation, isIgnorable: false, "win"));
+        Assert.AreEqual(XamlPrefixDisposition.Drop, Classify("win", XamlNamespaces.Presentation, isIgnorable: false, "android"));
+        Assert.AreEqual(XamlPrefixDisposition.Keep, Classify("not_android", XamlNamespaces.Presentation, isIgnorable: false, "win"));
+        Assert.AreEqual(XamlPrefixDisposition.Drop, Classify("not_android", XamlNamespaces.Presentation, isIgnorable: false, "android"));
 
         // The default namespace is the same namespace and is never a platform prefix.
-        Assert.AreEqual(XamlPrefixDisposition.Leave, Classify(string.Empty, _Presentation, isIgnorable: false, "win"));
-        Assert.AreEqual(XamlPrefixDisposition.Leave, Classify(string.Empty, _Presentation, isIgnorable: false, "android"));
+        Assert.AreEqual(XamlPrefixDisposition.Leave, Classify(string.Empty, XamlNamespaces.Presentation, isIgnorable: false, "win"));
+        Assert.AreEqual(XamlPrefixDisposition.Leave, Classify(string.Empty, XamlNamespaces.Presentation, isIgnorable: false, "android"));
     }
 
     [TestMethod]
@@ -299,27 +317,31 @@ public sealed class UnoPlatformPrefixesTests
     {
         Assert.AreEqual(
             XamlPrefixDisposition.Keep,
-            XamlNamespacePolicies.Classify("win", XamlNamespaceUri.Parse(_Presentation), isIgnorable: false, "win", evaluateCondition: null));
+            XamlNamespacePolicies.Classify("win", XamlNamespaceUri.Parse(XamlNamespaces.Presentation), isIgnorable: false, "win", evaluateCondition: null)
+        );
         Assert.AreEqual(
             XamlPrefixDisposition.Drop,
-            XamlNamespacePolicies.Classify("android", XamlNamespaceUri.Parse("http://uno.ui/android"), isIgnorable: true, "win", evaluateCondition: null));
+            XamlNamespacePolicies.Classify("android", XamlNamespaceUri.Parse("http://uno.ui/android"), isIgnorable: true, "win", evaluateCondition: null)
+        );
 
         // An excluded platform wins over whatever a condition says.
         Assert.AreEqual(
             XamlPrefixDisposition.Drop,
             XamlNamespacePolicies.Classify(
-                "not_win",
-                XamlNamespaceUri.Parse(_Presentation + "?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)"),
-                isIgnorable: true,
                 "win",
-                evaluateCondition: _ => true));
+                XamlNamespaceUri.Parse(TestXamlNamespaces.Conditional),
+                isIgnorable: false,
+                "android",
+                evaluateCondition: _ => true
+            )
+        );
     }
 
     [TestMethod]
     public void DocumentWithPlatformPrefixesNeedsWork()
     {
-        XamlNamespaceScanResult windowsOnly = XamlNamespaceScanner.Scan($"<Page xmlns=\"{_Presentation}\" xmlns:win=\"{_Presentation}\" win:Tag=\"1\" />");
-        XamlNamespaceScanResult ordinary = XamlNamespaceScanner.Scan($"<Page xmlns=\"{_Presentation}\" xmlns:local=\"using:My.App\" />");
+        XamlNamespaceScanResult windowsOnly = XamlNamespaceScanner.Scan($"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:win=\"{XamlNamespaces.Presentation}\" win:Tag=\"1\" />");
+        XamlNamespaceScanResult ordinary = XamlNamespaceScanner.Scan($"<Page xmlns=\"{XamlNamespaces.Presentation}\" xmlns:local=\"using:My.App\" />");
 
         Assert.IsTrue(XamlNamespacePolicies.MayAffect(windowsOnly, "win", evaluateCondition: null));
         Assert.IsTrue(XamlNamespacePolicies.MayAffect(windowsOnly, "android", evaluateCondition: null));
@@ -330,15 +352,20 @@ public sealed class UnoPlatformPrefixesTests
     public void UnoNamespaceThatIsMissingFromIgnorableIsFound()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}"
-                  xmlns:win="{_Presentation}"
-                  xmlns:android="http://uno.ui/android"
-                  xmlns:ios="http://uno.ui/ios#using:My.Ios"
-                  xmlns:not_win="http://uno.ui/not_win"
+            <Page xmlns="{XamlNamespaces.Presentation}"
+                  xmlns:win="{XamlNamespaces.Presentation}"
+                  xmlns:android="{TestXamlNamespaces.Android}"
+                  xmlns:ios="{TestXamlNamespaces.Ios}#using:My.Ios"
+                  xmlns:not_win="{TestXamlNamespaces.NotWin}"
                   xmlns:skia="using:SkiaSharp.Views.Windows"
-                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
                   mc:Ignorable="android">
-              <Grid xmlns:legacy="http://uno.ui/legacy" />
+              <Grid xmlns:legacy="http://uno.ui/legacy" not_win:Tag="1">
+                <ios:Border />
+                <legacy:Border />
+                <android:Border />
+                <skia:SKXamlCanvas />
+              </Grid>
             </Page>
             """;
 
@@ -349,20 +376,39 @@ public sealed class UnoPlatformPrefixesTests
     }
 
     [TestMethod]
+    public void UnoNamespaceThatNothingUsesIsNotMissingFromIgnorable()
+    {
+        // A document may declare the platform prefixes as boilerplate; the Windows XAML compiler does not look at one
+        // that nothing is written under.
+        string xaml = $"""
+            <Page xmlns="{XamlNamespaces.Presentation}"
+                  xmlns:android="{TestXamlNamespaces.Android}"
+                  xmlns:wasm="http://uno.ui/wasm"
+                  xmlns:not_win="{TestXamlNamespaces.NotWin}"
+                  xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
+                  mc:Ignorable="not_win">
+              <Grid />
+            </Page>
+            """;
+
+        Assert.IsEmpty(UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml)));
+    }
+
+    [TestMethod]
     public void DocumentThatListsItsUnoNamespacesHasNothingMissing()
     {
         string xaml = $"""
-            <Page xmlns="{_Presentation}"
-                  xmlns:win="{_Presentation}"
-                  xmlns:not_android="{_Presentation}"
-                  xmlns:android="http://uno.ui/android"
-                  xmlns:not_win="http://uno.ui/not_win"
-                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            <Page xmlns="{XamlNamespaces.Presentation}"
+                  xmlns:win="{XamlNamespaces.Presentation}"
+                  xmlns:not_android="{XamlNamespaces.Presentation}"
+                  xmlns:android="{TestXamlNamespaces.Android}"
+                  xmlns:not_win="{TestXamlNamespaces.NotWin}"
+                  xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
                   mc:Ignorable="android not_win" />
             """;
 
-        Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml)).Count);
-        Assert.AreEqual(0, UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanResult.Empty).Count);
+        Assert.IsEmpty(UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanner.Scan(xaml)));
+        Assert.IsEmpty(UnoPlatformPrefixes.FindMissingIgnorable(XamlNamespaceScanResult.Empty));
     }
 
     private static XamlPrefixDisposition Classify(string prefix, string uri, bool isIgnorable, string target)
@@ -378,14 +424,15 @@ public sealed class UnoPlatformPrefixesTests
     {
         bool isDocumentedInPresentation = prefix is "win" or "winappsdk"
             || (prefix.StartsWith("not_", StringComparison.Ordinal) && prefix is not ("not_win" or "not_winappsdk" or "not_netstdref"));
-        string uri = isDocumentedInPresentation ? _Presentation : "http://uno.ui/" + prefix;
+        string uri = isDocumentedInPresentation ? XamlNamespaces.Presentation : $"{XamlNamespaces.UnoPlatformBase}{prefix}";
 
-        // Uno includes a prefix whatever its namespace is; the Windows XAML compiler needs one it resolves.
-        bool isKept = isIncluded && (target != "win" || isDocumentedInPresentation);
+        // Uno includes a prefix whatever its namespace is; the Windows XAML compiler includes what it resolves.
+        bool isKept = target == "win" ? isDocumentedInPresentation : isIncluded;
 
         Assert.AreEqual(
             isKept ? XamlPrefixDisposition.Keep : XamlPrefixDisposition.Drop,
             Classify(prefix, uri, isIgnorable: !isDocumentedInPresentation, target),
-            $"{prefix} on {target}");
+            $"{prefix} on {target}"
+        );
     }
 }

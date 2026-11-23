@@ -102,7 +102,7 @@ public sealed class XamlConditionTests
         Assert.AreEqual("cond", condition.Prefix);
         Assert.AreEqual("FeatureFlagCondition", condition.Name);
         Assert.AreEqual("A, B", condition.Argument);
-        Assert.AreEqual(0, condition.Arguments.Count);
+        Assert.IsEmpty(condition.Arguments);
         Assert.IsFalse(condition.IsNegated);
         Assert.AreEqual("FeatureFlagCondition(A, B)", condition.PositiveKey);
         Assert.IsNull(condition.Error);
@@ -219,7 +219,7 @@ public sealed class XamlConditionTests
         Assert.AreEqual(text, condition.Text);
         Assert.AreEqual(text, condition.PositiveKey);
         Assert.IsFalse(condition.IsNegated);
-        Assert.AreEqual(0, condition.Arguments.Count);
+        Assert.IsEmpty(condition.Arguments);
     }
 
     [TestMethod]
@@ -256,7 +256,7 @@ public sealed class XamlConditionTests
         string[] texts =
         [
             "(", ")", "()", "((", "))", ")(", ":", "::", "a:", ":a", "a:b", "a(b", "a)b", "a(b)c(d)", "\0", "\uD800",
-            "IsApiContractPresent(,,,,)", "IsTypePresent(()", "IsPropertyPresent(,)", new string('(', 2000), new string('a', 5000) + "(x)",
+            "IsApiContractPresent(,,,,)", "IsTypePresent(()", "IsPropertyPresent(,)", new string('(', 2000), $"{new string('a', 5000)}(x)",
         ];
 
         foreach (string text in texts)

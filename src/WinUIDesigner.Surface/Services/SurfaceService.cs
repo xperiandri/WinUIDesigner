@@ -31,7 +31,7 @@ internal sealed partial class SurfaceService : IDisposable
         // Application.Current instance, which is not created by an action.
         _objectIdentity.RegisterHandle(ApplicationLiveHandle, Application.Current);
         _visualTreeService = new(protocolHandler, objectIdentity);
-        _resourceScopes = new ResourceScopeService(objectIdentity, ApplyNamespacePoliciesToSnippet);
+        _resourceScopes = new ResourceScopeService(objectIdentity);
         _diagnosticsPropertySource = new DiagnosticsPropertySourceService();
         _styleEdits = new StyleEditService(_diagnosticsPropertySource.StartInitialization);
         _droppedChildren = new DroppedChildren(objectIdentity.Track, RemoveChildAt);

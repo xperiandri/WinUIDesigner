@@ -21,10 +21,7 @@ namespace WinUIDesigner.Surface.Markup;
 /// </remarks>
 internal static class XamlNamespaceRewriter
 {
-    private const string _XamlLanguageNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
-    private const string _MarkupCompatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-
-    private static readonly XName _IgnorableName = XName.Get("Ignorable", _MarkupCompatibilityNamespace);
+    private static readonly XName _IgnorableName = XName.Get("Ignorable", XamlNamespaces.MarkupCompatibility);
 
     /// <summary>
     /// Rewrites <paramref name="document"/> in place according to the namespace policies.
@@ -87,17 +84,20 @@ internal static class XamlNamespaceRewriter
             bool matches = true;
             while (matches && reader.Read())
             {
+                // Only elements are paired with the elements of the document.
                 if (reader.NodeType != XmlNodeType.Element)
                 {
                     continue;
                 }
 
+                // The text has more elements than the document.
                 if (!elements.MoveNext())
                 {
                     matches = false;
                     break;
                 }
 
+                // The element of the text is not the one the document has at this place.
                 XElement element = elements.Current;
                 if (element.Name.LocalName != reader.LocalName || element.Name.NamespaceName != reader.NamespaceURI)
                 {
@@ -112,6 +112,7 @@ internal static class XamlNamespaceRewriter
                 {
                     do
                     {
+                        // The text has more attributes than the element, or other ones.
                         if (attribute is null || attribute.Name.LocalName != reader.LocalName)
                         {
                             matches = false;
@@ -126,9 +127,11 @@ internal static class XamlNamespaceRewriter
                     reader.MoveToElement();
                 }
 
+                // The element has attributes that the text does not.
                 matches &= attribute is null;
             }
 
+            // Every element of the text had its counterpart, and the document has none left over.
             if (matches && !elements.MoveNext())
             {
                 return true;
@@ -177,13 +180,13 @@ internal static class XamlNamespaceRewriter
         // without type information, so the first one is taken.
         if (uri.UsingNamespaces.Count != 0)
         {
-            return XamlNamespaceUri.UsingScheme + uri.UsingNamespaces[0];
+            return $"{XamlNamespaceUri.UsingScheme}{uri.UsingNamespaces[0]}";
         }
 
         // An Uno platform namespace stands for the default namespace on that platform.
         if (UnoPlatformPrefixes.IsPlatformUri(uri.BaseUri))
         {
-            return XamlNamespaceUri.PresentationNamespace;
+            return XamlNamespaces.Presentation;
         }
 
         return uri.BaseUri;
@@ -311,7 +314,8 @@ internal static class XamlNamespaceRewriter
                 _normalizedMembers,
                 _repointedDeclarations,
                 _diagnostics,
-                _droppedChildren);
+                _droppedChildren
+            );
         }
 
         /// <summary>
@@ -337,6 +341,7 @@ internal static class XamlNamespaceRewriter
                 }
             }
 
+            // A document that declares no prefix has no policy namespace.
             if (declarations is null)
             {
                 return false;
@@ -381,11 +386,13 @@ internal static class XamlNamespaceRewriter
 
         private void EnsureSourcePrefixes(XElement root)
         {
+            // The prefixes were captured before, by the caller or by an earlier run.
             if (root.Annotation<SourcePrefix>() is not null)
             {
                 return;
             }
 
+            // The text is not given, or is not the text the document was parsed from.
             string? source = _options.SourceXaml;
             if (source is null || !CaptureSourcePrefixes(_document, source))
             {
@@ -439,6 +446,7 @@ internal static class XamlNamespaceRewriter
             XamlPrefixDisposition disposition = ClassifyMember(elementPrefix, element.Name.NamespaceName, out Binding? elementBinding);
             if (disposition == XamlPrefixDisposition.Drop)
             {
+                // An element under a dropped prefix goes with its subtree, except the root.
                 if (parent is not null)
                 {
                     Report($"Dropped element {Describe(element, elementPrefix)}.");
@@ -459,6 +467,7 @@ internal static class XamlNamespaceRewriter
             // A root that stays under a prefix whose declaration is re-pointed moves to the bare namespace with it.
             if (elementBinding is not null && (disposition == XamlPrefixDisposition.Keep || (isRoot && IsRepointed(elementBinding))))
             {
+                // An element under a kept prefix moves to its bare namespace.
                 XName normalized = XNamespace.Get(elementBinding.NormalizedNamespace) + element.Name.LocalName;
                 if (normalized != element.Name)
                 {
@@ -483,6 +492,7 @@ internal static class XamlNamespaceRewriter
                 (children ??= []).Add(child);
             }
 
+            // An element without children is finished here; the others are visited through their frame.
             if (children is null)
             {
                 RestoreScope(shadowed, ignorable);
@@ -582,6 +592,7 @@ internal static class XamlNamespaceRewriter
 
         private void RestoreScope(List<KeyValuePair<string, Binding?>>? shadowed, List<Binding>? ignorable)
         {
+            // The prefixes that the element listed in mc:Ignorable stop being ignorable.
             if (ignorable is not null)
             {
                 foreach (Binding binding in ignorable)
@@ -590,6 +601,7 @@ internal static class XamlNamespaceRewriter
                 }
             }
 
+            // An element that declared no prefix has nothing to undo.
             if (shadowed is null)
             {
                 return;
@@ -618,6 +630,7 @@ internal static class XamlNamespaceRewriter
                 XAttribute? replacement = RewriteAttribute(element, elementPrefix, attribute);
                 if (rewritten is null)
                 {
+                    // The attribute stays as it is and nothing before it changed.
                     if (ReferenceEquals(replacement, attribute))
                     {
                         continue;
@@ -631,6 +644,7 @@ internal static class XamlNamespaceRewriter
                     }
                 }
 
+                // The attribute is dropped: it is not carried over.
                 if (replacement is null)
                 {
                     continue;
@@ -663,6 +677,7 @@ internal static class XamlNamespaceRewriter
         /// </summary>
         private XAttribute? RewriteAttribute(XElement element, string? elementPrefix, XAttribute attribute)
         {
+            // A declaration is re-pointed together with its binding, after the attributes.
             if (attribute.IsNamespaceDeclaration)
             {
                 return attribute;
@@ -675,6 +690,7 @@ internal static class XamlNamespaceRewriter
                 return attribute;
             }
 
+            // An attribute under a dropped prefix goes.
             XamlPrefixDisposition disposition = ClassifyMember(prefix, attribute.Name.NamespaceName, out Binding? binding);
             if (disposition == XamlPrefixDisposition.Drop)
             {
@@ -683,11 +699,13 @@ internal static class XamlNamespaceRewriter
                 return null;
             }
 
+            // An attribute that no policy decided stays as written.
             if (disposition != XamlPrefixDisposition.Keep || binding is null)
             {
                 return attribute;
             }
 
+            // A kept attribute can still be unwanted under its plain name, such as an event handler.
             XName normalized = NormalizeAttributeName(attribute.Name.LocalName, binding);
             if (ShouldDropNormalizedAttribute(element, normalized, attribute.Value))
             {
@@ -696,6 +714,7 @@ internal static class XamlNamespaceRewriter
                 return null;
             }
 
+            // A kept attribute that already is in its bare namespace stays as it is.
             if (normalized == attribute.Name)
             {
                 return attribute;
@@ -710,7 +729,7 @@ internal static class XamlNamespaceRewriter
             string target = binding.NormalizedNamespace;
 
             // A directive such as x:Name is only a directive in the XAML language namespace.
-            if (target == _XamlLanguageNamespace)
+            if (target == XamlNamespaces.XamlLanguage)
             {
                 return XNamespace.Get(target) + localName;
             }
@@ -729,11 +748,13 @@ internal static class XamlNamespaceRewriter
 
         private string GetDefaultNamespace()
         {
+            // No default namespace is declared here.
             if (!_scope.TryGetValue(string.Empty, out Binding? binding))
             {
                 return string.Empty;
             }
 
+            // A re-pointed default namespace is the bare namespace; any other stays as written.
             return IsRepointed(binding) ? binding.NormalizedNamespace : binding.Uri.Original;
         }
 
@@ -759,11 +780,13 @@ internal static class XamlNamespaceRewriter
         /// </summary>
         private void Repoint(Binding binding)
         {
+            // A declaration that is not re-pointed stays as written.
             if (!IsRepointed(binding))
             {
                 return;
             }
 
+            // A declaration that already names the bare namespace has nothing to change.
             string target = binding.NormalizedNamespace;
             if (string.Equals(binding.Declaration.Value, target, StringComparison.Ordinal))
             {
@@ -807,11 +830,13 @@ internal static class XamlNamespaceRewriter
                     continue;
                 }
 
+                // The prefix is bound to another namespace.
                 if (!string.Equals(binding.Uri.Original, namespaceName, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
+                // A second prefix is bound to the namespace: there is no telling them apart.
                 if (found is not null)
                 {
                     return null;
@@ -825,6 +850,7 @@ internal static class XamlNamespaceRewriter
 
         private XamlPrefixDisposition ClassifyMember(string? prefix, string namespaceName, out Binding? binding)
         {
+            // A member whose prefix is unknown, or not declared, is left alone.
             binding = null;
             if (prefix is null || !_scope.TryGetValue(prefix, out Binding? candidate))
             {
@@ -849,6 +875,7 @@ internal static class XamlNamespaceRewriter
 
         private XamlPrefixDisposition Classify(string prefix, XamlNamespaceUri uri, bool isIgnorable, Func<string, string?> resolveNamespace)
         {
+            // A prefix is classified once per run for each namespace and ignorable state it has.
             var key = (prefix, uri.Original, isIgnorable);
             if (_verdicts.TryGetValue(key, out XamlPrefixDisposition verdict))
             {
@@ -857,6 +884,7 @@ internal static class XamlNamespaceRewriter
 
             try
             {
+                // A classification the caller supplies comes before the policies.
                 XamlPrefixDisposition? overridden = _options.ClassifyOverride?.Invoke(prefix, uri, isIgnorable);
                 if (overridden.HasValue)
                 {
@@ -887,6 +915,7 @@ internal static class XamlNamespaceRewriter
 
         private bool ShouldDropNormalizedAttribute(XElement element, XName name, string value)
         {
+            // Without a filter, every normalized attribute is kept.
             Func<XElement, XName, string, bool>? filter = _options.ShouldDropNormalizedAttribute;
             if (filter is null)
             {
@@ -899,6 +928,7 @@ internal static class XamlNamespaceRewriter
             }
             catch (Exception exception)
             {
+                // A filter that cannot decide keeps the attribute.
                 Report($"Filtering attribute {name.LocalName} failed; it is kept. {exception.GetType().Name}: {exception.Message}");
                 return false;
             }
@@ -935,7 +965,7 @@ internal static class XamlNamespaceRewriter
 
         private static string Describe(XElement element, string? prefix)
         {
-            string name = string.IsNullOrEmpty(prefix) ? element.Name.LocalName : prefix + ":" + element.Name.LocalName;
+            string name = string.IsNullOrEmpty(prefix) ? element.Name.LocalName : $"{prefix}:{element.Name.LocalName}";
             IXmlLineInfo lineInfo = element;
             return lineInfo.HasLineInfo()
                 ? $"<{name}> (line {lineInfo.LineNumber.ToString(CultureInfo.InvariantCulture)})"

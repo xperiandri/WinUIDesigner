@@ -30,6 +30,7 @@ internal sealed partial class WinUIDesignerInstanceManager(
     protected override async Task<CreateSurfaceRequestInfo> CreateRequestAsync(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
     {
         await PrepareNamespacePoliciesAsync(targetDocument, preparedDocuments).ConfigureAwait(true);
+        WatchVerdicts(targetDocument, preparedDocuments);
 
         bool includeInstanceBuildingActions = SurfaceProcessContext.ResetParseLoadDocumentFailure(targetDocument.DocumentId);
         includeInstanceBuildingActions |= SurfaceProcessContext.InstanceBuildingFailures.HasFailures;

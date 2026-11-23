@@ -13,15 +13,20 @@ namespace WinUIDesigner.Markup;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The decision is driven by the prefix: <c>win</c>, <c>not_android</c> and the default namespace
-/// all share the presentation URI. The prefixes are those of the "Available prefixes" tables of
-/// https://platform.uno/docs/articles/platform-specific-xaml.html, in every version of that page:
-/// Uno 7 names target frameworks (<c>desktop</c>, <c>tvos</c>, <c>winappsdk</c>), earlier versions also
-/// name the renderer (<c>skia</c>, <c>androidskia</c>) and the reference build of a library (<c>netstdref</c>).
+/// The decision is driven by the prefix, except on Windows, where the namespace decides (see
+/// <see cref="Classify"/>): <c>win</c>, <c>not_android</c> and the default namespace all share the
+/// presentation URI, so for every other target only the prefix tells them apart. The prefixes are those
+/// of the "Available prefixes" tables of https://platform.uno/docs/articles/platform-specific-xaml.html,
+/// in every version of that page: Uno 7 names target frameworks (<c>desktop</c>, <c>tvos</c>,
+/// <c>winappsdk</c>), earlier versions also name the renderer (<c>skia</c>, <c>androidskia</c>) and the
+/// reference build of a library (<c>netstdref</c>).
 /// </para>
 /// <para>
-/// The previewed platform is one of the target names of the table below. Previewing another platform is a
-/// matter of passing another target; nothing else has to change.
+/// The previewed platform is one of the target names of the table below. The classification is the same for every
+/// target, but only prepared XAML can show a target other than Windows: the document model that construction actions
+/// are generated from has no nodes for the members of an ignorable Uno namespace (<c>android:Text</c>,
+/// <c>&lt;not_win:Border&gt;</c>), and the action path can only drop properties. Another target would therefore also
+/// have to keep every document on the prepared-XAML route, with the second cleaning that keeps the raw elements.
 /// </para>
 /// </remarks>
 internal static class UnoPlatformPrefixes
@@ -32,9 +37,11 @@ internal static class UnoPlatformPrefixes
     public const string DefaultTargetPlatform = _Windows;
 
     /// <summary>
-    /// The start of the namespaces Uno assigns to prefixes that are excluded on Windows.
+    /// The environment variable of the Visual Studio extension that turns on preparing a document a second time,
+    /// so that its object elements under platform prefixes reach the surface. The warning for a namespace that is
+    /// missing from <c>mc:Ignorable</c> names it, because the setting changes what becomes of those elements.
     /// </summary>
-    public const string PlatformUriPrefix = "http://uno.ui/";
+    public const string ReprepareRawElementsVariable = "WINUIDESIGNER_REPREPARE_RAW_PLATFORM_ELEMENTS";
 
     private const string _Windows = "win";
     private const string _NegationPrefix = "not_";
@@ -73,7 +80,7 @@ internal static class UnoPlatformPrefixes
     /// </summary>
     public static bool IsPlatformUri(string? namespaceUri)
     {
-        return namespaceUri is not null && namespaceUri.StartsWith(PlatformUriPrefix, StringComparison.Ordinal);
+        return namespaceUri is not null && namespaceUri.StartsWith(XamlNamespaces.UnoPlatformBase, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -88,11 +95,14 @@ internal static class UnoPlatformPrefixes
     {
         platform = string.Empty;
         isNegated = false;
+
+        // There is no prefix to look at.
         if (prefix is null || prefix.Length == 0)
         {
             return false;
         }
 
+        // "xamarin" is the Uno 4 spelling of "not_win".
         if (string.Equals(prefix, _Xamarin, StringComparison.Ordinal))
         {
             platform = _Windows;
@@ -100,14 +110,18 @@ internal static class UnoPlatformPrefixes
             return true;
         }
 
+        // Any other prefix names a platform of the table, with or without the negation.
         bool hasNegation = prefix.StartsWith(_NegationPrefix, StringComparison.Ordinal);
-        string name = hasNegation ? prefix.Substring(_NegationPrefix.Length) : prefix;
-        if (FindTargets(name) is null)
+        int index = IndexOfPlatform(prefix.AsSpan(hasNegation ? _NegationPrefix.Length : 0));
+
+        // The table does not know the platform: the prefix is an ordinary one.
+        if (index < 0)
         {
             return false;
         }
 
-        platform = name;
+        // The table has the name already, so no string is made for it.
+        platform = _Platforms[index].Key;
         isNegated = hasNegation;
         return true;
     }
@@ -135,7 +149,8 @@ internal static class UnoPlatformPrefixes
     /// </returns>
     /// <remarks>
     /// A platform prefix decides whether or not it is listed in <c>mc:Ignorable</c>; a prefix that should be
-    /// listed and is not is found by <see cref="FindMissingIgnorable"/>, for the caller to report.
+    /// listed and is not is found by <see cref="FindMissingIgnorable"/>, for the caller to report. On Windows a
+    /// platform prefix is kept exactly when it is bound to the presentation namespace, whatever its name says.
     /// </remarks>
     public static XamlPrefixDisposition Classify(string prefix, XamlNamespaceUri uri, bool isIgnorable, string targetPlatform)
     {
@@ -145,6 +160,7 @@ internal static class UnoPlatformPrefixes
             return XamlPrefixDisposition.Leave;
         }
 
+        // A platform prefix of the table: the previewed platform decides.
         if (TryParse(prefix, out string platform, out bool isNegated))
         {
             // A prefix bound to a CLR namespace names the types of that namespace, whatever it is called:
@@ -154,18 +170,14 @@ internal static class UnoPlatformPrefixes
                 return XamlPrefixDisposition.Leave;
             }
 
-            bool isIncluded = IsIncluded(platform, isNegated, targetPlatform);
-
-            // Uno's own compiler includes a prefix whatever namespace it is bound to. Windows is built by the
-            // Windows XAML compiler, which knows no platform prefixes and includes what it can resolve: of the
-            // namespaces a platform prefix is bound to, that is the presentation namespace alone. So
-            // not_netstdref, which the documentation binds to an Uno namespace, is left out on Windows.
-            if (isIncluded
-                && IsWindows(targetPlatform)
-                && !string.Equals(uri.BaseUri, XamlNamespaceUri.PresentationNamespace, StringComparison.Ordinal))
-            {
-                isIncluded = false;
-            }
+            // Uno's own compiler includes a prefix whatever namespace it is bound to, as the table says. Windows is
+            // built by the Windows XAML compiler, which knows no platform prefixes and includes what it can resolve:
+            // of the namespaces a platform prefix is bound to, that is the presentation namespace alone. So on
+            // Windows the namespace decides, in both directions: not_win bound to the presentation namespace is
+            // kept, and not_netstdref, which the documentation binds to an Uno namespace, is left out.
+            bool isIncluded = IsWindows(targetPlatform)
+                ? string.Equals(uri.BaseUri, XamlNamespaces.Presentation, StringComparison.Ordinal)
+                : IsIncluded(platform, isNegated, targetPlatform);
 
             return isIncluded ? XamlPrefixDisposition.Keep : XamlPrefixDisposition.Drop;
         }
@@ -177,14 +189,20 @@ internal static class UnoPlatformPrefixes
             return XamlPrefixDisposition.Drop;
         }
 
+        // Any other prefix is no business of the platform policy.
         return XamlPrefixDisposition.Leave;
     }
 
     /// <summary>
     /// Returns the declarations of <paramref name="scan"/> that bind a prefix to an Uno platform namespace
-    /// without listing the prefix in <c>mc:Ignorable</c>. The Windows XAML compiler cannot resolve such a
-    /// namespace and rejects the document; the designer applies a platform prefix regardless.
+    /// without listing the prefix in <c>mc:Ignorable</c>, for a prefix that an element or an attribute is written
+    /// under. The Windows XAML compiler cannot resolve such a namespace and rejects the document; the namespace
+    /// policies classify a platform prefix regardless.
     /// </summary>
+    /// <remarks>
+    /// A declaration that nothing uses is not reported: the compiler does not look at it, and a document may
+    /// declare every platform prefix of Uno as boilerplate.
+    /// </remarks>
     public static IReadOnlyList<XamlNamespaceDeclaration> FindMissingIgnorable(XamlNamespaceScanResult scan)
     {
         List<XamlNamespaceDeclaration>? missing = null;
@@ -194,7 +212,8 @@ internal static class UnoPlatformPrefixes
             XamlNamespaceDeclaration declaration = declarations[index];
             if (declaration.Prefix.Length != 0
                 && IsPlatformUri(declaration.Uri.BaseUri)
-                && !scan.IsIgnorable(declaration.Prefix))
+                && !scan.IsIgnorable(declaration.Prefix)
+                && scan.IsPlatformNamespaceUsed(declaration.Prefix, declaration.Uri.Original))
             {
                 (missing ??= []).Add(declaration);
             }
@@ -203,37 +222,127 @@ internal static class UnoPlatformPrefixes
         return missing ?? (IReadOnlyList<XamlNamespaceDeclaration>)Array.Empty<XamlNamespaceDeclaration>();
     }
 
-    private static KeyValuePair<string, string[]> Platform(string prefix, params string[] targets)
+    /// <summary>
+    /// Returns what <see cref="FindMissingIgnorable"/> finds in <paramref name="scan"/> the first time the text of a
+    /// document is looked at, and nothing when that text was looked at before. A designer scans the same documents
+    /// on every request, and most of them have not changed since the last one: a text is reported once.
+    /// </summary>
+    /// <param name="reported">The texts that were looked at. The text of this call is added to it.</param>
+    /// <param name="documentId">The identity of the document.</param>
+    /// <param name="textVersion">The version of the text buffer that <paramref name="scan"/> was made from.</param>
+    /// <param name="textLength">The length of that text.</param>
+    /// <param name="scan">The namespace facts of that text.</param>
+    public static IReadOnlyList<XamlNamespaceDeclaration> FindMissingIgnorableOncePerText(
+        ReportedTextVersions reported,
+        int documentId,
+        int textVersion,
+        int textLength,
+        XamlNamespaceScanResult scan)
     {
-        return new KeyValuePair<string, string[]>(prefix, targets);
+        // The document was reported in this very text.
+        if (!reported.TryRecord(documentId, textVersion, textLength))
+        {
+            return Array.Empty<XamlNamespaceDeclaration>();
+        }
+
+        return FindMissingIgnorable(scan);
     }
+
+    /// <summary>
+    /// Describes a declaration found by <see cref="FindMissingIgnorable"/> for the log: where it is, what is wrong
+    /// with it, and what the designer makes of the members under its prefix.
+    /// </summary>
+    /// <param name="path">The path of the document, or <see langword="null"/> when it has none.</param>
+    /// <param name="declaration">The declaration that is missing from <c>mc:Ignorable</c>.</param>
+    /// <param name="reprepareRawElements">
+    /// Whether documents are prepared a second time, so that the object elements under platform prefixes reach the
+    /// surface (<see cref="ReprepareRawElementsVariable"/>).
+    /// </param>
+    public static string DescribeMissingIgnorable(string? path, XamlNamespaceDeclaration declaration, bool reprepareRawElements)
+    {
+        string consequence;
+        if (!TryParse(declaration.Prefix, out _, out _))
+        {
+            // The table does not know the prefix, so nothing classifies it unless it is ignorable.
+            consequence = "Its members are left as written for the XAML reader to reject.";
+        }
+        else if (reprepareRawElements)
+        {
+            // The prepared XAML keeps the raw elements, and the surface drops every member of the prefix.
+            consequence = "The designer applies the platform prefix regardless.";
+        }
+        else
+        {
+            // Attributes and property elements are dropped on both paths, but an object element reaches the
+            // surface as construction actions, where Visual Studio makes it a node of an unknown type.
+            consequence = $"The designer drops its attributes and property elements regardless, but its object elements appear as elements of an unknown type unless {ReprepareRawElementsVariable}=1 is set.";
+        }
+
+        return $"{path}({declaration.LineNumber},{declaration.LinePosition}): xmlns:{declaration.Prefix}=\"{declaration.Uri.Original}\" is an Uno platform namespace that the document uses but does not list in mc:Ignorable, " +
+            $"so the Windows XAML compiler cannot resolve it. {consequence}";
+    }
+
+    /// <summary>
+    /// Decides how a document reaches the surface, from what a scan of its text found.
+    /// </summary>
+    /// <param name="scan">The namespace facts of the document.</param>
+    /// <param name="reprepareRawElements">
+    /// Whether a document may be prepared a second time to keep its object elements under platform prefixes.
+    /// </param>
+    /// <param name="tryReprepare">
+    /// Prepares the document a second time and returns whether its prepared XAML now has those elements. It is only
+    /// called for a document that has them, and only when <paramref name="reprepareRawElements"/> is set.
+    /// </param>
+    public static PlatformElementsBuild ChooseBuild(XamlNamespaceScanResult scan, bool reprepareRawElements, Func<bool> tryReprepare)
+    {
+        // Attributes and property elements under a platform prefix pass through the XAML cleaner as they are
+        // written. Object elements do not: the cleaner cannot resolve their type and replaces each of them with a
+        // fallback control without its children.
+        if (!scan.HasPlatformNamespaces || !scan.HasPlatformPrefixedObjectElements)
+        {
+            return PlatformElementsBuild.PreparedXaml;
+        }
+
+        // The second preparation keeps those elements in the prepared XAML, when it works.
+        if (reprepareRawElements && tryReprepare())
+        {
+            return PlatformElementsBuild.PreparedAgain;
+        }
+
+        // The document model that construction actions are generated from leaves them out.
+        return PlatformElementsBuild.ConstructionActions;
+    }
+
+    private static KeyValuePair<string, string[]> Platform(string prefix, params string[] targets) => new(prefix, targets);
 
     private static bool IsIncluded(string platform, bool isNegated, string? targetPlatform)
     {
-        string[]? targets = FindTargets(platform);
-        return targets is not null && (Array.IndexOf(targets, NormalizeTarget(targetPlatform)) >= 0) != isNegated;
+        int index = IndexOfPlatform(platform.AsSpan());
+        return index >= 0 && (Array.IndexOf(_Platforms[index].Value, NormalizeTarget(targetPlatform)) >= 0) != isNegated;
     }
 
-    private static string[]? FindTargets(string platform)
+    private static int IndexOfPlatform(ReadOnlySpan<char> platform)
     {
         for (int index = 0; index < _Platforms.Length; index++)
         {
-            if (string.Equals(_Platforms[index].Key, platform, StringComparison.Ordinal))
+            if (platform.SequenceEqual(_Platforms[index].Key.AsSpan()))
             {
-                return _Platforms[index].Value;
+                return index;
             }
         }
 
-        return null;
+        return -1;
     }
 
     private static string NormalizeTarget(string? targetPlatform)
     {
+        // No target at all means the platform that is previewed by default.
         if (targetPlatform is null || targetPlatform.Length == 0)
         {
             return DefaultTargetPlatform;
         }
 
+        // The Uno 7 name of the Windows target is the same target.
         return string.Equals(targetPlatform, _WindowsAppSdk, StringComparison.Ordinal) ? _Windows : targetPlatform;
     }
 
