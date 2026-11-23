@@ -346,6 +346,132 @@ public sealed class DroppedChildActionTests
     }
 
     [TestMethod]
+    public void AnEditInsideADroppedMergedDictionaryEndsAtTheStandIn()
+    {
+        // Page.Resources: a dropped dictionary with a brush, then a kept one with a brush under the same key. Visual
+        // Studio reaches the brush through the dictionary, and the dictionary is the stand-in of the dropped one.
+        var replay = new Replay();
+        var merged = new FakePanel();
+        var kept = new FakeDictionary();
+        var keptBrush = new LiveItem("keptBrush");
+        kept.Entries["Accent"] = keptBrush;
+        merged.Children.Add(kept);
+        replay.Live[_PanelHandle] = merged;
+        replay.Live[_PanelHandle + 1] = "Accent";
+        replay.Translator.Register(merged, [0]);
+
+        // The Color of the brush in the dropped dictionary changes.
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+            new GetPropertyAction(-1, _Children, -3, 0),
+            new GetChildAction(-3, 0, -5),
+            new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
+            new GetDictionaryEntryAction(-5, -7, -9),
+            new CreateInstanceAction(-11, "Item:red"),
+            new SetPropertyAction(-9, "Color", -11, 0),
+        ]);
+
+        Assert.IsInstanceOfType<DroppedElement>(replay.Get(-5), "The dropped dictionary is a stand-in.");
+        Assert.IsInstanceOfType<DroppedElement>(replay.Get(-9), "An entry of a stand-in is the stand-in again.");
+        Assert.IsEmpty(keptBrush.Properties, "The brush of the kept dictionary is not the one that was edited.");
+    }
+
+    [TestMethod]
+    public void ChangesOfTheEntriesOfADroppedMergedDictionaryChangeNothing()
+    {
+        var replay = new Replay();
+        var merged = new FakePanel();
+        var kept = new FakeDictionary();
+        var keptBrush = new LiveItem("keptBrush");
+        kept.Entries["Accent"] = keptBrush;
+        merged.Children.Add(kept);
+        replay.Live[_PanelHandle] = merged;
+        replay.Live[_PanelHandle + 1] = "Accent";
+        replay.Translator.Register(merged, [0]);
+
+        // Renaming the key of the entry removes it and adds it again; replacing the brush updates the value. The value
+        // handle -99 has no object: nothing may resolve the value of an entry of a stand-in.
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+            new GetPropertyAction(-1, _Children, -3, 0),
+            new GetChildAction(-3, 0, -5),
+            new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
+            new RemoveDictionaryEntryAction(-5, -7),
+            new AddDictionaryEntryAction(-5, -7, -99),
+            new UpdateDictionaryValueAction(-5, -7, -99),
+        ]);
+
+        Assert.HasCount(1, kept.Entries);
+        Assert.AreSame(keptBrush, kept.Entries["Accent"]);
+    }
+
+    [TestMethod]
+    public void DictionaryActionsOnALiveDictionaryAreApplied()
+    {
+        var replay = new Replay();
+        var dictionary = new FakeDictionary();
+        var brush = new LiveItem("brush");
+        dictionary.Entries["Accent"] = brush;
+        replay.Live[_PanelHandle] = dictionary;
+        replay.Live[_PanelHandle + 1] = "Accent";
+        replay.Live[_PanelHandle + 2] = "Other";
+
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+            new ConnectToLiveTreeAction(_PanelHandle + 1, -3, 0),
+            new ConnectToLiveTreeAction(_PanelHandle + 2, -5, 0),
+            new GetDictionaryEntryAction(-1, -3, -7),
+            new CreateInstanceAction(-9, "Item:red"),
+            new SetPropertyAction(-7, "Color", -9, 0),
+            new AddDictionaryEntryAction(-1, -5, -9),
+            new NullReferenceAction(-11),
+            new UpdateDictionaryValueAction(-1, -3, -11),
+        ]);
+
+        Assert.AreSame(brush, replay.Get(-7), "A lookup in a live dictionary finds the entry.");
+        Assert.AreEqual("red", (brush.Properties["Color"] as LiveItem)?.Name);
+        Assert.AreEqual("red", (dictionary.Entries["Other"] as LiveItem)?.Name, "An added entry is in the dictionary.");
+        Assert.IsNull(dictionary.Entries["Accent"], "A replaced value can be null.");
+
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+            new ConnectToLiveTreeAction(_PanelHandle + 2, -3, 0),
+            new RemoveDictionaryEntryAction(-1, -3),
+        ]);
+
+        Assert.IsFalse(dictionary.Entries.ContainsKey("Other"), "A removed entry is gone.");
+    }
+
+    [TestMethod]
+    public void AnEntryThatStandsInForADroppedElementIsNotAddedToALiveDictionary()
+    {
+        var replay = new Replay();
+        var dictionary = new FakeDictionary();
+        var brush = new LiveItem("brush");
+        dictionary.Entries["Accent"] = brush;
+        replay.Live[_PanelHandle] = dictionary;
+        replay.Live[_PanelHandle + 1] = "Accent";
+        replay.Live[_PanelHandle + 2] = "Other";
+
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+            new ConnectToLiveTreeAction(_PanelHandle + 1, -3, 0),
+            new ConnectToLiveTreeAction(_PanelHandle + 2, -5, 0),
+            new CreateInstanceAction(-7, DroppedElementStandIn.TypeName),
+            new AddDictionaryEntryAction(-1, -5, -7),
+            new UpdateDictionaryValueAction(-1, -3, -7),
+        ]);
+
+        Assert.HasCount(1, dictionary.Entries);
+        Assert.AreSame(brush, dictionary.Entries["Accent"]);
+    }
+
+    [TestMethod]
     public void ACollectionWithoutDroppedElementsKeepsTheIndicesAsTheyAre()
     {
         var replay = new Replay();
@@ -464,9 +590,52 @@ public sealed class DroppedChildActionTests
     {
         public string Name { get; } = name;
 
+        public Dictionary<string, object?> Properties { get; } = [];
+
         public override string ToString()
         {
             return Name;
+        }
+    }
+
+    /// <summary>
+    /// A live dictionary, such as a resource dictionary of a page.
+    /// </summary>
+    private sealed class FakeDictionary
+    {
+        public Dictionary<object, object?> Entries { get; } = [];
+    }
+
+    /// <summary>
+    /// Gives the dictionary actions access to <see cref="FakeDictionary"/> objects. Like the runtime utilities of the
+    /// surface, it answers a lookup in anything else with null and fails every change of it.
+    /// </summary>
+    private sealed class DictionaryAccess : IDictionaryEntryAccess
+    {
+        public object? GetEntry(object dictionary, object? key)
+        {
+            return dictionary is FakeDictionary live ? live.Entries.GetValueOrDefault(key!) : null;
+        }
+
+        public void AddEntry(object dictionary, object? key, object? value)
+        {
+            Require(dictionary).Entries.Add(key!, value);
+        }
+
+        public void ReplaceEntry(object dictionary, object? key, object? value)
+        {
+            Require(dictionary).Entries[key!] = value;
+        }
+
+        public void RemoveEntry(object dictionary, object? key)
+        {
+            Require(dictionary).Entries.Remove(key!);
+        }
+
+        private static FakeDictionary Require(object dictionary)
+        {
+            return dictionary as FakeDictionary
+                ?? throw new InvalidOperationException($"'{dictionary.GetType().FullName}' is not a supported dictionary.");
         }
     }
 
@@ -540,6 +709,7 @@ public sealed class DroppedChildActionTests
     private sealed class Replay
     {
         private readonly Dictionary<long, object?> _objects = [];
+        private readonly DictionaryEntryActions _dictionaries = new(new DictionaryAccess());
 
         public Replay()
         {
@@ -583,6 +753,9 @@ public sealed class DroppedChildActionTests
                     case CreateInstanceAction create:
                         _objects[create.LiveHandle] = new LiveItem(create.TypeName["Item:".Length..]);
                         break;
+                    case NullReferenceAction nullReference:
+                        _objects[nullReference.LiveHandle] = null;
+                        break;
                     case GetPropertyAction getProperty:
                         // The stand-in ends the path; this guard is a copy of the one in Execute.
                         object valueOwner = _objects[getProperty.ParentHandle]!;
@@ -616,6 +789,27 @@ public sealed class DroppedChildActionTests
                         break;
                     case GetChildAction getChild:
                         _objects[getChild.ChildHandle] = Translator.GetChild(_objects[getChild.ParentHandle]!, getChild.Index, collection => InsertPending(pending, collection));
+                        break;
+                    case GetDictionaryEntryAction getEntry:
+                        _objects[getEntry.ValueHandle] = _dictionaries.GetEntry(_objects[getEntry.DictionaryHandle]!, _objects[getEntry.KeyHandle]);
+                        break;
+                    case AddDictionaryEntryAction addEntry:
+                        _dictionaries.AddEntry(_objects[addEntry.DictionaryHandle]!, _objects[addEntry.KeyHandle], () => _objects[addEntry.ValueHandle]);
+                        break;
+                    case UpdateDictionaryValueAction updateValue:
+                        _dictionaries.ReplaceEntry(_objects[updateValue.DictionaryHandle]!, _objects[updateValue.KeyHandle], () => _objects[updateValue.ValueHandle]);
+                        break;
+                    case RemoveDictionaryEntryAction removeEntry:
+                        _dictionaries.RemoveEntry(_objects[removeEntry.DictionaryHandle]!, _objects[removeEntry.KeyHandle]);
+                        break;
+                    case SetPropertyAction setProperty:
+                        // Like Execute: a handle without an object fails the batch, a stand-in takes no property. These are copies.
+                        object propertyOwner = _objects[setProperty.ParentHandle] ?? throw new KeyNotFoundException($"No live object is registered for handle {setProperty.ParentHandle}.");
+                        if (propertyOwner is not DroppedElement)
+                        {
+                            ((LiveItem)propertyOwner).Properties[setProperty.FullPropertyName] = _objects[setProperty.PropertyValueHandle];
+                        }
+
                         break;
                     default:
                         Assert.Fail($"The replay does not handle {action.Action}.");

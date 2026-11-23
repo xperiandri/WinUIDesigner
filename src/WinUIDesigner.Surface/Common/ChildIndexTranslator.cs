@@ -185,7 +185,8 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
             switch (slot.Kind)
             {
                 case ChildSlotKind.Hole:
-                    // Visual Studio builds nothing beneath a dropped element, so the stand-in ends the path.
+                    // The stand-in ends the path: what Visual Studio still asks beneath a dropped element is answered
+                    // with the stand-in.
                     return new DroppedElement();
                 case ChildSlotKind.Outside:
                     return null;

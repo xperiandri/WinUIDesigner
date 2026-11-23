@@ -21,6 +21,7 @@ internal sealed partial class SurfaceService
     private readonly ResourceScopeService _resourceScopes;
     private readonly StyleEditService _styleEdits;
     private readonly DroppedChildren _droppedChildren;
+    private readonly DictionaryEntryActions _dictionaryEntries;
     private readonly Dictionary<long, object?> _actionObjects = [];
     private readonly Dictionary<long, object?> _trackedActionObjects = [];
 
@@ -375,7 +376,8 @@ internal sealed partial class SurfaceService
                 object valueOwner = ResolveObject(getProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getProperty.ParentHandle}.");
                 if (valueOwner is DroppedElement)
                 {
-                    // Visual Studio builds nothing beneath a dropped element; the stand-in ends the path.
+                    // The stand-in ends the path: what Visual Studio still asks beneath a dropped element is answered
+                    // with the stand-in.
                     _actionObjects[getProperty.PropertyValueHandle] = valueOwner;
                     break;
                 }
@@ -474,37 +476,22 @@ internal sealed partial class SurfaceService
                 // Diagnostics there (see RemoveChildAt).
                 _droppedChildren.RemoveChild(removalOwner, removeChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
                 break;
+            // Visual Studio reaches the entries of a dropped merged dictionary through the dictionary, so these four
+            // actions can address the stand-in of a dropped dictionary; DictionaryEntryActions ends them there.
             case GetDictionaryEntryAction getDictionaryEntry:
-                _actionObjects[getDictionaryEntry.ValueHandle] = XamlRuntimeUtilities.GetDictionaryEntry((ResolveObject(getDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getDictionaryEntry.DictionaryHandle}.")), ResolveObject(getDictionaryEntry.KeyHandle));
+                _actionObjects[getDictionaryEntry.ValueHandle] = _dictionaryEntries.GetEntry((ResolveObject(getDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getDictionaryEntry.DictionaryHandle}.")), ResolveObject(getDictionaryEntry.KeyHandle));
                 break;
             case AddDictionaryEntryAction addDictionaryEntry:
                 object dictionaryOwner = (ResolveObject(addDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {addDictionaryEntry.DictionaryHandle}."));
-                object? addedKey = ResolveObject(addDictionaryEntry.KeyHandle);
-                object? addedValue = ResolveActionValue(addDictionaryEntry.ValueHandle, dictionaryOwner);
-                if (addedValue is not DroppedElement && !_styleEdits.TryAddDictionaryEntry(dictionaryOwner, addedKey, addedValue))
-                {
-                    XamlRuntimeUtilities.SetDictionaryEntry(dictionaryOwner, addedKey, addedValue);
-                }
-
+                _dictionaryEntries.AddEntry(dictionaryOwner, ResolveObject(addDictionaryEntry.KeyHandle), () => ResolveActionValue(addDictionaryEntry.ValueHandle, dictionaryOwner));
                 break;
             case RemoveDictionaryEntryAction removeDictionaryEntry:
                 object removalDictionary = (ResolveObject(removeDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {removeDictionaryEntry.DictionaryHandle}."));
-                object? removedKey = ResolveObject(removeDictionaryEntry.KeyHandle);
-                if (!_styleEdits.TryRemoveDictionaryEntry(removalDictionary, removedKey))
-                {
-                    XamlRuntimeUtilities.RemoveDictionaryEntry(removalDictionary, removedKey);
-                }
-
+                _dictionaryEntries.RemoveEntry(removalDictionary, ResolveObject(removeDictionaryEntry.KeyHandle));
                 break;
             case UpdateDictionaryValueAction updateDictionaryValue:
                 object updatedDictionaryOwner = (ResolveObject(updateDictionaryValue.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {updateDictionaryValue.DictionaryHandle}."));
-                object? updatedKey = ResolveObject(updateDictionaryValue.KeyHandle);
-                object? updatedValue = ResolveActionValue(updateDictionaryValue.ValueHandle, updatedDictionaryOwner);
-                if (updatedValue is not DroppedElement && !_styleEdits.TryReplaceDictionaryEntry(updatedDictionaryOwner, updatedKey, updatedValue))
-                {
-                    XamlRuntimeUtilities.SetDictionaryEntry(updatedDictionaryOwner, updatedKey, updatedValue);
-                }
-
+                _dictionaryEntries.ReplaceEntry(updatedDictionaryOwner, ResolveObject(updateDictionaryValue.KeyHandle), () => ResolveActionValue(updateDictionaryValue.ValueHandle, updatedDictionaryOwner));
                 break;
             case NullReferenceAction nullReference:
                 _actionObjects[nullReference.LiveHandle] = null;

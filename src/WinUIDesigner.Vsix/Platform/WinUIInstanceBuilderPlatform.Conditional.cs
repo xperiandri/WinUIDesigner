@@ -71,7 +71,10 @@ internal partial class WinUIInstanceBuilderPlatform
     /// <para>
     /// The node has no object in the surface process. A property value, a dictionary entry or a key is marked
     /// invalid, which is how builders tell their callers that there is nothing to attach. Edits inside the node
-    /// change nothing in the preview.
+    /// change nothing in the preview. Most builders stop at the invalid proxy; the dictionary-entry builder does not
+    /// when the entry is inside a dropped merged dictionary, because it reaches the entry through the proxy of the
+    /// dictionary. Its actions address the stand-in, and the surface ends them there
+    /// (<c>DictionaryEntryActions</c> of the surface).
     /// </para>
     /// <para>
     /// An item of an indexed collection is different: the parent addresses its children by their index in the
@@ -104,7 +107,8 @@ internal partial class WinUIInstanceBuilderPlatform
 
         public override void ReferencePropertyOrChild(IInstanceBuilderContext context, DocumentNode childOrPropertyNode)
         {
-            // There is no object to fetch a child from, so the path to an edited descendant ends here.
+            // There is no object to fetch a child from, so the path to an edited descendant ends here, for the
+            // builders that look at the proxy of the child.
             context.GetLiveNodeProxy(childOrPropertyNode)?.Invalidate();
         }
 
