@@ -15,6 +15,7 @@ Download and open a vsix file from Visual Studio Marketplace. WinUI 3 designer w
 - x86 is not supported.
 - `Window` and its subclasses cannot be previewed; only `FrameworkElement` subclasses are supported.
 - Windows App SDK 2.5.1 is required.
+- A `ContentDialog` as the root of a document is shown in a popup over the designer area, the way the framework shows a dialog. The popup covers the artboard (the size of the device) as a dialog covers the window of an app, with the card in the middle of it, and it is given the pan and zoom of the artboard, so it moves and scales with the document and what lies outside of the designer area is reached by scrolling. The card of the dialog has the size that the document asks for with `d:DesignWidth` and `d:DesignHeight`, each of them on its own and whatever the size of the designer area, and the size that its content asks for in a direction that the document says nothing about. The dialog has the theme of the preview, and so has the layer of smoke behind it.
 
 ## Structure
 

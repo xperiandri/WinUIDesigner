@@ -185,6 +185,7 @@ internal sealed partial class DesignerSurface : IDisposable
         _viewportRoot.Measure(new Size(_viewportRoot.Width, _viewportRoot.Height));
         _viewportRoot.Arrange(new Rect(0, 0, _viewportRoot.Width, _viewportRoot.Height));
         _viewportRoot.UpdateLayout();
+        PreviewContentDialog();
         _ = NativeMethods.InvalidateRect(parentHwnd, IntPtr.Zero, true);
     }
 
@@ -200,6 +201,8 @@ internal sealed partial class DesignerSurface : IDisposable
             TranslateY = offsetY,
         };
 
+        // A ContentDialog is not under the canvas that was just transformed.
+        MoveDialogWithArtboard(offsetX, offsetY, scale);
     }
 
     public void SetDeviceSize(double width, double height)
@@ -216,6 +219,8 @@ internal sealed partial class DesignerSurface : IDisposable
         _transformRoot.Arrange(new Rect(0, 0, width, height));
         _transformRoot.UpdateLayout();
 
+        // The size of the device was just given to the root, and a dialog that is shown does not take it.
+        FitContentDialog();
     }
 
     public void ReplaceContent(FrameworkElement newContent)
@@ -225,6 +230,8 @@ internal sealed partial class DesignerSurface : IDisposable
             RefreshLayout();
             return;
         }
+
+        HideContentDialogPreview();
 
         _transformRoot.Children.Remove(_content);
         _content = newContent;
@@ -242,6 +249,12 @@ internal sealed partial class DesignerSurface : IDisposable
 
         SetDeviceSize(_deviceWidth > 0 ? _deviceWidth : 800, _deviceHeight > 0 ? _deviceHeight : 600);
 
+        // The new root is in the tree of the island by now; a dialog has to be put into its open state again.
+        if (_xamlSource is not null)
+        {
+            PreviewContentDialog();
+        }
+
     }
 
     public void RefreshLayout()
@@ -252,6 +265,9 @@ internal sealed partial class DesignerSurface : IDisposable
         _transformRoot.Measure(new Size(width, height));
         _transformRoot.Arrange(new Rect(0, 0, width, height));
         _transformRoot.UpdateLayout();
+
+        // A ContentDialog is not under the root that was just laid out, and an edit can change it in place.
+        RefreshContentDialog();
     }
 
     private void OnLayoutUpdated(object? sender, object e)
@@ -357,6 +373,10 @@ internal sealed partial class DesignerSurface : IDisposable
     private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
     {
         PublishDpi(sender);
+
+        // The size of the root is the size of the island once the island has been resized, which is after the call that
+        // resizes it returns; a dialog that is shown is fitted to it again.
+        FitContentDialog();
     }
 
     private void PublishDpi(XamlRoot root)
