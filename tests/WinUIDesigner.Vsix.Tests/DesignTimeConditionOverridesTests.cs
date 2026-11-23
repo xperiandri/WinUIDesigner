@@ -1,13 +1,13 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Json;
-using System.Text;
-using System.Xml;
+using Microsoft.VisualStudio.DesignTools.RuntimeHost.Networking;
+using Microsoft.VisualStudio.DesignTools.RuntimeHost.TapOM;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.DesignTime;
 using WinUIDesigner.Markup;
+using WinUIDesigner.Platform;
+using WinUIDesigner.Protocol;
 
 /// <summary>
 /// Covers the conditions the user forces as part of the design-time options: their field in the text form, the
@@ -133,44 +133,21 @@ public sealed class DesignTimeConditionOverridesTests
     [TestMethod]
     public void CreateSurfaceRequestCarriesTheOverrides()
     {
-        // As in DesignTimeOptionsTests: the options travel as a string member of a request type derived from
-        // Visual Studio's, through the DataContract JSON serializer of Visual Studio's Message.
+        // The request of the extension, written by Visual Studio's own Message the way the protocol handler writes it
+        // and read back by it, hostile text of the conditions included.
         string options = new DesignTimeOptions(DesignTimeTargetPlatform.Windows, null, _Overrides).Serialize();
-        byte[] wire = Serialize(new Request { Options = options });
-
-        Request? received = Deserialize<Request>(wire);
-
-        Assert.AreEqual(options, received?.Options);
-        Assert.IsTrue(DesignTimeOptions.TryParse(received?.Options, out DesignTimeOptions parsed));
-        Assert.AreEqual(_Overrides, parsed.ConditionOverrides);
-    }
-
-    private static byte[] Serialize(object payload)
-    {
-        using var stream = new MemoryStream();
-        var serializer = new DataContractJsonSerializer(payload.GetType());
-        using (XmlDictionaryWriter writer = JsonReaderWriterFactory.CreateJsonWriter(stream, Encoding.Unicode, ownsStream: false))
+        var request = new WinUICreateSurfaceRequestInfo
         {
-            serializer.WriteObject(writer, payload);
-            writer.Flush();
-        }
+            Document = new CreateDocumentInfo { DocumentId = 42 },
+            SerializedDesignTimeOptions = options,
+        };
 
-        return stream.ToArray();
-    }
+        byte[] buffer = new Message((int)DesignerMessageId.CreateSurface, request).BufferForSend;
+        WinUICreateSurfaceRequestInfo? received = new Message(buffer).ConvertPayloadToModel<WinUICreateSurfaceRequestInfo>();
 
-    private static TModel? Deserialize<TModel>(byte[] wire)
-        where TModel : class
-    {
-        var serializer = new DataContractJsonSerializer(typeof(TModel));
-        using var stream = new MemoryStream(wire);
-        using XmlDictionaryReader reader = JsonReaderWriterFactory.CreateJsonReader(stream, Encoding.Unicode, XmlDictionaryReaderQuotas.Max, null);
-        return (TModel?)serializer.ReadObject(reader);
-    }
-
-    [DataContract]
-    private sealed class Request
-    {
-        [DataMember(Name = DesignTimeOptions.WireMemberName, EmitDefaultValue = false)]
-        public string? Options { get; set; }
+        Assert.IsNotNull(received);
+        Assert.AreEqual(options, received.SerializedDesignTimeOptions);
+        Assert.IsTrue(DesignTimeOptions.TryParse(received.SerializedDesignTimeOptions, out DesignTimeOptions parsed));
+        Assert.AreEqual(_Overrides, parsed.ConditionOverrides);
     }
 }

@@ -119,9 +119,12 @@ public sealed class ConditionalXamlOverrideRewriteTests
     }
 
     [TestMethod]
-    public void OverridesOfTheCreateSurfaceRequestReachTheRewrite()
+    public void OverridesReadBackFromTheOptionsTextDecideTheRewrite()
     {
-        // What Visual Studio sends: the design-time options with the overrides, written into the 516 request.
+        // The text form of the options with the overrides, and the composition of the overrides with the probes. How the
+        // surface gets the text and builds the composition (StoreDesignTimeOptions, GetConditionOverrides and
+        // ConfigureConditionalNamespacePolicy of SurfaceService) needs WinUI and is not compiled here;
+        // ConditionalXamlSurfaceWiringTests of the extension's tests pins it in the compiled surface.
         var sent = new DesignTimeOptions(
             DesignTimeTargetPlatform.Windows,
             contractVersion: null,
@@ -139,7 +142,7 @@ public sealed class ConditionalXamlOverrideRewriteTests
         probes = new Probes();
         XDocument document = XDocument.Parse(xaml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
 
-        // The composition SurfaceService.ConfigureConditionalNamespacePolicy uses.
+        // The shared composition that the surface also builds, in SurfaceService.ConfigureConditionalNamespacePolicy.
         XamlNamespaceRewriter.Rewrite(document, new XamlNamespaceRewriteOptions
         {
             SourceXaml = xaml,
