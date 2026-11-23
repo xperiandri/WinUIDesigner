@@ -198,6 +198,29 @@ public sealed class ResourceDictionarySourceExpanderTests
     }
 
     [TestMethod]
+    public void DictionaryThatLeftAMergedOneEmptyIsReportedAgainByEveryRequest()
+    {
+        // Colors.xaml has no prepared copy. Styles.xaml merges it and is merged by two documents: the second one
+        // would get Styles.xaml from the cache and say nothing, although the same resources are missing.
+        var cache = new ShadowCache();
+        cache.Add(_Styles, Dictionary($"""<ResourceDictionary.MergedDictionaries>{Merge(_Colors)}</ResourceDictionary.MergedDictionaries><SolidColorBrush x:Key="B" Color="Blue" />"""));
+
+        foreach (string owner in new[] { "document 10", "document 11" })
+        {
+            cache.Warnings.Clear();
+            XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Styles)}</ResourceDictionary.MergedDictionaries>""");
+
+            ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, owner);
+
+            Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion, owner);
+            Assert.HasCount(1, cache.Warnings, owner);
+            Assert.Contains("Resource dictionary 'App/Themes/Colors.xaml' merged by 'App/Themes/Styles.xaml' is left empty", cache.Warnings[0]);
+        }
+
+        Assert.AreEqual(0, cache.Expander.Cache.Count);
+    }
+
+    [TestMethod]
     public void TooDeepChainEnds()
     {
         var cache = new ShadowCache(maxDepth: 4);

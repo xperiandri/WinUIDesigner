@@ -306,6 +306,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
 
         var nested = new List<KeyValuePair<string, string?>>();
         bool isOuterCut = session.IsCut;
+        int failedBefore = session.Failed;
         session.IsCut = false;
         session.Chain.Add(new ChainMember(path, name));
         session.Depth++;
@@ -319,10 +320,12 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             session.Chain.RemoveAt(session.Chain.Count - 1);
         }
 
-        // What a cut chain leaves out depends on where the expansion started, so such a dictionary is not kept.
+        // What a cut chain leaves out depends on where the expansion started, so such a dictionary is not kept. Nor is
+        // one that left a merged dictionary empty: a request that merges it again has to report that again, and the
+        // reason may be gone by then (a source the runtime could not load a moment ago).
         bool isCut = session.IsCut;
         session.IsCut = isOuterCut || isCut;
-        PreparedResourceDictionary prepared = isCut
+        PreparedResourceDictionary prepared = isCut || session.Failed != failedBefore
             ? new PreparedResourceDictionary(root, nested)
             : _cache.Store(path, text, root, nested);
 
