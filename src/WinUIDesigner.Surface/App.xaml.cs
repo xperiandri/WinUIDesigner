@@ -108,7 +108,7 @@ public sealed partial class App : Application, IXamlMetadataProvider, IDisposabl
 
     IXamlType? IXamlMetadataProvider.GetXamlType(Type type)
     {
-        return GeneratedMetadata.GetXamlType(type) ?? ProjectRuntimeResolver.GetXamlType(type.FullName!);
+        return GeneratedMetadata.GetXamlType(type) ?? ProjectRuntimeResolver.GetXamlType(type);
     }
 
     IXamlType? IXamlMetadataProvider.GetXamlType(string name)
