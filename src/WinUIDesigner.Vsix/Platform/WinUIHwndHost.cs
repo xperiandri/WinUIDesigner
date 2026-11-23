@@ -89,11 +89,14 @@ internal sealed partial class WinUIIsolatedImageHost
 
         protected override void DestroyWindowCore(HandleRef hwnd)
         {
-            if (_mutationObserverRegistrationId != 0 && Host.Pipeline is InstanceBuilderPipeline pipeline)
+            // Visual Studio disposes the pipeline when it ends the surface. A disposed pipeline has no protocol handler
+            // left, and the observers that were registered with it are gone.
+            if (_mutationObserverRegistrationId != 0 && Host.Pipeline is InstanceBuilderPipeline { LiveNodeTree: not null } pipeline)
             {
                 pipeline.ProtocolHandler.UnregisterMessageObserver(_mutationObserverRegistrationId);
-                _mutationObserverRegistrationId = 0;
             }
+
+            _mutationObserverRegistrationId = 0;
 
             if (_inputBridgeRoot is { } root)
             {
@@ -135,7 +138,8 @@ internal sealed partial class WinUIIsolatedImageHost
 
         protected override void ResizeSurfaceHwnd(int width, int height)
         {
-            if (Host.Pipeline is InstanceBuilderPipeline pipeline)
+            // The host is laid out after Visual Studio ended the surface and disposed the pipeline: nothing to resize then.
+            if (Host.Pipeline is InstanceBuilderPipeline { LiveNodeTree: not null } pipeline)
             {
                 if (_mutationObserverRegistrationId == 0)
                 {
@@ -145,8 +149,10 @@ internal sealed partial class WinUIIsolatedImageHost
                     {
                         Dispatcher.BeginInvoke(new Action(() =>
                         {
-                            pipeline.LiveNodeTree.ProcessPendingMutations();
-
+                            // The call was queued while the pipeline was alive; Visual Studio can dispose it before the
+                            // dispatcher gets to it, and a disposed pipeline has no live tree. Reading it unguarded
+                            // ended the whole Visual Studio process with a NullReferenceException.
+                            pipeline.LiveNodeTree?.ProcessPendingMutations();
                         }));
                     });
                 }
