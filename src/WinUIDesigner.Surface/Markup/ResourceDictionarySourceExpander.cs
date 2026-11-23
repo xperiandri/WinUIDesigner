@@ -53,6 +53,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
 
     private static readonly XNamespace _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private static readonly XNamespace _DesignTime = DesignTimeNamespace;
+    private static readonly XName _PlainSourceName = XName.Get("Source");
 
     private readonly ResourceDictionarySourceOptions _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly PreparedResourceDictionaryCache _cache = new();
@@ -176,10 +177,11 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     private void ExpandElement(XElement root, string? documentUri, string owner, Session session, List<KeyValuePair<string, string?>> dependencies)
     {
         // Collected first: the content inserted below is expanded already and must not be visited again.
-        List<XElement> targets = root.DescendantsAndSelf().Where(element => element.Attribute(SourceAttributeName) is not null).ToList();
+        List<XElement> targets = root.DescendantsAndSelf().Where(HasSource).ToList();
         foreach (XElement target in targets)
         {
-            XAttribute attribute = target.Attribute(SourceAttributeName)!;
+            // The design-time source of Visual Studio's cleaner, or a plain Source that the cleaner left in the copy.
+            XAttribute attribute = (target.Attribute(SourceAttributeName) ?? target.Attribute(_PlainSourceName))!;
             string value = attribute.Value;
             attribute.Remove();
 
@@ -386,6 +388,17 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         }
 
         return error;
+    }
+
+    /// <summary>
+    /// Returns whether <paramref name="element"/> names the source of a dictionary: with the design-time attribute, or
+    /// as a dictionary with a plain <c>Source</c>. The cleaner rewrites every <c>Source</c> it meets, but not where it
+    /// cannot resolve the type of the dictionary in the project of the document, and it returns a document that it
+    /// cannot read as it was. Other elements with a <c>Source</c> are images and the like, and stay as they are.
+    /// </summary>
+    private bool HasSource(XElement element)
+    {
+        return element.Attribute(SourceAttributeName) is not null || (element.Attribute(_PlainSourceName) is not null && IsDictionaryRoot(element.Name));
     }
 
     private bool IsDictionaryRoot(XName name)

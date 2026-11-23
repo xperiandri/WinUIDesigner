@@ -419,6 +419,120 @@ public sealed class ResourceDictionarySourceExpanderTests
     }
 
     [TestMethod]
+    public void PlainSourceOfADictionaryInACopyIsResolvedAgainstThatCopy()
+    {
+        // The cleaner leaves a Source it cannot resolve, and the whole document when it cannot read it, as written.
+        // The reader has no base URI, so a relative value would not load.
+        var cache = new ShadowCache();
+        cache.Add(_Cards, Dictionary("""<ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../Shared/Brushes.xaml" /></ResourceDictionary.MergedDictionaries><SolidColorBrush x:Key="A" Color="Red" />"""));
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 1, 0), expansion);
+        CollectionAssert.AreEqual(new[] { "ms-appx:///Library/Shared/Brushes.xaml" }, cache.RuntimeLoads);
+        string[] sources = page.Descendants(_P + "ResourceDictionary").Select(element => (string?)element.Attribute("Source")).OfType<string>().ToArray();
+        CollectionAssert.AreEqual(new[] { "ms-appx:///Library/Shared/Brushes.xaml" }, sources);
+        Assert.AreEqual(0, cache.Warnings.Count);
+        AssertReadableByTheXamlReader(page);
+    }
+
+    [TestMethod]
+    public void PlainSourceTheRuntimeCannotLoadIsLeftOutAndTheRestOfTheDictionaryStays()
+    {
+        // The reader rejects the whole dictionary, and then the whole page, for one source that does not load.
+        const string library = "ms-appx:///Ecierge.Uno.Controls/Styles.xaml";
+        var cache = new ShadowCache { RuntimeErrors = { [library] = "Cannot locate resource from 'ms-appx:///Ecierge.Uno.Controls/Styles.xaml'." } };
+        cache.Add(_Cards, Dictionary($"""<ResourceDictionary.MergedDictionaries><ResourceDictionary Source="{library}" /></ResourceDictionary.MergedDictionaries><Style x:Key="CardStyle" TargetType="Border" />"""));
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion);
+        CollectionAssert.AreEqual(new[] { "CardStyle" }, AllKeys(page));
+        Assert.IsFalse(page.Descendants().Attributes("Source").Any(), "A source that does not load must not reach the reader.");
+        Assert.AreEqual(1, cache.Warnings.Count);
+        Assert.Contains("merged by 'Library/Styles/Cards.xaml'", cache.Warnings[0]);
+        Assert.Contains("Cannot locate resource", cache.Warnings[0]);
+        AssertReadableByTheXamlReader(page);
+    }
+
+    [TestMethod]
+    public void PlainSourceIsAskedAboutLikeAnyOtherSourceOutsideTheSolution()
+    {
+        // Merged by two dictionaries, a source is asked about once, and what the runtime answers for the plain
+        // attribute holds for the design-time one as well.
+        const string package = "ms-appx:///Pkg/Colors.xaml";
+        var cache = new ShadowCache();
+        cache.Add(_Cards, Dictionary($"""<ResourceDictionary.MergedDictionaries><ResourceDictionary Source="{package}" /></ResourceDictionary.MergedDictionaries>"""));
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}{Merge(package)}<ResourceDictionary Source="{package}" /></ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 3, 0), expansion);
+        CollectionAssert.AreEqual(new[] { package }, cache.RuntimeLoads);
+    }
+
+    [TestMethod]
+    public void PlainSourceInTheDocumentItselfIsExpandedToo()
+    {
+        const string package = "ms-appx:///Pkg/Colors.xaml";
+        var cache = new ShadowCache();
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Colors.xaml" /><ResourceDictionary Source="{package}" /></ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(0, 2, 0), expansion);
+        CollectionAssert.AreEqual(new[] { "ms-appx:///App/Views/Colors.xaml", package }, cache.RuntimeLoads);
+        AssertReadableByTheXamlReader(page);
+    }
+
+    [TestMethod]
+    public void PlainSourceThatNamesAPreparedCopyMergesTheCopy()
+    {
+        // Not what the cleaner writes, but no reason to treat the URI differently because of the attribute it is in.
+        var cache = new ShadowCache();
+        cache.Add(_Colors, Dictionary("""<SolidColorBrush x:Key="AccentBrush" Color="SeaGreen" />"""));
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries><ResourceDictionary Source="{_Colors}" /></ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 0), expansion);
+        CollectionAssert.AreEqual(new[] { "AccentBrush" }, AllKeys(page));
+        Assert.AreEqual(0, cache.RuntimeLoads.Count);
+        Assert.IsFalse(page.Descendants().Attributes("Source").Any());
+    }
+
+    [TestMethod]
+    public void PlainSourceOfADictionaryClassOfTheProjectIsExpanded()
+    {
+        const string package = "ms-appx:///Pkg/Colors.xaml";
+        var cache = new ShadowCache { DictionaryTypes = { "using:My.App:ThemeResources" } };
+        XElement page = XElement.Parse($"""<Page xmlns="{_Presentation}" xmlns:local="using:My.App"><Page.Resources><local:ThemeResources Source="{package}" /></Page.Resources></Page>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(0, 1, 0), expansion);
+        CollectionAssert.AreEqual(new[] { package }, cache.RuntimeLoads);
+    }
+
+    [TestMethod]
+    public void SourceOfOtherElementsIsLeftAlone()
+    {
+        // Images, media and the like have a Source as well. It is no dictionary, and the runtime is not asked.
+        var cache = new ShadowCache();
+        XElement page = XElement.Parse($"""<Page xmlns="{_Presentation}" xmlns:local="using:My.App"><Image Source="Assets/Logo.png" /><local:Icon Source="Assets/Icon.png" /><MediaPlayerElement Source="Assets/Clip.mp4" /></Page>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(0, 0, 0), expansion);
+        Assert.AreEqual(0, cache.RuntimeLoads.Count);
+        CollectionAssert.AreEqual(
+            new[] { "Assets/Logo.png", "Assets/Icon.png", "Assets/Clip.mp4" },
+            page.Elements().Select(element => (string?)element.Attribute("Source")).ToArray());
+    }
+
+    [TestMethod]
     public void NamespacePoliciesApplyToMergedDictionaries()
     {
         // The sample's Themes\ConditionalResources.xaml, as Visual Studio prepares it.

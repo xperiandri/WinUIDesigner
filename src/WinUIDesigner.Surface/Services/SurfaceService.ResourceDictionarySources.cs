@@ -47,11 +47,7 @@ internal sealed partial class SurfaceService
         ContentDirectory = Program.ContentDirectory,
         Parse = LoadPreparedXaml,
         IsDictionaryType = IsResourceDictionaryType,
-        LoadWithRuntime = uri =>
-        {
-            LoadDictionaryWithRuntime(uri, out string? error);
-            return error;
-        },
+        LoadWithRuntime = ProbeDictionaryWithRuntime,
         ReportWarning = ReportResourceDictionaryProblem,
         Report = message => WinUIDesignerLogger.LogTrace("Surface", message),
     });
@@ -253,6 +249,53 @@ internal sealed partial class SurfaceService
             error = DescribeException(ex);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Asks the WinUI runtime whether the document that gets <paramref name="uri"/> merged in prepared XAML gets what
+    /// it expects: the reader loads a dictionary that merges it through <c>Source</c>, which is what the document it
+    /// is inserted into does, and the resources of the result are counted. This is not
+    /// <see cref="LoadDictionaryWithRuntime"/>, which loads the dictionary on its own.
+    /// </summary>
+    /// <returns><see langword="null"/> when the dictionary loads and provides resources, and the reason otherwise.</returns>
+    private static string? ProbeDictionaryWithRuntime(string uri)
+    {
+        try
+        {
+            if (XamlReader.Load(RuntimeDictionaryProbe.CreateXaml(uri)) is not ResourceDictionary probe)
+            {
+                return "the XAML reader did not return a resource dictionary.";
+            }
+
+            return RuntimeDictionaryProbe.Judge(probe.MergedDictionaries.Count, CountResources(probe));
+        }
+        catch (Exception ex)
+        {
+            return DescribeException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Counts the resources a dictionary provides: its own and those of every dictionary it merges, theme
+    /// dictionaries included.
+    /// </summary>
+    private static int CountResources(ResourceDictionary dictionary)
+    {
+        int count = dictionary.Count;
+        foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
+        {
+            count += CountResources(merged);
+        }
+
+        foreach (object? theme in dictionary.ThemeDictionaries.Values)
+        {
+            if (theme is ResourceDictionary themed)
+            {
+                count += CountResources(themed);
+            }
+        }
+
+        return count;
     }
 
     /// <summary>
