@@ -45,7 +45,15 @@ namespace WinUIDesigner.Surface.Markup;
 /// <param name="origins">Which prepared dictionary each copy in the text comes from.</param>
 /// <param name="isDictionary">Tells whether an element name names a resource dictionary.</param>
 /// <param name="limit">The number of resources that may be left out in all.</param>
-internal sealed class ResourceEntryQuarantine(ResourceCopyOrigins origins, Func<XName, bool> isDictionary, int limit = ResourceEntryQuarantine.DefaultLimit)
+/// <param name="budget">
+/// Limits the time that the retries of the request may take, shared by every text of the request; the first resource
+/// that is left out starts its clock. Without one, only the number of resources limits the retries.
+/// </param>
+internal sealed class ResourceEntryQuarantine(
+    ResourceCopyOrigins origins,
+    Func<XName, bool> isDictionary,
+    int limit = ResourceEntryQuarantine.DefaultLimit,
+    RetryBudget? budget = null)
 {
     /// <summary>
     /// The number of resources left out by default. Every one costs another read of the whole text.
@@ -112,15 +120,16 @@ internal sealed class ResourceEntryQuarantine(ResourceCopyOrigins origins, Func<
     /// <param name="readerMessage">The message of the exception the reader threw.</param>
     /// <returns>
     /// What was left out, or <see langword="null"/> when nothing was: no position in the message, a position that
-    /// starts no attribute, a resource that is not in a prepared copy, or the limit.
+    /// starts no attribute, a resource that is not in a prepared copy, or a limit (the number of resources, or the
+    /// time of the retries).
     /// </returns>
     public QuarantinedResource? TryQuarantine(XElement root, string serialized, string readerMessage)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(serialized);
 
-        // The limit.
-        if (Count >= limit || !TryParsePosition(readerMessage, out int line, out int position))
+        // The limits, and a message that says where the reader stopped.
+        if (Count >= limit || budget is { IsExhausted: true } || !TryParsePosition(readerMessage, out int line, out int position))
         {
             return null;
         }
@@ -166,6 +175,8 @@ internal sealed class ResourceEntryQuarantine(ResourceCopyOrigins origins, Func<
             removed.Remove();
         }
 
+        // The text is read again: this is the retry whose time the budget counts from.
+        budget?.Start();
         Count++;
         TryGetReferencedKey(attributeValue, out string neededKey);
         return new QuarantinedResource(

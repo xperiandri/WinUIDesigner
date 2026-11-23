@@ -366,22 +366,65 @@ public sealed class ResourceEntryQuarantineTests
     }
 
     [TestMethod]
-    public void RetryBudgetAllowsTheFirstRetryAndThenTheTimeOfItsLimit()
+    public void RetryBudgetCountsItsTimeFromTheFirstRetry()
     {
         TimeSpan now = TimeSpan.FromHours(5);
         var budget = new RetryBudget(TimeSpan.FromSeconds(10), () => now);
 
-        Assert.IsTrue(budget.TrySpend());
+        Assert.IsFalse(budget.IsExhausted);
+        now += TimeSpan.FromMinutes(5);
+        Assert.IsFalse(budget.IsExhausted, "What passes before the first retry is not spent.");
+
+        budget.Start();
         now += TimeSpan.FromSeconds(10);
-        Assert.IsTrue(budget.TrySpend(), "The limit itself is still inside the budget.");
+        Assert.IsFalse(budget.IsExhausted, "The limit itself is still inside the budget.");
         now += TimeSpan.FromMilliseconds(1);
-        Assert.IsFalse(budget.TrySpend());
-        Assert.IsFalse(budget.TrySpend());
+        Assert.IsTrue(budget.IsExhausted);
+
+        budget.Start();
+        Assert.IsTrue(budget.IsExhausted, "A later retry does not start the clock again.");
 
         budget.Reset();
-        Assert.IsTrue(budget.TrySpend());
+        Assert.IsFalse(budget.IsExhausted);
+        budget.Start();
         now += TimeSpan.FromSeconds(1);
-        Assert.IsTrue(budget.TrySpend());
+        Assert.IsFalse(budget.IsExhausted);
+    }
+
+    [TestMethod]
+    public void BudgetOfTheRetriesStartsWithTheFirstResourceThatIsLeftOutAndStopsTheNext()
+    {
+        // Three resources are rejected one after the other, and the first read of the request took a long time.
+        (ShadowCache cache, XElement page) = CreateApplication();
+        cache.Expander.Expand(page, _PageUri, "document 10");
+        TimeSpan now = TimeSpan.FromHours(5);
+        var budget = new RetryBudget(TimeSpan.FromSeconds(10), () => now);
+        var quarantine = new ResourceEntryQuarantine(cache.Expander.Origins, cache.Expander.IsDictionaryRoot, budget: budget);
+        var providedByUri = new Dictionary<string, string[]> { [_Tokenizing] = [] };
+
+        // A rejection that is not left out is no retry, so the clock does not start, however long the reads took.
+        Assert.IsNull(quarantine.TryQuarantine(page, page.ToString(SaveOptions.DisableFormatting), "E_UNEXPECTED"));
+        now += TimeSpan.FromMinutes(1);
+        Assert.IsFalse(budget.IsExhausted);
+
+        // The first resource starts the clock and the second is still within the limit of the budget.
+        Assert.AreEqual("LoadingTextBoxErrorStyle", LeaveOutTheFirstRejection()?.Key);
+        now += TimeSpan.FromSeconds(10);
+        Assert.AreEqual("TokenizingTextBoxErrorStyle", LeaveOutTheFirstRejection()?.Key);
+
+        // Past the limit the third is not left out, and the text stays as the reader rejected it.
+        now += TimeSpan.FromMilliseconds(1);
+        string rejected = page.ToString(SaveOptions.DisableFormatting);
+        Assert.IsNull(LeaveOutTheFirstRejection());
+        Assert.AreEqual(rejected, page.ToString(SaveOptions.DisableFormatting));
+        Assert.AreEqual(2, quarantine.Count);
+
+        QuarantinedResource? LeaveOutTheFirstRejection()
+        {
+            string xaml = page.ToString(SaveOptions.DisableFormatting);
+            (string key, int line, int position) = FindFirstRejection(xaml, providedByUri);
+            return quarantine.TryQuarantine(page, xaml, $"Cannot find a Resource with the Name/Key {key} [Line: {line} Position: {position}]");
+        }
     }
 
     private static string ErrorStyles()

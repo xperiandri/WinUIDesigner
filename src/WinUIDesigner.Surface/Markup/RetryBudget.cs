@@ -13,7 +13,8 @@ namespace WinUIDesigner.Surface.Markup;
 /// Each read of a long text takes a fraction of a second, and an operation on the UI thread may take only so long
 /// before its caller gives up (thirty seconds). A count of retries does not bound that for work that cannot be split
 /// into operations, such as the construction actions of a document, which load every dictionary of an application in
-/// one.
+/// one. The clock starts with the first retry that is made, not with the first read that fails: a rejection that is
+/// not retried costs no time of the budget, and what passes before the first retry is not the time of a retry.
 /// </remarks>
 /// <param name="limit">The time, counted from the first retry, after which no retry is allowed.</param>
 /// <param name="clock">Tells the time that has passed since some fixed point; the system's by default.</param>
@@ -24,21 +25,17 @@ internal sealed class RetryBudget(TimeSpan limit, Func<TimeSpan>? clock = null)
     private TimeSpan? _started;
 
     /// <summary>
-    /// Asks for one retry. The first one is always allowed and starts the clock.
+    /// Gets whether the time of the budget has passed. A budget whose clock has not started is not exhausted.
     /// </summary>
-    /// <returns><see langword="false"/> when the time of the budget has passed.</returns>
-    public bool TrySpend()
-    {
-        TimeSpan now = _clock();
-        _started ??= now;
-        return now - _started.Value <= limit;
-    }
+    public bool IsExhausted => _started is { } started && _clock() - started > limit;
+
+    /// <summary>
+    /// Records that a retry is made. The first one starts the clock; later ones change nothing.
+    /// </summary>
+    public void Start() => _started ??= _clock();
 
     /// <summary>
     /// Starts afresh, for the next request.
     /// </summary>
-    public void Reset()
-    {
-        _started = null;
-    }
+    public void Reset() => _started = null;
 }

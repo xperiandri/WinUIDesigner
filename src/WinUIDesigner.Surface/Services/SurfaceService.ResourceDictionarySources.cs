@@ -42,7 +42,7 @@ internal sealed partial class SurfaceService
     // The document whose construction actions are being executed, for messages.
     private int _actionDocumentId;
 
-    // The time that leaving out the resources the reader rejects may take in a request, in all documents and dictionaries.
+    // The time that the retries after a resource is left out may take in a request, in all documents and dictionaries.
     private readonly RetryBudget _resourceRetryBudget = new(TimeSpan.FromSeconds(10));
 
     private ResourceDictionarySourceExpander ResourceDictionarySources => _resourceDictionarySources ??= new(new ResourceDictionarySourceOptions
@@ -69,7 +69,7 @@ internal sealed partial class SurfaceService
     private ResourceEntryQuarantine CreateResourceEntryQuarantine()
     {
         ResourceDictionarySourceExpander dictionaries = ResourceDictionarySources;
-        return new ResourceEntryQuarantine(dictionaries.Origins, dictionaries.IsDictionaryRoot);
+        return new ResourceEntryQuarantine(dictionaries.Origins, dictionaries.IsDictionaryRoot, budget: _resourceRetryBudget);
     }
 
     /// <summary>
@@ -84,14 +84,10 @@ internal sealed partial class SurfaceService
     /// <returns><see langword="false"/> when nothing was left out and the rejection stands.</returns>
     private bool TryLeaveOutResource(ResourceEntryQuarantine quarantine, XElement root, string xaml, Exception rejection, string owner)
     {
-        // Each retry reads the whole text again, and the operation that does it has only so much time.
-        if (!_resourceRetryBudget.TrySpend())
-        {
-            return false;
-        }
-
         try
         {
+            // Each retry reads the whole text again, and the operation that does it has only so much time: the
+            // quarantine counts the retries and their time, which the budget it shares with every text limits.
             QuarantinedResource? resource = quarantine.TryQuarantine(root, xaml, rejection.Message);
             if (resource is null)
             {
