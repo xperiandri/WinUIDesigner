@@ -179,6 +179,12 @@ internal sealed partial class SurfaceService
                     && index < serializedActions.Count)
                 {
                     WinUIDesignerLogger.LogTrace("Surface", $"BuildDocument ({document.DocumentId}) failed at action[{index}]: {serializedActions[index]}", ex);
+
+                    // The earlier actions that name a handle of the failed one tell where its objects came from.
+                    foreach ((int relatedIndex, string related) in WinUIDesigner.Surface.Runtime.FailedActionContext.FindRelated(serializedActions, index, 12))
+                    {
+                        WinUIDesignerLogger.LogTrace("Surface", $"BuildDocument ({document.DocumentId}) action[{relatedIndex}] names a handle of the failed action: {related}");
+                    }
                 }
 #endif
                 // The objects that fallbacks replaced so far are reported with the failure: Visual Studio shows why
