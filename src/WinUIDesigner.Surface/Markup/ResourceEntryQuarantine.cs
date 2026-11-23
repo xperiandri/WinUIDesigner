@@ -392,7 +392,13 @@ internal sealed record QuarantinedResource(
             text.Append('.');
         }
 
-        text.Append($" The reader reports: {ReaderMessage}");
+        text.Append($" The reader reports: {OneLine(ReaderMessage)}");
         return text.ToString();
+    }
+
+    // WinUI's messages span several lines; a warning is one line, and the log de-duplicates by its text.
+    private static string OneLine(string message)
+    {
+        return string.Join(" ", message.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 }

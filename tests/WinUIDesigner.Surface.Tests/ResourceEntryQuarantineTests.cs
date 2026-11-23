@@ -164,6 +164,26 @@ public sealed class ResourceEntryQuarantineTests
     }
 
     [TestMethod]
+    public void ReportIsOneLineWhenTheMessageOfTheReaderSpansSeveralLines()
+    {
+        // WinUI's messages span several lines, and the log de-duplicates a warning by its text, one line per problem.
+        (ShadowCache cache, XElement page) = CreateApplication();
+        cache.Expander.Expand(page, _PageUri, "document 10");
+        string xaml = page.ToString(SaveOptions.DisableFormatting);
+        (string key, int line, int position) = FindFirstRejection(xaml);
+        string message = $"XAML parsing failed.\r\n  Cannot find a Resource with the Name/Key {key}\n[Line: {line} Position: {position}]\r\n";
+
+        QuarantinedResource? left = CreateQuarantine(cache).TryQuarantine(page, xaml, message);
+
+        Assert.IsNotNull(left);
+        string report = left.Describe("document 10");
+        Assert.DoesNotContain("\n", report);
+        Assert.DoesNotContain("\r", report);
+        Assert.EndsWith($"The reader reports: XAML parsing failed. Cannot find a Resource with the Name/Key {key} [Line: {line} Position: {position}]", report);
+        Assert.AreEqual(message, left.ReaderMessage, "The record keeps what the reader said.");
+    }
+
+    [TestMethod]
     public void QuarantineDoesNotChangeTheDictionariesKeptForLaterDocuments()
     {
         // Whether a key resolves depends on what is merged before the copy. A later document may have it.
