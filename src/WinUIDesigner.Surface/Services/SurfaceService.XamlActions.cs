@@ -373,7 +373,7 @@ internal sealed partial class SurfaceService
                 XamlRuntimeUtilities.MeasureElement((ResolveObject(measure.ElementHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {measure.ElementHandle}.")));
                 break;
             case GetPropertyAction getProperty:
-                object valueOwner = ResolveObject(getProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getProperty.ParentHandle}.");
+                object valueOwner = (ResolveObject(getProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getProperty.ParentHandle}."));
                 if (valueOwner is DroppedElement)
                 {
                     // The stand-in ends the path: what Visual Studio still asks beneath a dropped element is answered
@@ -408,7 +408,7 @@ internal sealed partial class SurfaceService
                 _styleEdits.TrackPropertySet(propertyOwner, setProperty.FullPropertyName);
                 break;
             case ClearPropertyAction clearProperty:
-                object clearedOwner = ResolveObject(clearProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearProperty.ParentHandle}.");
+                object clearedOwner = (ResolveObject(clearProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearProperty.ParentHandle}."));
                 if (clearedOwner is DroppedElement)
                 {
                     break;
@@ -421,7 +421,7 @@ internal sealed partial class SurfaceService
 
                 break;
             case ClearCollectionPropertyAction clearCollection:
-                object collectionOwner = ResolveObject(clearCollection.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearCollection.ParentHandle}.");
+                object collectionOwner = (ResolveObject(clearCollection.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearCollection.ParentHandle}."));
                 if (collectionOwner is DroppedElement)
                 {
                     break;
@@ -443,8 +443,8 @@ internal sealed partial class SurfaceService
                 XamlRuntimeUtilities.UpdateEventHandler((ResolveObject(updateEvent.EventOwner) ?? throw new KeyNotFoundException($"No live object is registered for handle {updateEvent.EventOwner}.")), updateEvent.FullEventName, (ResolveObject(updateEvent.HandlerOwner) ?? throw new KeyNotFoundException($"No live object is registered for handle {updateEvent.HandlerOwner}.")), updateEvent.HandlerOwnerType, updateEvent.OldHandler, updateEvent.NewHandler);
                 break;
             case GetChildAction getChild:
-                object lookupOwner = ResolveObject(getChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getChild.ParentHandle}.");
-                _actionObjects[getChild.ChildHandle] = _droppedChildren.GetChild(lookupOwner, getChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
+                object indexedParent = (ResolveObject(getChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getChild.ParentHandle}."));
+                _actionObjects[getChild.ChildHandle] = _droppedChildren.GetChild(indexedParent, getChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
                 break;
             case AddChildAction addChild:
                 object childOwner = (ResolveObject(addChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {addChild.ParentHandle}."));
@@ -470,11 +470,11 @@ internal sealed partial class SurfaceService
 
                 break;
             case RemoveChildAction removeChild:
-                object removalOwner = ResolveObject(removeChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {removeChild.ParentHandle}.");
+                object removalParent = (ResolveObject(removeChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {removeChild.ParentHandle}."));
 
                 // The removal goes through the index translation; a sealed setter collection is changed through XAML
                 // Diagnostics there (see RemoveChildAt).
-                _droppedChildren.RemoveChild(removalOwner, removeChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
+                _droppedChildren.RemoveChild(removalParent, removeChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
                 break;
             // Visual Studio reaches the entries of a dropped merged dictionary through the dictionary, so these four
             // actions can address the stand-in of a dropped dictionary; DictionaryEntryActions ends them there.
