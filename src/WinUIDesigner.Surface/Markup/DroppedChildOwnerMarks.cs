@@ -142,8 +142,9 @@ internal static class DroppedChildOwnerMarks
     /// </summary>
     /// <remarks>
     /// The XAML reader can only set the mark on a <c>DependencyObject</c>; on any other object it fails the whole
-    /// document. <see cref="Mark"/> leaves out the elements it knows to be none; one whose type it could not tell
-    /// is still marked, and loading the document again without marks gives it as it was before marks existed.
+    /// document. <see cref="Mark"/> leaves out the elements it knows are not a <c>DependencyObject</c>; one whose type
+    /// it could not tell is still marked, and loading the document again without marks gives it as it was before marks
+    /// existed.
     /// </remarks>
     public static void Unmark(IEnumerable<DroppedChildCollection> collections)
     {
