@@ -112,6 +112,8 @@ internal sealed class WinUISurfaceProcessMarkupProvider : UwpSurfaceProcessMarku
 
     private static bool CanResolveItsOwnTypes(IProjectContext? project)
     {
-        return project?.Metadata is { IsReady: true, ProjectAssembly: { IsLoaded: true } };
+        // Its metadata is ready (the compilation of the project exists) and has the assembly of the project in it.
+        // IAssembly.IsLoaded is not asked: the managed assembly of Visual Studio 18.13 answers true whatever its state.
+        return project?.Metadata is { IsReady: true, ProjectAssembly: not null };
     }
 }

@@ -53,7 +53,7 @@ public sealed class VsDesignerApiShapeTests
     private const string _HostProjectInfo = "Microsoft.VisualStudio.DesignTools.DesignerContract.IHostProjectInfo";
     private const string _HostProjectBaseExtensions = "Microsoft.VisualStudio.DesignTools.DesignerContract.HostProjectBaseExtensions";
     private const string _ProjectMetadata = "Microsoft.VisualStudio.DesignTools.Markup.Metadata.IProjectMetadata";
-    private const string _MetadataAssembly = "Microsoft.VisualStudio.DesignTools.Markup.Metadata.IAssembly";
+    private const string _ManagedAssembly = "Microsoft.VisualStudio.DesignTools.Xaml.LanguageService.Metadata.ManagedAssembly";
     private const string _ResolveItemDetails = "Microsoft.VisualStudio.DesignTools.Utility.ResolveItemDetails";
     private const string _DesignerInstanceBuilder = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.DesignerInstanceBuilder";
     private const string _DesignTimePropertiesHelper = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Metadata.DesignTimePropertiesHelper";
@@ -648,13 +648,26 @@ public sealed class VsDesignerApiShapeTests
     [DataRow(_HostProjectInfo, "IsExecutable", "Boolean")]
     [DataRow(_ProjectMetadata, "IsReady", "Boolean")]
     [DataRow(_ProjectMetadata, "ProjectAssembly", "IAssembly")]
-    [DataRow(_MetadataAssembly, "IsLoaded", "Boolean")]
     public void ProjectsCanBeWalkedAndAskedWhetherTheyKnowTheirTypes(string typeName, string propertyName, string propertyType)
     {
         PropertyDefinition property = RequireProperty(typeName, propertyName);
 
         Assert.AreEqual(propertyType, property.PropertyType.Name, $"Unexpected type of {typeName}.{propertyName}.");
         Assert.IsNotNull(property.GetMethod, $"{typeName}.{propertyName} needs a getter.");
+    }
+
+    [TestMethod]
+    public void ManagedAssemblyOfAProjectAnswersLoadedWhateverItsState()
+    {
+        // The reason the extension asks the metadata of a project whether it is ready, and does not ask its assembly
+        // whether it is loaded: the question has no other answer.
+        MethodDefinition? getter = RequireProperty(_ManagedAssembly, "IsLoaded").GetMethod;
+
+        Assert.IsNotNull(getter, $"{_ManagedAssembly}.IsLoaded needs a getter.");
+        Assert.IsTrue(
+            getter.HasBody && getter.Body.Instructions.Select(instruction => instruction.OpCode).SequenceEqual(new[] { OpCodes.Ldc_I4_1, OpCodes.Ret }),
+            $"{_ManagedAssembly}.IsLoaded no longer returns true at once: CanResolveItsOwnTypes could ask it."
+        );
     }
 
     [TestMethod]
