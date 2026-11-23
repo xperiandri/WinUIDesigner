@@ -1,6 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Diagnostics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Markup;
 using WinUIDesigner.Platform;
@@ -40,6 +41,46 @@ public sealed class XamlConditionAnswersOverridesTests
         Assert.IsNull(answers.Evaluate(_C99, Namespaces));
         Assert.IsNull(answers.Evaluate(_LegacyMode, Namespaces));
         Assert.AreEqual(1, surface.ChangeCount, "The overrides took effect.");
+    }
+
+    [TestMethod]
+    public async Task AQuestionTheUserForcesIsNotWaitedFor()
+    {
+        // The surface does not answer. The long wait for its first answer is for the questions that need it, and
+        // the answer to this one is known.
+        var surface = new FakeSurface { Hold = true };
+        XamlConditionAnswers answers = surface.CreateAnswers(() => XamlConditionOverrides.Empty.With(Key(_NewExperience), holds: true));
+        var elapsed = Stopwatch.StartNew();
+
+        await answers.AskAsync(Queries(_NewExperience), _Long, _Long);
+
+        Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromSeconds(5), elapsed.Elapsed.ToString());
+        Assert.IsEmpty(surface.Warnings);
+        Assert.AreEqual(true, answers.Evaluate(_NewExperience, Namespaces));
+
+        // The surface is asked all the same, so that the list can show its answer next to the override.
+        Assert.AreEqual(1, surface.RequestCount);
+    }
+
+    [TestMethod]
+    public async Task WhatThisSideDecidesItselfIsShownBesideAnOverrideBeforeTheSurfaceAnswers()
+    {
+        var surface = new FakeSurface { Hold = true };
+        var localProbes = new XamlConditionProbeSet { IsApiContractPresent = (_, major, _) => major <= 10 };
+        XamlConditionAnswers answers = surface.CreateAnswers(() => XamlConditionOverrides.Empty.With(Key(_C7), holds: false), localProbes);
+
+        await answers.AskAsync(Queries(_C7, _C99, _NewExperience), TimeSpan.FromMilliseconds(50));
+
+        // A contract is asked of the same Windows the surface runs on, so its value is known from the first document on.
+        Assert.IsFalse(answers.SurfaceAnswers);
+        Assert.AreEqual(true, answers.EvaluateIgnoringOverrides(Query(_C7)));
+        Assert.AreEqual(false, answers.EvaluateIgnoringOverrides(Query(_C99)));
+
+        // What only the surface can tell is not known yet.
+        Assert.IsNull(answers.EvaluateIgnoringOverrides(Query(_NewExperience)));
+
+        // The preview uses the override all the same.
+        Assert.AreEqual(false, answers.Evaluate(_C7, Namespaces));
     }
 
     [TestMethod]
@@ -220,13 +261,13 @@ public sealed class XamlConditionAnswersOverridesTests
             }
         }
 
-        public XamlConditionAnswers CreateAnswers(Func<XamlConditionOverrides>? readOverrides)
+        public XamlConditionAnswers CreateAnswers(Func<XamlConditionOverrides>? readOverrides, XamlConditionProbeSet? localProbes = null)
         {
             return new XamlConditionAnswers(
                 Ask,
                 CancellationToken.None,
                 () => Interlocked.Increment(ref _changeCount),
-                new XamlConditionProbeSet(),
+                localProbes ?? new XamlConditionProbeSet(),
                 (message, exception) =>
                 {
                     lock (_gate)
