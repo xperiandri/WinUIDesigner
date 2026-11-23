@@ -14,37 +14,79 @@ namespace WinUIDesigner.Surface.Services;
 /// <remarks>
 /// WinUI seals a Style, its Setters collection and its Setters as soon as an element uses the style, including a
 /// detached element and a style that Visual Studio has only just created: its instance builders assign a new style
-/// before they add the setters. The public API then rejects insertions (E_FAIL), Setter.Value and Setter.Property
-/// changes (E_ACCESSDENIED) and BasedOn changes, and accepts removals without updating the elements.
+/// before they add the setters. The public API then rejects insertions (E_FAIL), <see cref="Setter.Value"/> and
+/// <see cref="Setter.Property"/> changes (E_ACCESSDENIED) and BasedOn changes, and accepts removals without updating
+/// the elements.
 /// <para>
-/// Visual Studio's UWP designer meets the same sealing and does not avoid it: its StyleBuilder and SetterBuilder send
-/// AddChild and RemoveChild for the setter collection of a style in use, and a changed setter is replaced by a new one.
+/// Visual Studio's UWP designer meets the same sealing and does not avoid it: its
+/// <see cref="Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp.StyleBuilder"/> and
+/// <see cref="Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp.SetterBuilder"/> send AddChild and
+/// RemoveChild for the setter collection of a style in use, and a changed setter is replaced by a new one.
 /// Its TAP applies them through the framework's XAML Diagnostics, which unseals the objects for the edit, rebuilds
 /// the merged setters of styles BasedOn the edited one, re-applies implicit styles and refreshes every element that
 /// uses the style. Dictionary edits through XAML Diagnostics also re-resolve the <c>{StaticResource}</c> references
 /// that the framework recorded for the key. VisualState setter collections are not sealed, but only XAML Diagnostics
-/// applies an edit to the state that is active. The surface sends these edits through its own TAP; objects that are
-/// not sealed keep the public API.
+/// applies an edit to the state that is active. The surface sends these edits through its own TAP: those of sealed
+/// objects, those of visual states that can be active, and the removal of a style from a dictionary together with the
+/// addition that pairs with it. Other edits keep the public API.
 /// </para>
 /// <para>
-/// The framework records the elements that use a style only while it stores source information, so Program enables
-/// that before the first style is applied; otherwise these calls succeed without updating anything. XAML Diagnostics
-/// also keeps every object it is given alive until the process exits, so only edits that need it take this path.
+/// The framework records the elements that use a style only while it stores source information, so
+/// <see cref="Program"/> enables that before the first style is applied; otherwise these calls succeed without
+/// updating anything. XAML Diagnostics also keeps every object it is given alive until the process exits, so only
+/// edits that need it take this path.
 /// </para>
 /// </remarks>
-internal sealed class StyleEditService(Action requestDiagnosticsConnection)
+internal sealed class StyleEditService
 {
     private const string StyleSettersPropertyName = "Microsoft.UI.Xaml.Style.Setters";
     private const string VisualStateSettersPropertyName = "Microsoft.UI.Xaml.VisualState.Setters";
+    private const string BasedOnPropertyName = "Microsoft.UI.Xaml.Style.BasedOn";
     private const string RefreshAdvice = "Refresh the designer to see the change.";
     private const string VisualStateFallback = "the setters of a visual state change in the preview when the state is entered again or the designer is refreshed.";
-    private const string DictionaryFallback = "references to a rebuilt or moved style keep the old style until the designer is refreshed, except the Style of elements, which moves to a rebuilt style.";
+    private const string DictionaryFallback = "elements whose Style is a rebuilt style move to the new one; other references to a rebuilt or moved style, and the elements that use it as an implicit style, keep the old style until the designer is refreshed.";
 
+    private readonly Action _requestDiagnosticsConnection;
     private readonly ConditionalWeakTable<SetterBaseCollection, DependencyObject> _setterCollectionOwners = new();
     private readonly ReplacedValueTracker _replacedValues = new();
-    private readonly HashSet<object> _keysRemovedThroughDiagnostics = [];
+    private readonly BestEffortSteps _moveSteps;
+    private readonly ReferenceMover<FrameworkElement, Style> _elementStyles;
+    private readonly ReferenceMover<Style, Style> _basedOnStyles;
+    private readonly DetachedKeyCounter _keysRemovedThroughDiagnostics = new();
     private readonly HashSet<string> _loggedProblems = [];
     private bool _nativeUnavailable;
+    private int _detachedBuilds;
+
+    public StyleEditService(Action requestDiagnosticsConnection)
+    {
+        _requestDiagnosticsConnection = requestDiagnosticsConnection;
+        _moveSteps = new(ReportMoveFailure);
+        _elementStyles = new(
+            static element => element.ReadLocalValue(FrameworkElement.StyleProperty) as Style,
+            static (element, style) => StyleReplacementRules.CanStyle(style.TargetType, element),
+            static (element, style) => element.Style = style,
+            ReportMoveFailure
+        );
+        _basedOnStyles = new(
+            static style => style.BasedOn,
+            static (style, baseStyle) => StyleReplacementRules.CanBaseOn(style.TargetType, baseStyle.TargetType),
+            SetBasedOn,
+            ReportMoveFailure
+        );
+    }
+
+    /// <summary>
+    /// Marks the actions that build a new document or a lookup value, until the returned scope is disposed.
+    /// </summary>
+    /// <remarks>
+    /// The visual states that these actions build are not in the live tree yet, so the public API applies their
+    /// setters; XAML Diagnostics would only keep them alive.
+    /// </remarks>
+    public IDisposable EnterDetachedBuild()
+    {
+        _detachedBuilds++;
+        return new DetachedBuildScope(this);
+    }
 
     /// <summary>
     /// Remembers the Style or VisualState that owns a setter collection.
@@ -111,12 +153,12 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
     }
 
     /// <summary>
-    /// Sets a property of a sealed Setter or Style, such as Style.BasedOn. Returns <see langword="false"/> when the
-    /// public API applies the edit.
+    /// Sets a property of a sealed Setter or Style, such as <see cref="Style.BasedOn"/>. Returns
+    /// <see langword="false"/> when the public API applies the edit.
     /// </summary>
     /// <remarks>
-    /// A null value also stands in for clearing the property: clearing Style.BasedOn through XAML Diagnostics leaves
-    /// the elements unchanged, while setting it to null updates them.
+    /// A null value also stands in for clearing the property: clearing <see cref="Style.BasedOn"/> through
+    /// XAML Diagnostics leaves the elements unchanged, while setting it to null updates them.
     /// </remarks>
     public bool TrySetProperty(object target, string fullPropertyName, object? value)
     {
@@ -134,6 +176,24 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
         string propertyName = XamlDiagnosticsPropertyName.FromActionProperty(fullPropertyName, declaringType);
         object? providedValue = XamlRuntimeUtilities.ProvideMarkupExtensionValue(value);
         return Invoke($"set {propertyName}", fallback: null, pointers => NativeMethods.WinUIDesignerDiagnostics_SetProperty(pointers[0], propertyName, pointers[1]), target, providedValue);
+    }
+
+    /// <summary>
+    /// Remembers a Style whose BasedOn an action set, so that <see cref="CompleteBatch"/> moves that reference when
+    /// Visual Studio rebuilds the base style.
+    /// </summary>
+    /// <remarks>
+    /// The surface resolves the <c>{StaticResource}</c> of an action itself, so the framework does not know the
+    /// reference and XAML Diagnostics does not move it. The style can be in any dictionary of a document, including a
+    /// theme dictionary or the resources of an element, or inline in an element.
+    /// </remarks>
+    public void TrackPropertySet(object target, string fullPropertyName)
+    {
+        if (target is Style style
+            && XamlDiagnosticsPropertyName.FromActionProperty(fullPropertyName, typeof(Style).FullName!) == BasedOnPropertyName)
+        {
+            _basedOnStyles.Track(style);
+        }
     }
 
     /// <summary>
@@ -160,18 +220,19 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
             return false;
         }
 
-        _keysRemovedThroughDiagnostics.Add(key);
+        _keysRemovedThroughDiagnostics.Removed(key);
         return true;
     }
 
     /// <summary>
-    /// Adds a Style under a key that was removed through XAML Diagnostics. Returns <see langword="false"/> when the
-    /// public API applies the edit.
+    /// Adds a Style under a key whose removal through XAML Diagnostics no addition has paired with yet. Returns
+    /// <see langword="false"/> when the public API applies the edit.
     /// </summary>
     /// <remarks>
     /// Only an addition through XAML Diagnostics resolves the references that a removal through it detached; after
-    /// a public removal it resolves nothing. Other keys keep the public API, because XAML Diagnostics keeps every
-    /// object it is given alive until the process exits.
+    /// a public removal it resolves nothing. Each such removal pairs with one addition, in this batch or a later one.
+    /// Other additions keep the public API, because XAML Diagnostics keeps every object it is given alive until the
+    /// process exits.
     /// </remarks>
     public bool TryAddDictionaryEntry(object dictionary, object? key, object? value)
     {
@@ -183,8 +244,8 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
         _replacedValues.Added(resources, key, style);
 
         // XAML Diagnostics adds new keys only; the public indexer replaces an existing value.
-        return _keysRemovedThroughDiagnostics.Contains(key)
-            && !resources.ContainsKey(key)
+        return !resources.ContainsKey(key)
+            && _keysRemovedThroughDiagnostics.TryPairAddition(key)
             && Invoke("add a style to its resource dictionary", DictionaryFallback, pointers => NativeMethods.WinUIDesignerDiagnostics_AddDictionaryItem(pointers[0], pointers[1], pointers[2]), resources, key, style);
     }
 
@@ -221,9 +282,17 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
     /// <remarks>
     /// XAML Diagnostics re-resolves the <c>{StaticResource}</c> references that the XAML reader resolved, but the
     /// surface resolves those of construction actions itself, so the framework does not know them; without
-    /// XAML Diagnostics nothing is re-resolved. This moves the Style of every element in <paramref name="roots"/>, and
-    /// BasedOn of the styles in the same dictionary and in the application resources, that still refer to a replaced
-    /// style. Visual Studio addresses the new style through its own new handles, so no handle has to move.
+    /// XAML Diagnostics nothing is re-resolved. This moves what still refers to a replaced style: the Style of every
+    /// element in <paramref name="roots"/>, BasedOn of the styles in the same dictionary and in the application
+    /// resources, and BasedOn of every style that <see cref="TrackPropertySet"/> remembered, wherever that style is.
+    /// Visual Studio addresses the new style through its own new handles, so no handle has to move.
+    /// <para>
+    /// The edits of the batch are applied by then, so moving is best effort and does not fail the batch: a reference
+    /// that WinUI does not let take the new style, such as an element of a type that the rebuilt style no longer
+    /// targets, keeps the old one, as before the edit; a failure is logged once, and the other references still move.
+    /// Each step of a replacement is guarded on its own, so a failure in one step, such as a visual tree that cannot be
+    /// walked, does not keep the later steps or the other replacements of the batch from moving their references.
+    /// </para>
     /// </remarks>
     public void CompleteBatch(IEnumerable<FrameworkElement> roots)
     {
@@ -241,45 +310,49 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
                 continue;
             }
 
+            // The elements of every open document that use the replaced style.
             foreach (FrameworkElement root in rootList)
             {
-                ReplaceElementStyles(root, oldStyle, newStyle);
+                _moveSteps.Run(() => ReplaceElementStyles(root, oldStyle, newStyle));
             }
 
+            // The styles BasedOn it in its own dictionary and in the application resources.
             var visited = new HashSet<ResourceDictionary>(ReferenceEqualityComparer.Instance);
-            ReplaceBasedOn((ResourceDictionary)dictionary, oldStyle, newStyle, visited);
-            ReplaceBasedOn(Application.Current.Resources, oldStyle, newStyle, visited);
+            _moveSteps.Run(() => ReplaceBasedOn((ResourceDictionary)dictionary, oldStyle, newStyle, visited));
+            _moveSteps.Run(() => ReplaceBasedOn(Application.Current.Resources, oldStyle, newStyle, visited));
+
+            // The styles that actions based on it, wherever they are.
+            _moveSteps.Run(() => _basedOnStyles.MoveTracked(oldStyle, newStyle));
         }
     }
 
-    // Edits go through XAML Diagnostics when the collection is sealed, or when it belongs to a VisualState: only
-    // XAML Diagnostics updates the active state.
+    // Edits go through XAML Diagnostics when the collection is sealed, or when it belongs to a VisualState that can be
+    // the active state: only XAML Diagnostics updates the active state.
     private bool TryGetDiagnosticsRoute(
         SetterBaseCollection collection,
         [NotNullWhen(true)] out DependencyObject? owner,
         [NotNullWhen(true)] out string? collectionPropertyName)
     {
         collectionPropertyName = null;
+
+        // No GetProperty action named the owner of the collection.
         if (!_setterCollectionOwners.TryGetValue(collection, out owner))
         {
             if (collection.IsSealed)
             {
                 throw Report(
                     "unknown-owner",
-                    $"The setters belong to a style in use, which WinUI does not allow to change, and the surface does not know the style. {RefreshAdvice}");
+                    $"The setters belong to a style in use, which WinUI does not allow to change, and the surface does not know the style. {RefreshAdvice}"
+                );
             }
 
             return false;
         }
 
-        if (owner is VisualState)
-        {
-            collectionPropertyName = VisualStateSettersPropertyName;
-            return true;
-        }
-
-        collectionPropertyName = StyleSettersPropertyName;
-        return collection.IsSealed;
+        // The setters of a known Style or VisualState.
+        bool ownerIsVisualState = owner is VisualState;
+        collectionPropertyName = ownerIsVisualState ? VisualStateSettersPropertyName : StyleSettersPropertyName;
+        return SetterEditRoute.UsesXamlDiagnostics(collection.IsSealed, ownerIsVisualState, buildsDetachedObjects: _detachedBuilds > 0);
     }
 
     // A null fallback marks an edit that only XAML Diagnostics can apply: it throws when that fails. Otherwise
@@ -298,15 +371,17 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
             hr = NativeMethods.E_PENDING;
         }
 
+        // Applied.
         if (hr == NativeMethods.S_OK)
         {
             WinUIDesignerLogger.LogTrace("Surface", $"Applied through XAML Diagnostics: {operation}.");
             return true;
         }
 
+        // Not connected (yet): ask for the connection again.
         if (hr == NativeMethods.E_PENDING)
         {
-            requestDiagnosticsConnection();
+            _requestDiagnosticsConnection();
             if (fallback is not null)
             {
                 LogOnce($"unavailable:{fallback}", $"XAML Diagnostics is not connected: {fallback}");
@@ -315,16 +390,19 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
 
             throw Report(
                 "unavailable",
-                $"Could not {operation}: WinUI does not allow changing a style that is in use, and the XAML Diagnostics connection that applies such edits is not available. {RefreshAdvice}");
+                $"Could not {operation}: WinUI does not allow changing a style that is in use, and the XAML Diagnostics connection that applies such edits is not available. {RefreshAdvice}"
+            );
         }
 
+        // Rejected, and the public API applies the edit instead.
         if (fallback is not null)
         {
-            LogOnce($"failed:{operation}:{hr}", $"Could not {operation} through XAML Diagnostics (0x{hr:X8}): {fallback}");
+            LogOnce($"failed:{operation}:{hr:X8}", $"Could not {operation} through XAML Diagnostics (0x{hr:X8}): {fallback}");
             return false;
         }
 
-        throw Report($"failed:{operation}:{hr}", $"Could not {operation}: XAML Diagnostics returned 0x{hr:X8}. {RefreshAdvice}");
+        // Rejected, and nothing else can apply the edit.
+        throw Report($"failed:{operation}:{hr:X8}", $"Could not {operation}: XAML Diagnostics returned 0x{hr:X8}. {RefreshAdvice}");
     }
 
     private static int CallWithAbiPointers(Func<IntPtr[], int> call, object?[] objects)
@@ -370,12 +448,20 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
         }
     }
 
-    private static void ReplaceElementStyles(DependencyObject element, Style oldStyle, Style newStyle)
+    // The cause of a StyleEditException is logged once already.
+    private void ReportMoveFailure(Exception ex)
     {
-        if (element is FrameworkElement frameworkElement
-            && ReferenceEquals(frameworkElement.ReadLocalValue(FrameworkElement.StyleProperty), oldStyle))
+        if (ex is not StyleEditException)
         {
-            frameworkElement.Style = newStyle;
+            LogOnce($"move:{ex.HResult:X8}", $"Could not move a reference to a rebuilt style: {ex.Message} {RefreshAdvice}");
+        }
+    }
+
+    private void ReplaceElementStyles(DependencyObject element, Style oldStyle, Style newStyle)
+    {
+        if (element is FrameworkElement frameworkElement)
+        {
+            _elementStyles.Move(frameworkElement, oldStyle, newStyle);
         }
 
         int childCount = VisualTreeHelper.GetChildrenCount(element);
@@ -387,36 +473,50 @@ internal sealed class StyleEditService(Action requestDiagnosticsConnection)
 
     private void ReplaceBasedOn(ResourceDictionary dictionary, Style oldStyle, Style newStyle, HashSet<ResourceDictionary> visited)
     {
-        // Enumerating a dictionary creates its deferred resources; the framework's control styles hold thousands
-        // and never refer to a project style.
-        if (dictionary is XamlControlsResources || !visited.Add(dictionary))
+        if (!StyleReplacementRules.SearchesDictionary(dictionary is XamlControlsResources, dictionary.Source) || !visited.Add(dictionary))
         {
             return;
         }
 
-        foreach (KeyValuePair<object, object> entry in dictionary)
-        {
-            if (entry.Value is not Style style || !ReferenceEquals(style.BasedOn, oldStyle))
-            {
-                continue;
-            }
-
-            try
-            {
-                if (!TrySetProperty(style, nameof(Style.BasedOn), newStyle))
-                {
-                    style.BasedOn = newStyle;
-                }
-            }
-            catch (StyleEditException)
-            {
-                // Already logged once; the remaining references can still move.
-            }
-        }
-
+        _basedOnStyles.MoveAll(StylesIn(dictionary), oldStyle, newStyle);
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
             ReplaceBasedOn(merged, oldStyle, newStyle, visited);
+        }
+    }
+
+    // A sealed style takes its new base through XAML Diagnostics, which also updates the elements that use it.
+    private void SetBasedOn(Style style, Style baseStyle)
+    {
+        if (!TrySetProperty(style, nameof(Style.BasedOn), baseStyle))
+        {
+            style.BasedOn = baseStyle;
+        }
+    }
+
+    // Enumerating a dictionary creates its deferred resources, and creating one can fail.
+    private static IEnumerable<Style> StylesIn(ResourceDictionary dictionary)
+    {
+        foreach (KeyValuePair<object, object> entry in dictionary)
+        {
+            if (entry.Value is Style style)
+            {
+                yield return style;
+            }
+        }
+    }
+
+    private sealed class DetachedBuildScope(StyleEditService service) : IDisposable
+    {
+        private StyleEditService? _service = service;
+
+        public void Dispose()
+        {
+            if (_service is not null)
+            {
+                _service._detachedBuilds--;
+                _service = null;
+            }
         }
     }
 }

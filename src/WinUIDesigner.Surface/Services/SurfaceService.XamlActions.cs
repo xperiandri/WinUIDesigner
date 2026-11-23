@@ -102,6 +102,7 @@ internal sealed partial class SurfaceService
             }
             else
             {
+                // Any other failure is unexpected.
                 WinUIDesignerLogger.LogError("Surface", $"ExecuteXamlActions ({(int)DesignerMessageId.ExecuteXamlActions}) failed during '{failedAction?.Action}'.", ex);
             }
 
@@ -130,12 +131,14 @@ internal sealed partial class SurfaceService
             return DispatcherOperation.InvokeAsync(_dispatcherQueue, () => ExecuteLookupActions(request, serializer), _protocolHandler.CancellationToken).GetAwaiter().GetResult();
         }
 
+        // The actions build a value for Visual Studio to read, outside the live tree.
+        using IDisposable detachedBuild = _styleEdits.EnterDetachedBuild();
         object? captured = null;
         var deferredSetterInsertions = CreateDeferredSetterInsertions();
         var actions = XamlActionJsonSerializer.Deserialize(request.Actions ?? []);
         foreach (XamlAction action in actions)
         {
-            Execute(action, (_, value) => captured = value, deferredSetterInsertions);
+            Execute(action, deferredSetterInsertions, (_, value) => captured = value);
         }
 
         foreach (DeferredSetterInsertion insertion in deferredSetterInsertions.TakeAll())
@@ -150,6 +153,8 @@ internal sealed partial class SurfaceService
     {
         using var scope = _objectIdentity.EnterDocument(document.DocumentId);
 
+        // The document joins a surface only after it is built.
+        using IDisposable detachedBuild = _styleEdits.EnterDetachedBuild();
         object? root = null;
         var deferredSetterInsertions = CreateDeferredSetterInsertions();
         var actions = XamlActionJsonSerializer.Deserialize(document.Actions ?? []);
@@ -160,7 +165,7 @@ internal sealed partial class SurfaceService
 
             try
             {
-                Execute(action, (id, value) =>
+                Execute(action, deferredSetterInsertions, (id, value) =>
                 {
                     if (id != document.DocumentId)
                     {
@@ -168,7 +173,7 @@ internal sealed partial class SurfaceService
                     }
 
                     root = value;
-                }, deferredSetterInsertions);
+                });
 
                 TrackActionObjects();
             }
@@ -216,20 +221,6 @@ internal sealed partial class SurfaceService
         }
     }
 
-    // Keeps the order of operations on one setter collection: the indices of a batch assume the earlier actions ran.
-    private void InsertDeferredSetters(DeferredInsertionQueue<DeferredSetterInsertion>? deferredSetterInsertions, object? collection)
-    {
-        if (deferredSetterInsertions is null || collection is not SetterBaseCollection)
-        {
-            return;
-        }
-
-        foreach (DeferredSetterInsertion insertion in deferredSetterInsertions.TakeFor(collection))
-        {
-            InsertSetter(insertion);
-        }
-    }
-
     private List<FrameworkElement> GetSurfaceRoots()
     {
         var roots = new List<FrameworkElement>(_surfaces.Count);
@@ -271,8 +262,8 @@ internal sealed partial class SurfaceService
 
     private void Execute(
         XamlAction action,
-        Action<int, object?>? setSurfaceContentOverride = null,
-        DeferredInsertionQueue<DeferredSetterInsertion>? deferredSetterInsertions = null)
+        DeferredInsertionQueue<DeferredSetterInsertion> deferredSetterInsertions,
+        Action<int, object?>? setSurfaceContentOverride = null)
     {
         switch (action)
         {
@@ -385,6 +376,7 @@ internal sealed partial class SurfaceService
                     XamlRuntimeUtilities.SetPropertyValue(propertyOwner, setProperty.FullPropertyName, newValue);
                 }
 
+                _styleEdits.TrackPropertySet(propertyOwner, setProperty.FullPropertyName);
                 break;
             case ClearPropertyAction clearProperty:
                 object clearedOwner = (ResolveObject(clearProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearProperty.ParentHandle}."));
@@ -397,11 +389,13 @@ internal sealed partial class SurfaceService
             case ClearCollectionPropertyAction clearCollection:
                 object collectionOwner = (ResolveObject(clearCollection.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearCollection.ParentHandle}."));
                 object? clearedCollection = XamlRuntimeUtilities.GetPropertyValue(collectionOwner, clearCollection.FullPropertyName);
-                InsertDeferredSetters(deferredSetterInsertions, clearedCollection);
-                if (!_styleEdits.TryClearSetters(collectionOwner, clearedCollection))
+                deferredSetterInsertions.RunAfterPendingInsertions(clearedCollection, InsertSetter, () =>
                 {
-                    XamlRuntimeUtilities.ClearCollectionProperty(collectionOwner, clearCollection.FullPropertyName);
-                }
+                    if (!_styleEdits.TryClearSetters(collectionOwner, clearedCollection))
+                    {
+                        XamlRuntimeUtilities.ClearCollectionProperty(collectionOwner, clearCollection.FullPropertyName);
+                    }
+                });
 
                 break;
             case UpdateEventHandlerAction updateEvent:
@@ -409,23 +403,14 @@ internal sealed partial class SurfaceService
                 break;
             case GetChildAction getChild:
                 object indexedParent = (ResolveObject(getChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getChild.ParentHandle}."));
-                InsertDeferredSetters(deferredSetterInsertions, indexedParent);
-                _actionObjects[getChild.ChildHandle] = XamlRuntimeUtilities.GetChild(indexedParent, getChild.Index);
+                deferredSetterInsertions.RunAfterPendingInsertions(indexedParent, InsertSetter, () => _actionObjects[getChild.ChildHandle] = XamlRuntimeUtilities.GetChild(indexedParent, getChild.Index));
                 break;
             case AddChildAction addChild:
                 object childOwner = (ResolveObject(addChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {addChild.ParentHandle}."));
                 object? child = ResolveActionValue(addChild.ChildHandle, childOwner);
                 if (childOwner is SetterBaseCollection setterCollection && child is SetterBase setter)
                 {
-                    var insertion = new DeferredSetterInsertion(action, setterCollection, addChild.Index, setter);
-                    if (deferredSetterInsertions is not null)
-                    {
-                        deferredSetterInsertions.Add(insertion);
-                    }
-                    else
-                    {
-                        InsertSetter(insertion);
-                    }
+                    deferredSetterInsertions.Add(new(action, setterCollection, addChild.Index, setter));
                 }
                 else
                 {
@@ -435,11 +420,13 @@ internal sealed partial class SurfaceService
                 break;
             case RemoveChildAction removeChild:
                 object removalParent = (ResolveObject(removeChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {removeChild.ParentHandle}."));
-                InsertDeferredSetters(deferredSetterInsertions, removalParent);
-                if (removalParent is not SetterBaseCollection removalSetters || !_styleEdits.TryRemoveSetter(removalSetters, removeChild.Index))
+                deferredSetterInsertions.RunAfterPendingInsertions(removalParent, InsertSetter, () =>
                 {
-                    XamlRuntimeUtilities.RemoveChild(removalParent, removeChild.Index);
-                }
+                    if (removalParent is not SetterBaseCollection removalSetters || !_styleEdits.TryRemoveSetter(removalSetters, removeChild.Index))
+                    {
+                        XamlRuntimeUtilities.RemoveChild(removalParent, removeChild.Index);
+                    }
+                });
 
                 break;
             case GetDictionaryEntryAction getDictionaryEntry:

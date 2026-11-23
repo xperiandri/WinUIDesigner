@@ -25,30 +25,56 @@ internal sealed class DeferredInsertionQueue<TEntry>(Func<TEntry, object> getTar
 
     public int Count => _entries.Count;
 
-    public void Add(TEntry entry)
-    {
-        _entries.Add(entry);
-    }
+    public void Add(TEntry entry) => _entries.Add(entry);
 
     /// <summary>
     /// Removes and returns the pending insertions into <paramref name="target"/>, oldest first.
     /// </summary>
+    /// <remarks>
+    /// The surface takes before every GetChild, RemoveChild and ClearCollectionProperty, whatever the collection is,
+    /// and while a document is built the queue holds every setter of the document. Most calls therefore find nothing,
+    /// and then the queue is left as it is.
+    /// </remarks>
     public List<TEntry> TakeFor(object target)
     {
         var taken = new List<TEntry>();
-        var remaining = new List<TEntry>(_entries.Count);
         foreach (TEntry entry in _entries)
         {
-            (ReferenceEquals(getTarget(entry), target) ? taken : remaining).Add(entry);
+            if (ReferenceEquals(getTarget(entry), target))
+            {
+                taken.Add(entry);
+            }
         }
 
         if (taken.Count != 0)
         {
-            _entries.Clear();
-            _entries.AddRange(remaining);
+            RemoveEntriesFor(target);
         }
 
         return taken;
+    }
+
+    // A method of its own: a lambda that captured the target inside TakeFor would allocate its closure on every call.
+    private void RemoveEntriesFor(object target) => _entries.RemoveAll(entry => ReferenceEquals(getTarget(entry), target));
+
+    /// <summary>
+    /// Inserts the pending entries for <paramref name="target"/>, oldest first, and then runs
+    /// <paramref name="operation"/>, which addresses the items of the target by index.
+    /// </summary>
+    /// <param name="target">The collection the operation addresses; nothing is pending for <see langword="null"/>.</param>
+    /// <param name="insert">Applies one pending insertion.</param>
+    /// <param name="operation">Removes, reads or clears items of the target.</param>
+    public void RunAfterPendingInsertions(object? target, Action<TEntry> insert, Action operation)
+    {
+        if (target is not null)
+        {
+            foreach (TEntry entry in TakeFor(target))
+            {
+                insert(entry);
+            }
+        }
+
+        operation();
     }
 
     /// <summary>
