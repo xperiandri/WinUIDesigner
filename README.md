@@ -51,3 +51,5 @@ See [Architecture](docs/architecture.md) for the designer's processing flow and 
 ## Diagnostics
 
 Log files are written to `%LOCALAPPDATA%\WinUIDesigner\Logs`. Check `Options` > `WinUI Designer` in Visual Studio.
+
+Code of the project that fails in the designer, an error of the XAML framework, and a framework that stops drawing are handled as described in [Failures after the preview is shown](docs/winui-designer.md#failures-after-the-preview-is-shown).

@@ -65,16 +65,33 @@ internal sealed partial class DesignerSurface : IDisposable
 
     public bool IsFrozen { get; private set; }
 
+    /// <summary>Whether the island of the document exists and is shown, so that frames are drawn for it.</summary>
+    public bool IsHostVisible => _viewportRoot.XamlRoot?.IsHostVisible == true;
+
     public event Action<double>? DpiChanged;
+
+    // Suspending rendering is a switch of the whole process: layout goes on, and nothing is drawn or animated in any
+    // island until it is resumed. Visual Studio unfreezes a surface in a frame of its own window, which a window that is
+    // not drawn does not produce, and the resumption can fail, so a suspension that nothing resumed is resumed here:
+    // after a while, and again until it succeeds (FreezeRecovery). A timer that nothing refers to is collected, and does
+    // not fire.
+    private DispatcherQueueTimer? _freezeTimer;
+    private int _resumeRetries;
 
     public void Freeze()
     {
         if (!_renderingSuspended)
         {
-            _renderingSuspended = DiagnosticsPropertySourceService.TrySetRenderingEnabled(false);
+            _renderingSuspended = DiagnosticsPropertySourceService.TrySetRenderingEnabled(false, out int result);
+            if (!_renderingSuspended)
+            {
+                WinUIDesignerLogger.LogTrace("Surface", $"Rendering could not be suspended for a freeze (0x{result:X8}).");
+            }
         }
 
         IsFrozen = true;
+        ArmFreezeTimer(FreezeRecovery.Timeout);
+        WinUIDesignerLogger.LogTrace("Surface", $"The surface was frozen (rendering suspended: {_renderingSuspended}).");
     }
 
     public void Unfreeze()
@@ -84,11 +101,14 @@ internal sealed partial class DesignerSurface : IDisposable
             return;
         }
 
-        if (_renderingSuspended && DiagnosticsPropertySourceService.TrySetRenderingEnabled(true))
+        _freezeTimer?.Stop();
+        _resumeRetries = 0;
+        if (!TryResumeRendering())
         {
-            _renderingSuspended = false;
+            ArmFreezeTimer(FreezeRecovery.ResumeRetryInterval);
         }
 
+        WinUIDesignerLogger.LogTrace("Surface", $"The surface was unfrozen (rendering suspended: {_renderingSuspended}).");
         IsFrozen = false;
         if (_compositionRenderingHandler is not null)
         {
@@ -116,6 +136,73 @@ internal sealed partial class DesignerSurface : IDisposable
     public bool WaitForUnfreezeComposition(int millisecondsTimeout)
     {
         return _unfreezeCompositionCompleted.Wait(millisecondsTimeout);
+    }
+
+    private bool TryResumeRendering()
+    {
+        // Nothing is suspended.
+        if (!_renderingSuspended)
+        {
+            return true;
+        }
+
+        // Resumed.
+        if (DiagnosticsPropertySourceService.TrySetRenderingEnabled(true, out int result))
+        {
+            _renderingSuspended = false;
+            return true;
+        }
+
+        // Still suspended: the caller tries again later.
+        WinUIDesignerLogger.LogWarning("Surface", $"Rendering could not be resumed after a freeze (0x{result:X8}); it is tried again.");
+        return false;
+    }
+
+    private void ArmFreezeTimer(TimeSpan interval)
+    {
+        DispatcherQueueTimer timer = _freezeTimer ??= DispatcherQueue.GetForCurrentThread().CreateTimer();
+        timer.Stop();
+        timer.Interval = interval;
+        timer.IsRepeating = false;
+        timer.Tick -= OnFreezeTimerTick;
+        timer.Tick += OnFreezeTimerTick;
+        timer.Start();
+    }
+
+    private void OnFreezeTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+
+        switch (FreezeRecovery.OnTimer(_disposed, IsFrozen, _renderingSuspended))
+        {
+            // Visual Studio did not unfreeze the surface in time.
+            case FreezeTimerStep.Unfreeze:
+                WinUIDesignerLogger.LogWarning("Surface", $"Visual Studio did not unfreeze the surface within {FreezeRecovery.Timeout.TotalSeconds:0} s; it is unfrozen.");
+                Unfreeze();
+                break;
+
+            // The surface was unfrozen, but its rendering could not be resumed: try again, a limited number of times.
+            case FreezeTimerStep.ResumeRendering:
+                if (!TryResumeRendering() && FreezeRecovery.ShouldRetryResume(++_resumeRetries))
+                {
+                    ArmFreezeTimer(FreezeRecovery.ResumeRetryInterval);
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Resumes rendering when the process is believed to draw but is not: nothing is frozen, so nothing may keep rendering
+    /// suspended, and a resumption that is not needed changes nothing. Visual Studio shows or moves a surface when it comes
+    /// back to it, which is the moment that a preview that does not draw is noticed.
+    /// </summary>
+    public static void EnsureRenderingResumed()
+    {
+        if (!DiagnosticsPropertySourceService.TrySetRenderingEnabled(true, out int result))
+        {
+            WinUIDesignerLogger.LogTrace("Surface", $"Rendering could not be resumed (0x{result:X8}).");
+        }
     }
 
     public Rect GetDocumentBounds()
@@ -156,6 +243,9 @@ internal sealed partial class DesignerSurface : IDisposable
             _xamlSource = new DesktopWindowXamlSource();
             _xamlSource.Initialize(Win32Interop.GetWindowIdFromWindow(_hostWindow));
             _xamlSource.Content = _viewportRoot;
+
+            // The log of a framework error tells how far the first island of the process got.
+            RenderFrames.Counter.MeasureFirstIsland();
             if (_viewportRoot.XamlRoot is { } root)
             {
                 root.Changed += OnXamlRootChanged;
@@ -387,6 +477,7 @@ internal sealed partial class DesignerSurface : IDisposable
         }
 
         IsFrozen = false;
+        _freezeTimer?.Stop();
         _viewportRoot.LayoutUpdated -= OnLayoutUpdated;
 
         if (_viewportRoot.XamlRoot is { } root)

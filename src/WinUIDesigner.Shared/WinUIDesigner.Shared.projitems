@@ -11,6 +11,10 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Interop\NativeMethods.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Protocol\DesignerMessageId.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Recovery\RenderStallProcessReports.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Recovery\RenderStallReport.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Recovery\RenderStallRestartPolicy.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Recovery\RestartLimiter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Diagnostics\WinUIDesignerLogger.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Diagnostics\InterpolatedStringHandlerAttribute.cs" />
   </ItemGroup>

@@ -38,6 +38,7 @@ internal sealed partial class SurfaceService
 
     private async Task<CreateSurfaceResponseInfo> HandleCreateSurfaceAsync(CreateSurfaceRequestInfo requestInfo)
     {
+        Breadcrumb($"CreateSurface document {requestInfo.Document?.DocumentId}");
         try
         {
             if (!await _constructionGate.WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false))
@@ -100,6 +101,7 @@ internal sealed partial class SurfaceService
                 if (requestInfo.Application is not null)
                 {
                     string? appXaml = TryReadPreparedXaml(requestInfo.Application) ?? requestInfo.Application.InitialXamlContent;
+                    _applicationXaml = appXaml;
                     XDocument? appDocument = string.IsNullOrWhiteSpace(appXaml) ? null : XDocument.Parse(appXaml);
 
                     _hasXamlControlsResources = appDocument?.Root?.DescendantsAndSelf()
@@ -209,6 +211,9 @@ internal sealed partial class SurfaceService
                         _protocolHandler.PostMessage((int)DesignerMessageId.OnApplicationEvent, new OnApplicationEventResponse { EventName = "OnIdle" });
                     });
 
+                    // A process whose framework has stopped drawing does not draw this document either.
+                    TellRenderStall(documentId, surface);
+
                     return new CreateSurfaceResponseInfo { DispatcherHandle = dispatcherHandle, RootVisualHandle = rootVisualHandle };
                 }
                 catch
@@ -276,6 +281,7 @@ internal sealed partial class SurfaceService
 
     private async Task<ResponseWithError> HandleCloseDocumentAsync(CloseDocumentRequestInfo request)
     {
+        Breadcrumb($"CloseDocument document {request.DocumentId}");
         try
         {
             if (!await _constructionGate.WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false))
@@ -390,6 +396,7 @@ internal sealed partial class SurfaceService
 
     private async Task<ResponseWithError> HandleSetDeviceSizeAsync(SetDeviceSizeRequestInfo request)
     {
+        Breadcrumb($"SetDeviceSize document {request.DocumentId}: {request.Width}x{request.Height}");
         try
         {
             return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
@@ -417,6 +424,7 @@ internal sealed partial class SurfaceService
 
     private void HandleSetFreezeState(SetFreezeStateInfo request)
     {
+        Breadcrumb($"SetFreezeState document {request.DocumentIdToFreeze}");
         if (_dispatcherQueue.HasThreadAccess)
         {
             ApplyFreezeState(request.DocumentIdToFreeze);
@@ -450,6 +458,7 @@ internal sealed partial class SurfaceService
 
     private async Task<ResponseWithError> HandleSetSurfacePositionAsync(SetSurfacePositionRequestInfo request)
     {
+        Breadcrumb($"SetSurfacePosition document {request.DocumentId}: {request.Width}x{request.Height}");
         try
         {
             return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
@@ -460,10 +469,21 @@ internal sealed partial class SurfaceService
                 }
 
                 using var documentScope = _objectIdentity.EnterDocument(request.DocumentId);
+
+                // Visual Studio shows or moves a surface when it comes back to it. Nothing that is frozen is shown, so
+                // when nothing is frozen, rendering that a freeze left suspended is resumed here.
+                if (FreezeRecovery.MayResumeRendering(_surfaces.Values.Select(other => other.IsFrozen)))
+                {
+                    DesignerSurface.EnsureRenderingResumed();
+                }
+
                 surface.SetSurfacePosition(new IntPtr(request.ParentWindow), request.Width, request.Height);
                 LoadAppResourcesIfNeeded();
                 _visualTreeService.PublishMutation(surface.Content, VisualMutationType.Add);
                 PublishSurfaceBounds(request.DocumentId, surface);
+
+                // A document that was open, but not shown, when the framework stopped drawing is not drawn either.
+                TellRenderStall(request.DocumentId, surface);
 
                 return new ResponseWithError { HResult = 0 };
             }, _protocolHandler.CancellationToken).ConfigureAwait(false);
