@@ -495,7 +495,7 @@ internal sealed partial class SurfaceService
                 // left out (see ResourceEntryQuarantine), and each read is an operation of its own: one operation may
                 // take only so long, and the reads of a long text add up.
                 PreparedLoad? prepared = null;
-                ResourceEntryQuarantine quarantine = CreateResourceEntryQuarantine();
+                ResourceEntryQuarantine? quarantine = null;
                 while (true)
                 {
                     LoadedDocument? loaded = await DispatcherOperation.InvokeAsync<LoadedDocument?>(_dispatcherQueue, () =>
@@ -511,6 +511,8 @@ internal sealed partial class SurfaceService
                         }
                         catch (Exception ex)
                         {
+                            // Made on the UI thread, the only one that uses the expander (created on first use) whose origins it takes.
+                            quarantine ??= CreateResourceEntryQuarantine();
                             if (prepared.Root is { } preparedRoot && TryLeaveOutResource(quarantine, preparedRoot, sanitizedXaml, ex, $"document {document.DocumentId}"))
                             {
                                 return null;
