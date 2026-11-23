@@ -78,6 +78,18 @@
 		</Reference>
 	</ItemGroup>
 
+	<!-- The transport of the design-time options, tested with Visual Studio's own protocol types. -->
+	<ItemGroup>
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/WinUICreateSurfaceRequestInfo.cs" Link="WinUICreateSurfaceRequestInfo.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Vsix/Platform/IDesignTimeTargetProvider.cs" Link="IDesignTimeTargetProvider.cs" Visible="false" />
+		<Reference Include="Microsoft.VisualStudio.DesignTools.RuntimeHost">
+			<HintPath>$(VsInstallRoot)/Common7/IDE/PrivateAssemblies/Microsoft.VisualStudio.DesignTools.RuntimeHost.dll</HintPath>
+		</Reference>
+		<Reference Include="Microsoft.VisualStudio.DesignTools.SurfaceDesigner">
+			<HintPath>$(VsInstallRoot)/Common7/IDE/PrivateAssemblies/Microsoft.VisualStudio.DesignTools.SurfaceDesigner.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
 	<Import Project="..\..\src\WinUIDesigner.Shared\WinUIDesigner.Shared.projitems" Label="Shared" />
 
 </Project>
