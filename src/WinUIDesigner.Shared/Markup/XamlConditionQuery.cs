@@ -55,6 +55,7 @@ internal sealed class XamlConditionQuery
     /// </param>
     public static XamlConditionQuery Create(string? condition, Func<string, string?>? resolveNamespace)
     {
+        // A built-in method, or a text that is no condition, has no condition type to look for.
         XamlCondition parsed = XamlCondition.Parse(condition);
         if (parsed.Kind != XamlConditionKind.Custom)
         {
@@ -67,14 +68,15 @@ internal sealed class XamlConditionQuery
 
         // The six built-in methods are types of the presentation namespace as far as the XAML reader is
         // concerned, so it also finds them through a prefix that is bound to that namespace.
-        if (predicateNamespace == XamlNamespaceUri.PresentationNamespace && XamlCondition.IsBuiltInMethod(parsed.Name))
+        if (predicateNamespace == XamlNamespaces.Presentation && XamlCondition.IsBuiltInMethod(parsed.Name))
         {
             return CreateBuiltIn(parsed.WithoutPrefix());
         }
 
         string? clrNamespace = GetClrNamespace(predicateNamespace);
-        string? typeName = clrNamespace is null ? null : clrNamespace + "." + parsed.Name;
-        string key = (predicateNamespace ?? "?" + parsed.Prefix) + "|" + parsed.PositiveKey;
+        string? typeName = clrNamespace is null ? null : $"{clrNamespace}.{parsed.Name}";
+        string predicate = predicateNamespace ?? $"?{parsed.Prefix}";
+        string key = $"{predicate}|{parsed.PositiveKey}";
         return new XamlConditionQuery(parsed, predicateNamespace, typeName, key);
     }
 
@@ -83,42 +85,42 @@ internal sealed class XamlConditionQuery
     /// </summary>
     /// <param name="condition">The text of <see cref="Condition"/>.</param>
     /// <param name="predicateNamespace">The value of <see cref="PredicateNamespace"/>.</param>
-    public static XamlConditionQuery Create(string? condition, string? predicateNamespace)
-    {
-        return Create(condition, _ => predicateNamespace);
-    }
+    public static XamlConditionQuery Create(string? condition, string? predicateNamespace) => Create(condition, _ => predicateNamespace);
 
     private static XamlConditionQuery CreateBuiltIn(XamlCondition condition)
     {
         // A text that is not a condition is its own question: nothing else has the same answer.
-        string key = condition.Kind == XamlConditionKind.Unknown ? "!" + condition.Text : condition.PositiveKey;
+        string key = condition.Kind == XamlConditionKind.Unknown ? $"!{condition.Text}" : condition.PositiveKey;
         return new XamlConditionQuery(condition, predicateNamespace: null, typeName: null, key);
     }
 
     private static string? GetClrNamespace(string? namespaceUri)
     {
+        // The prefix is not declared.
         if (namespaceUri is null)
         {
             return null;
         }
 
-        string? name = null;
+        // The name is only looked at: a string is created for the one that is returned.
+        ReadOnlySpan<char> name = default;
         if (namespaceUri.StartsWith(XamlNamespaceUri.UsingScheme, StringComparison.Ordinal))
         {
-            name = namespaceUri.Substring(XamlNamespaceUri.UsingScheme.Length);
+            // "using:My.App" names the namespace after the scheme.
+            name = namespaceUri.AsSpan(XamlNamespaceUri.UsingScheme.Length);
         }
         else if (namespaceUri.StartsWith(_ClrNamespaceScheme, StringComparison.Ordinal))
         {
             // "clr-namespace:My.App;assembly=My.App" names the namespace up to the first ';'.
-            name = namespaceUri.Substring(_ClrNamespaceScheme.Length);
+            name = namespaceUri.AsSpan(_ClrNamespaceScheme.Length);
             int separator = name.IndexOf(';');
             if (separator >= 0)
             {
-                name = name.Substring(0, separator);
+                name = name.Slice(0, separator);
             }
         }
 
-        name = name?.Trim();
-        return string.IsNullOrEmpty(name) ? null : name;
+        name = name.Trim();
+        return name.IsEmpty ? null : name.ToString();
     }
 }

@@ -29,18 +29,21 @@ internal static class ConditionalNamespacePolicy
     /// </returns>
     public static XamlPrefixDisposition Classify(XamlNamespaceUri uri, Func<string, bool?>? evaluateCondition)
     {
+        // A namespace without a condition, or nobody to ask: the members are left as written.
         string? condition = uri.Condition;
         if (condition is null || evaluateCondition is null)
         {
             return XamlPrefixDisposition.Leave;
         }
 
+        // The condition is not decided yet: the members are left as written.
         bool? holds = evaluateCondition(condition);
         if (!holds.HasValue)
         {
             return XamlPrefixDisposition.Leave;
         }
 
+        // A condition that holds keeps the members; one that does not drops them.
         return holds.Value ? XamlPrefixDisposition.Keep : XamlPrefixDisposition.Drop;
     }
 }

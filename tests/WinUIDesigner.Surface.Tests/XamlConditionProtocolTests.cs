@@ -28,7 +28,8 @@ public sealed class XamlConditionProtocolTests
         XamlConditionService surface = CreateSurfaceConditions();
         link.Surface.RegisterAsyncMessageObserver<EvaluateXamlConditionsRequest, EvaluateXamlConditionsResponse>(
             _MessageId,
-            request => Task.FromResult(XamlConditionExchange.Answer(XamlConditionExchange.ReadQueries(request), surface)));
+            request => Task.FromResult(XamlConditionExchange.Answer(XamlConditionExchange.ReadQueries(request), surface))
+        );
         link.Start();
         List<XamlConditionQuery> queries =
         [
@@ -40,7 +41,8 @@ public sealed class XamlConditionProtocolTests
 
         EvaluateXamlConditionsResponse response = await Within(
             link.VisualStudio.SendMessageAsync<EvaluateXamlConditionsResponse>(_MessageId, XamlConditionExchange.CreateRequest(queries)),
-            _Long);
+            _Long
+        );
 
         CollectionAssert.AreEqual(new bool?[] { true, false, true, false }, response.Outcomes);
         Assert.IsNull(response.Error);
@@ -53,12 +55,14 @@ public sealed class XamlConditionProtocolTests
         XamlConditionService surface = CreateSurfaceConditions();
         link.Surface.RegisterAsyncMessageObserver<EvaluateXamlConditionsRequest, EvaluateXamlConditionsResponse>(
             _MessageId,
-            request => Task.FromResult(XamlConditionExchange.Answer(XamlConditionExchange.ReadQueries(request), surface)));
+            request => Task.FromResult(XamlConditionExchange.Answer(XamlConditionExchange.ReadQueries(request), surface))
+        );
         link.Start();
 
         EvaluateXamlConditionsResponse response = await Within(
             link.VisualStudio.SendMessageAsync<EvaluateXamlConditionsResponse>(_MessageId, XamlConditionExchange.CreateRequest([])),
-            _Long);
+            _Long
+        );
 
         Assert.IsTrue(XamlConditionExchange.TryApply([], response, new XamlConditionService(new XamlConditionProbeSet()), out _));
     }
@@ -72,7 +76,8 @@ public sealed class XamlConditionProtocolTests
 
         Task<EvaluateXamlConditionsResponse> reply = link.VisualStudio.SendMessageAsync<EvaluateXamlConditionsResponse>(
             _MessageId,
-            XamlConditionExchange.CreateRequest([XamlConditionQuery.Create("IsTypePresent(My.Type)", predicateNamespace: null)]));
+            XamlConditionExchange.CreateRequest([XamlConditionQuery.Create("IsTypePresent(My.Type)", predicateNamespace: null)])
+        );
 
         await Assert.ThrowsAsync<TimeoutException>(() => Within(reply, TimeSpan.FromMilliseconds(300)));
         Assert.IsFalse(reply.IsCompleted);
@@ -91,13 +96,15 @@ public sealed class XamlConditionProtocolTests
         link.Surface.RegisterAsyncMessageObserver<EvaluateXamlConditionsRequest, EvaluateXamlConditionsResponse>(_MessageId, _ => held.Task);
         link.Surface.RegisterMessageObserver<EvaluateXamlConditionsRequest, EvaluateXamlConditionsResponse>(
             (int)DesignerMessageId.GetProperties,
-            _ => new EvaluateXamlConditionsResponse { Error = "another message" });
+            _ => new EvaluateXamlConditionsResponse { Error = "another message" }
+        );
         link.Start();
 
         Task<EvaluateXamlConditionsResponse> slow = link.VisualStudio.SendMessageAsync<EvaluateXamlConditionsResponse>(_MessageId, XamlConditionExchange.CreateRequest([]));
         EvaluateXamlConditionsResponse other = await Within(
             link.VisualStudio.SendMessageAsync<EvaluateXamlConditionsResponse>((int)DesignerMessageId.GetProperties, XamlConditionExchange.CreateRequest([])),
-            _Long);
+            _Long
+        );
 
         Assert.AreEqual("another message", other.Error);
         Assert.IsFalse(slow.IsCompleted);
@@ -113,7 +120,8 @@ public sealed class XamlConditionProtocolTests
         XamlConditionService surface = CreateSurfaceConditions();
         link.Surface.RegisterAsyncMessageObserver<EvaluateXamlConditionsRequest, EvaluateXamlConditionsResponse>(
             _MessageId,
-            request => Task.FromResult(XamlConditionExchange.Answer(XamlConditionExchange.ReadQueries(request), surface)));
+            request => Task.FromResult(XamlConditionExchange.Answer(XamlConditionExchange.ReadQueries(request), surface))
+        );
         link.Start();
         int changes = 0;
         var warnings = new ConcurrentQueue<string>();
@@ -122,7 +130,8 @@ public sealed class XamlConditionProtocolTests
             link.VisualStudio.CancellationToken,
             () => Interlocked.Increment(ref changes),
             new XamlConditionProbeSet(),
-            (message, _) => warnings.Enqueue(message));
+            (message, _) => warnings.Enqueue(message)
+        );
         Func<string, string?> namespaces = prefix => prefix == "cond" ? "using:My.App" : null;
         string c7 = $"IsApiContractPresent({_Contract},7)";
         string c99n = $"IsApiContractNotPresent({_Contract},99)";
@@ -136,7 +145,8 @@ public sealed class XamlConditionProtocolTests
                 XamlConditionQuery.Create("cond:FeatureFlagCondition(A, B)", namespaces),
                 XamlConditionQuery.Create("cond:NoSuchCondition(X)", namespaces),
             ],
-            _Long);
+            _Long
+        );
 
         Assert.IsTrue(answers.SurfaceAnswers);
         Assert.AreEqual(true, answers.Evaluate(c7, namespaces));
@@ -145,7 +155,7 @@ public sealed class XamlConditionProtocolTests
         Assert.AreEqual(true, answers.Evaluate("cond:FeatureFlagCondition(A, B)", namespaces));
         Assert.AreEqual(false, answers.Evaluate("cond:NoSuchCondition(X)", namespaces));
         Assert.IsTrue(Volatile.Read(ref changes) >= 1);
-        Assert.AreEqual(0, warnings.Count, string.Join(Environment.NewLine, warnings));
+        Assert.IsEmpty(warnings, string.Join(Environment.NewLine, warnings));
     }
 
     [TestMethod]
@@ -159,15 +169,19 @@ public sealed class XamlConditionProtocolTests
             link.VisualStudio.CancellationToken,
             () => { },
             new XamlConditionProbeSet { IsApiContractPresent = (_, _, _) => true },
-            (message, _) => warnings.Enqueue(message));
+            (message, _) => warnings.Enqueue(message)
+        );
 
-        await answers.AskAsync([XamlConditionQuery.Create($"IsApiContractPresent({_Contract},7)", predicateNamespace: null)], TimeSpan.FromMilliseconds(200));
+        Func<string, string?> namespaces = prefix => prefix == "cond" ? "using:My.App" : null;
+        await answers.AskAsync([XamlConditionQuery.Create("cond:FeatureFlagCondition(A, B)", namespaces)], TimeSpan.FromMilliseconds(200));
 
-        // Nothing is decided without the surface, not even what this process could tell by itself.
+        // A condition of the application is not decided without the surface, but what this process can tell
+        // by itself, about the operating system both processes run on, is.
         Assert.IsFalse(answers.SurfaceAnswers);
-        Assert.IsNull(answers.Evaluate($"IsApiContractPresent({_Contract},7)", _ => null));
-        Assert.AreEqual(1, warnings.Count);
-        StringAssert.Contains(warnings.Single(), "did not answer");
+        Assert.IsNull(answers.Evaluate("cond:FeatureFlagCondition(A, B)", namespaces));
+        Assert.AreEqual(true, answers.Evaluate($"IsApiContractPresent({_Contract},7)", namespaces));
+        Assert.HasCount(1, warnings);
+        Assert.Contains("did not answer", warnings.Single());
     }
 
     /// <summary>
@@ -271,10 +285,7 @@ public sealed class XamlConditionProtocolTests
             incoming.CompleteAdding();
         }
 
-        public bool VerifyConnected(CancellationToken token)
-        {
-            return !_closed;
-        }
+        public bool VerifyConnected(CancellationToken token) => !_closed;
 
         public void Dispose()
         {

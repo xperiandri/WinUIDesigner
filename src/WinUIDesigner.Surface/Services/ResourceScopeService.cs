@@ -9,12 +9,7 @@ namespace WinUIDesigner.Surface.Services;
 /// <summary>
 /// Resolves static resources within the document and its theme resource scopes.
 /// </summary>
-/// <param name="identity">The registry that tracks the objects created for a document.</param>
-/// <param name="prepareXaml">
-/// Prepares a XAML snippet for the XAML reader, or <see langword="null"/> to parse snippets as received.
-/// It must return its input when it has nothing to change and must not throw.
-/// </param>
-internal sealed class ResourceScopeService(ObjectIdentityRegistry identity, Func<string, string>? prepareXaml = null)
+internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
 {
     private readonly Dictionary<object, object> _parents = new(ReferenceEqualityComparer.Instance);
 
@@ -139,8 +134,7 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity, Func
                 application.MergedDictionaries.Add(dictionary);
             }
 
-            // A snippet carries the namespaces of the document it was taken from, policy namespaces included.
-            return XamlReader.Load(prepareXaml is null ? xaml : prepareXaml(xaml)) ?? throw new InvalidOperationException("XAML parsing returned no object.");
+            return XamlReader.Load(xaml) ?? throw new InvalidOperationException("XAML parsing returned no object.");
         }
         finally
         {

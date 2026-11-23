@@ -31,11 +31,6 @@ internal static class UnoPlatformPrefixes
     /// </summary>
     public const string DefaultTargetPlatform = _Windows;
 
-    /// <summary>
-    /// The start of the namespaces Uno assigns to prefixes that are excluded on Windows.
-    /// </summary>
-    public const string PlatformUriPrefix = "http://uno.ui/";
-
     private const string _Windows = "win";
     private const string _NegationPrefix = "not_";
     private const string _ClrNamespaceScheme = "clr-namespace:";
@@ -73,7 +68,7 @@ internal static class UnoPlatformPrefixes
     /// </summary>
     public static bool IsPlatformUri(string? namespaceUri)
     {
-        return namespaceUri is not null && namespaceUri.StartsWith(PlatformUriPrefix, StringComparison.Ordinal);
+        return namespaceUri is not null && namespaceUri.StartsWith(XamlNamespaces.UnoPlatformBase, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -162,7 +157,7 @@ internal static class UnoPlatformPrefixes
             // not_netstdref, which the documentation binds to an Uno namespace, is left out on Windows.
             if (isIncluded
                 && IsWindows(targetPlatform)
-                && !string.Equals(uri.BaseUri, XamlNamespaceUri.PresentationNamespace, StringComparison.Ordinal))
+                && !string.Equals(uri.BaseUri, XamlNamespaces.Presentation, StringComparison.Ordinal))
             {
                 isIncluded = false;
             }
