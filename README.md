@@ -9,7 +9,7 @@
 
 Download and open a vsix file from Visual Studio Marketplace. WinUI 3 designer will be automatically available for WinUI 3 projects.
 
-The MSBuild properties `WinUIDesignerTargetPlatform` (for example `android`) and `WinUIDesignerWindowsVersion` (for example `1809`) set the Uno Platform target and the Windows version a project's XAML is previewed for; see [Design-time options](docs/winui-designer.md#design-time-options).
+The MSBuild properties `WinUIDesignerTargetPlatform` (for example `android`) and `WinUIDesignerWindowsVersion` (for example `1809`) are read, logged and sent to the design surface, but no preview uses them yet. Applying them is planned: the selection UI and the Uno Platform target are the second part of [#5](https://github.com/0x5bfa/WinUIDesigner/issues/5). See [Design-time options](docs/winui-designer.md#design-time-options).
 
 The **Conditions** drop-down in the designer's toolbar lists the conditions of the [conditional XAML](https://learn.microsoft.com/windows/apps/develop/testing/conditional-xaml) namespaces of a document. Check or clear a condition to preview the other branch; the choice applies to every document of the project, is kept with the solution, and reloads the designer. **Reset** returns a condition to its evaluation. See [Switching conditions in the designer](docs/winui-designer.md#switching-conditions-in-the-designer); the drop-down can be turned off under Tools > Options > WinUI Designer.
 
