@@ -37,7 +37,7 @@ internal sealed class WinUIDesignerOptionsControl : UserControl
         {
             AutoSize = true,
             MaximumSize = new Size(560, 0),
-            Text = "The Conditions drop-down lists the conditions of the conditional XAML namespaces of a document and lets you choose whether each one holds in the preview. Turning it off hides the drop-down at once; turning it on takes effect in designers opened afterwards.",
+            Text = "The Conditions drop-down lists the conditions of the conditional XAML namespaces of a document and lets you choose whether each one holds in the preview. Turning it off hides the drop-down at once; turning it on shows it again at once in the designers that had it, and a designer that was opened while it was off gets it when it is opened again.",
             Margin = new Padding(0, 0, 0, 18),
         };
 

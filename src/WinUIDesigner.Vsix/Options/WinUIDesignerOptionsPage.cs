@@ -32,7 +32,7 @@ public sealed class WinUIDesignerOptionsPage : DialogPage
 
     [Category("Designer")]
     [DisplayName("Show conditional XAML switches")]
-    [Description("Show the Conditions drop-down in the designer's device toolbar, which lets you choose whether each condition of the conditional XAML namespaces of a document holds in the preview. Turning it off hides the drop-down at once; turning it on takes effect in designers opened afterwards.")]
+    [Description("Show the Conditions drop-down in the designer's device toolbar, which lets you choose whether each condition of the conditional XAML namespaces of a document holds in the preview. Turning it off hides the drop-down at once; turning it on shows it again at once in the designers that had it, and a designer that was opened while it was off gets it when it is opened again.")]
     [DefaultValue(true)]
     public bool ShowConditionalXamlSwitches
     {

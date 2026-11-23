@@ -185,8 +185,8 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     /// <summary>
     /// Gets or sets whether the drop-down is shown, as chosen in the options of the extension. Turning it off hides
-    /// every drop-down at once; turning it on takes effect in the designers that are opened afterwards, because a
-    /// designer opened while it was off has no drop-down.
+    /// every drop-down at once; turning it on shows it again at once in the designers that had it. A designer that
+    /// was opened while the option was off has no drop-down, so it gets one when it is opened again.
     /// </summary>
     public static bool IsEnabled
     {
