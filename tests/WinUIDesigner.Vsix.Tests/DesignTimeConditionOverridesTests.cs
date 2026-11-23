@@ -96,7 +96,7 @@ public sealed class DesignTimeConditionOverridesTests
         string stored = DesignTimeOptionsResolver.CreateUserOverride(DesignTimeOptions.Default.WithConditionOverrides(_Overrides), null, null)!;
 
         // Nothing else differs from the project file, so the override holds the conditions alone.
-        StringAssert.StartsWith(stored, "v=1;cond=");
+        Assert.StartsWith("v=1;cond=", stored);
         Assert.AreEqual(_Overrides, DesignTimeOptionsResolver.Resolve(stored, null, null).ConditionOverrides);
         Assert.AreEqual(_Overrides, DesignTimeOptionsResolver.Resolve(stored, "android", "1809").ConditionOverrides);
         Assert.AreEqual("android", DesignTimeOptionsResolver.Resolve(stored, "android", "1809").TargetPlatformId, "The project file still decides what the user did not change.");
@@ -123,7 +123,8 @@ public sealed class DesignTimeConditionOverridesTests
                         Assert.AreEqual(
                             options,
                             DesignTimeOptionsResolver.Resolve(stored, targetPlatformProperty, windowsVersionProperty),
-                            $"'{stored}' with {targetPlatformProperty}/{windowsVersionProperty}");
+                            $"'{stored}' with {targetPlatformProperty}/{windowsVersionProperty}"
+                        );
                     }
                 }
             }

@@ -13,9 +13,10 @@ using WinUIDesigner.Markup;
 public sealed class XamlConditionOverridesTests
 {
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
-    private const string _C7 = "IsApiContractPresent(" + _Contract + ",7)";
-    private const string _C7N = "IsApiContractNotPresent(" + _Contract + ",7)";
-    private const string _C99 = "IsApiContractPresent(" + _Contract + ",99)";
+    private const string _C7 = $"IsApiContractPresent({_Contract},7)";
+    private const string _C7N = $"IsApiContractNotPresent({_Contract},7)";
+    private const string _C99 = $"IsApiContractPresent({_Contract},99)";
+    private const string _C99N = $"IsApiContractNotPresent({_Contract},99)";
 
     [TestMethod]
     public void OneOverrideDecidesBothFormsOfAQuestion()
@@ -25,7 +26,7 @@ public sealed class XamlConditionOverridesTests
         Assert.AreEqual(false, overrides.Evaluate(Query(_C7)));
         Assert.AreEqual(true, overrides.Evaluate(Query(_C7N)));
         Assert.AreEqual(false, overrides.Evaluate(Query($"IsApiContractPresent( {_Contract} , 7 )")));
-        Assert.AreEqual(true, overrides.Evaluate(XamlConditionQuery.Create("p:" + _C7N, _ => "http://schemas.microsoft.com/winfx/2006/xaml/presentation")));
+        Assert.AreEqual(true, overrides.Evaluate(XamlConditionQuery.Create($"p:{_C7N}", _ => XamlNamespaces.Presentation)));
         Assert.IsNull(overrides.Evaluate(Query(_C99)));
         Assert.IsNull(overrides.Evaluate(Query($"IsApiContractPresent({_Contract},7,1)")), "A minor version asks another question.");
     }
@@ -76,9 +77,9 @@ public sealed class XamlConditionOverridesTests
         Assert.AreEqual(true, evaluate(_C7N, _ => null));
         Assert.AreEqual(true, evaluate("cond:Flag(On)", prefix => prefix == "cond" ? "using:My.App" : null));
         Assert.AreEqual(true, evaluate(_C99, _ => null));
-        Assert.AreEqual(false, evaluate("IsApiContractNotPresent(" + _Contract + ",99)", _ => null));
+        Assert.AreEqual(false, evaluate(_C99N, _ => null));
 
-        CollectionAssert.AreEqual(new[] { _C99, "IsApiContractNotPresent(" + _Contract + ",99)" }, asked);
+        CollectionAssert.AreEqual(new[] { _C99, _C99N }, asked);
     }
 
     [TestMethod]
@@ -105,7 +106,8 @@ public sealed class XamlConditionOverridesTests
 
         Assert.AreEqual(
             "IsApiContractPresent(Windows.Foundation.UniversalApiContract%2C7)=0,using:My.App|FeatureFlagCondition(NewExperience)=1",
-            overrides.Format());
+            overrides.Format()
+        );
         Assert.AreEqual(overrides.Format(), overrides.ToString());
         Assert.AreEqual(string.Empty, XamlConditionOverrides.Empty.Format());
     }
@@ -126,8 +128,8 @@ public sealed class XamlConditionOverridesTests
 
         string text = overrides.Format();
 
-        Assert.AreEqual(-1, text.IndexOf(';'), text);
-        Assert.AreEqual(1, text.Count(character => character == ','), text);
+        Assert.DoesNotContain(";", text, text);
+        Assert.HasCount(1, text.Where(character => character == ','), text);
         Assert.AreEqual(text.Trim(), text, "Nothing at either end may be lost to trimming.");
         Assert.IsTrue(XamlConditionOverrides.TryParse(text, out XamlConditionOverrides parsed), text);
         Assert.AreEqual(overrides, parsed);
@@ -221,13 +223,7 @@ public sealed class XamlConditionOverridesTests
         Assert.ThrowsExactly<ArgumentException>(() => first.With(string.Empty, true));
     }
 
-    private static XamlConditionQuery Query(string condition)
-    {
-        return XamlConditionQuery.Create(condition, resolveNamespace: null);
-    }
+    private static XamlConditionQuery Query(string condition) => XamlConditionQuery.Create(condition, resolveNamespace: null);
 
-    private static string Key(string condition)
-    {
-        return Query(condition).Key;
-    }
+    private static string Key(string condition) => Query(condition).Key;
 }

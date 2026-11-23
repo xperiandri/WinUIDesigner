@@ -15,9 +15,9 @@ using WinUIDesigner.Protocol;
 public sealed class XamlConditionAnswersOverridesTests
 {
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
-    private const string _C7 = "IsApiContractPresent(" + _Contract + ",7)";
-    private const string _C7N = "IsApiContractNotPresent(" + _Contract + ",7)";
-    private const string _C99 = "IsApiContractPresent(" + _Contract + ",99)";
+    private const string _C7 = $"IsApiContractPresent({_Contract},7)";
+    private const string _C7N = $"IsApiContractNotPresent({_Contract},7)";
+    private const string _C99 = $"IsApiContractPresent({_Contract},99)";
     private const string _NewExperience = "cond:FeatureFlagCondition(NewExperience)";
     private const string _LegacyMode = "cond:FeatureFlagCondition(LegacyMode)";
 
@@ -190,7 +190,7 @@ public sealed class XamlConditionAnswersOverridesTests
         await answers.AskAsync(Queries(_C7), _Long);
 
         Assert.AreEqual(false, answers.Evaluate(_C7, Namespaces));
-        Assert.IsTrue(surface.Warnings.Count >= 1);
+        Assert.IsNotEmpty(surface.Warnings);
         Assert.IsTrue(surface.Warnings.All(warning => warning.Contains("InvalidOperationException", StringComparison.Ordinal)));
     }
 
@@ -206,25 +206,13 @@ public sealed class XamlConditionAnswersOverridesTests
         Assert.IsTrue(answers.Overrides.IsEmpty);
     }
 
-    private static string? Namespaces(string prefix)
-    {
-        return prefix == "cond" ? "using:My.App" : null;
-    }
+    private static string? Namespaces(string prefix) => prefix == "cond" ? "using:My.App" : null;
 
-    private static XamlConditionQuery Query(string condition)
-    {
-        return XamlConditionQuery.Create(condition, Namespaces);
-    }
+    private static XamlConditionQuery Query(string condition) => XamlConditionQuery.Create(condition, Namespaces);
 
-    private static string Key(string condition)
-    {
-        return Query(condition).Key;
-    }
+    private static string Key(string condition) => Query(condition).Key;
 
-    private static List<XamlConditionQuery> Queries(params string[] conditions)
-    {
-        return conditions.Select(Query).ToList();
-    }
+    private static List<XamlConditionQuery> Queries(params string[] conditions) => conditions.Select(Query).ToList();
 
     /// <summary>
     /// Stands in for the surface process: contract versions up to 10, the feature flag NewExperience on.

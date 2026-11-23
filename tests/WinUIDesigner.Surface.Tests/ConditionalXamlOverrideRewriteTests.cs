@@ -15,25 +15,24 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class ConditionalXamlOverrideRewriteTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
-    private const string _C7 = "IsApiContractPresent(" + _Contract + ",7)";
-    private const string _C99 = "IsApiContractPresent(" + _Contract + ",99)";
+    private const string _C7 = $"IsApiContractPresent({_Contract},7)";
+    private const string _C99 = $"IsApiContractPresent({_Contract},99)";
     private const string _NewExperienceKey = "using:My.App|FeatureFlagCondition(NewExperience)";
     private const string _LegacyModeKey = "using:My.App|FeatureFlagCondition(LegacyMode)";
 
-    private static readonly XNamespace _P = _Presentation;
+    private static readonly XNamespace _P = XamlNamespaces.Presentation;
 
     // The shape of samples/WinUIDesignerSampleApp/ConditionalXamlPage.xaml.
     private const string _Page = $"""
-        <Page xmlns="{_Presentation}"
+        <Page xmlns="{XamlNamespaces.Presentation}"
               xmlns:cond="using:My.App"
-              xmlns:c7n="{_Presentation}?IsApiContractNotPresent({_Contract},7)"
-              xmlns:c7="{_Presentation}?IsApiContractPresent({_Contract},7)"
-              xmlns:c99n="{_Presentation}?IsApiContractNotPresent({_Contract},99)"
-              xmlns:c99="{_Presentation}?IsApiContractPresent({_Contract},99)"
-              xmlns:legacyMode="{_Presentation}?cond:FeatureFlagCondition(LegacyMode)"
-              xmlns:newExperience="{_Presentation}?cond:FeatureFlagCondition(NewExperience)">
+              xmlns:c7n="{XamlNamespaces.Presentation}?IsApiContractNotPresent({_Contract},7)"
+              xmlns:c7="{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},7)"
+              xmlns:c99n="{XamlNamespaces.Presentation}?IsApiContractNotPresent({_Contract},99)"
+              xmlns:c99="{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},99)"
+              xmlns:legacyMode="{XamlNamespaces.Presentation}?cond:FeatureFlagCondition(LegacyMode)"
+              xmlns:newExperience="{XamlNamespaces.Presentation}?cond:FeatureFlagCondition(NewExperience)">
           <StackPanel>
             <c7:TextBlock Text="7 present" />
             <c7n:TextBlock Text="7 not present" />
@@ -55,7 +54,7 @@ public sealed class ConditionalXamlOverrideRewriteTests
         CollectionAssert.AreEqual(new[] { "7 present", "99 not present", "new experience" }, Texts(document));
         Assert.AreEqual("Green", Attribute(document, "Border", "Background"));
         Assert.AreEqual("new editor", Attribute(document, "Button", "Content"));
-        Assert.AreEqual(4, probes.Calls.Count);
+        Assert.HasCount(4, probes.Calls);
     }
 
     [TestMethod]
@@ -66,7 +65,7 @@ public sealed class ConditionalXamlOverrideRewriteTests
         CollectionAssert.AreEqual(new[] { "7 not present", "99 not present", "new experience" }, Texts(document));
 
         // The overridden question is not asked at all.
-        Assert.IsFalse(probes.Calls.Any(call => call.Contains(" 7", StringComparison.Ordinal)), string.Join(", ", probes.Calls));
+        Assert.DoesNotContain(call => call.Contains(" 7", StringComparison.Ordinal), probes.Calls, string.Join(", ", probes.Calls));
     }
 
     [TestMethod]
@@ -89,7 +88,7 @@ public sealed class ConditionalXamlOverrideRewriteTests
 
         CollectionAssert.AreEqual(new[] { "7 present", "99 not present", "legacy mode" }, Texts(document));
         Assert.AreEqual("classic editor", Attribute(document, "Button", "Content"));
-        Assert.IsFalse(probes.Calls.Any(call => call.StartsWith("custom", StringComparison.Ordinal)), string.Join(", ", probes.Calls));
+        Assert.DoesNotContain(call => call.StartsWith("custom", StringComparison.Ordinal), probes.Calls, string.Join(", ", probes.Calls));
     }
 
     [TestMethod]
@@ -99,19 +98,19 @@ public sealed class ConditionalXamlOverrideRewriteTests
 
         XDocument document = Rewrite(_Page, overrides, out _);
 
-        CollectionAssert.Contains(Texts(document), "new experience");
+        Assert.Contains("new experience", Texts(document));
     }
 
     [TestMethod]
     public void MalformedConditionStaysSkippedWhateverIsForced()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}" xmlns:bad="{_Presentation}?IsApiContractPresent({_Contract},7.0)">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}" xmlns:bad="{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},7.0)">
               <bad:TextBlock Text="malformed" />
               <TextBlock Text="always" />
             </StackPanel>
             """;
-        XamlConditionOverrides overrides = XamlConditionOverrides.Empty.With("!IsApiContractPresent(" + _Contract + ",7.0)", holds: true);
+        XamlConditionOverrides overrides = XamlConditionOverrides.Empty.With($"!IsApiContractPresent({_Contract},7.0)", holds: true);
 
         XDocument document = Rewrite(xaml, overrides, out _);
 
@@ -128,7 +127,8 @@ public sealed class ConditionalXamlOverrideRewriteTests
         var sent = new DesignTimeOptions(
             DesignTimeTargetPlatform.Windows,
             contractVersion: null,
-            XamlConditionOverrides.Empty.With(_C7, holds: false).With(_C99, holds: true).With(_LegacyModeKey, holds: true));
+            XamlConditionOverrides.Empty.With(_C7, holds: false).With(_C99, holds: true).With(_LegacyModeKey, holds: true)
+        );
 
         Assert.IsTrue(DesignTimeOptions.TryParse(sent.Serialize(), out DesignTimeOptions received));
         XDocument document = Rewrite(_Page, received.ConditionOverrides, out _);

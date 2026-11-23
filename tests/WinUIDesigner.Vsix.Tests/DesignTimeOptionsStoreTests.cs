@@ -25,13 +25,13 @@ public sealed class DesignTimeOptionsStoreTests
 
         Assert.IsTrue(DesignTimeOptionsSettings.Save(project, options, project.Warn));
 
-        StringAssert.StartsWith(project.UserOverride, "v=1;cond=");
+        Assert.StartsWith("v=1;cond=", project.UserOverride);
         DesignTimeOptions loaded = DesignTimeOptionsSettings.Load(project, project.Warn, out string source);
         Assert.AreEqual(options, loaded);
         Assert.AreEqual(overrides, loaded.ConditionOverrides);
-        StringAssert.Contains(source, "read from project 'App'");
-        StringAssert.Contains(source, project.UserOverride!);
-        Assert.AreEqual(0, project.Warnings.Count, string.Join(Environment.NewLine, project.Warnings));
+        Assert.Contains("read from project 'App'", source);
+        Assert.Contains(project.UserOverride!, source);
+        Assert.IsEmpty(project.Warnings, string.Join(Environment.NewLine, project.Warnings));
     }
 
     [TestMethod]
@@ -75,7 +75,7 @@ public sealed class DesignTimeOptionsStoreTests
         bool saved = DesignTimeOptionsSettings.Save(project, DesignTimeOptions.Default.WithConditionOverrides(XamlConditionOverrides.Empty.With(_C7, true)), project.Warn);
 
         Assert.IsFalse(saved);
-        StringAssert.Contains(project.Warnings.Single(), "did not keep");
+        Assert.Contains("did not keep", project.Warnings.Single());
     }
 
     [TestMethod]
@@ -87,7 +87,7 @@ public sealed class DesignTimeOptionsStoreTests
         bool saved = DesignTimeOptionsSettings.Save(project, DesignTimeOptions.Default.WithConditionOverrides(XamlConditionOverrides.Empty.With(_C7, true)), project.Warn);
 
         Assert.AreEqual(DesignTimeOptions.Default, loaded);
-        StringAssert.Contains(source, "not set");
+        Assert.Contains("not set", source);
         Assert.IsFalse(saved);
         Assert.IsTrue(project.Warnings.Count >= 4, string.Join(Environment.NewLine, project.Warnings));
         Assert.IsTrue(project.Warnings.All(warning => warning.Contains("InvalidOperationException")), string.Join(Environment.NewLine, project.Warnings));
@@ -102,7 +102,7 @@ public sealed class DesignTimeOptionsStoreTests
 
         Assert.AreEqual(DesignTimeOptions.Default, loaded);
         Assert.AreEqual("no project to read them from", source);
-        Assert.AreEqual(0, warnings.Count);
+        Assert.IsEmpty(warnings);
     }
 
     [TestMethod]
@@ -110,7 +110,7 @@ public sealed class DesignTimeOptionsStoreTests
     {
         var project = new FakeProject
         {
-            UserOverride = "v=1;target=ios;cond=" + XamlConditionOverrides.Empty.With(_C7, false).Format() + ",broken%ZZ=1",
+            UserOverride = $"v=1;target=ios;cond={XamlConditionOverrides.Empty.With(_C7, false).Format()},broken%ZZ=1",
             TargetPlatform = "playstation",
             WindowsVersion = "Windows 95",
         };
@@ -120,15 +120,15 @@ public sealed class DesignTimeOptionsStoreTests
         Assert.AreEqual("ios", loaded.TargetPlatformId);
         Assert.IsNull(loaded.ContractVersion);
         CollectionAssert.AreEqual(new[] { _C7 }, loaded.ConditionOverrides.Keys.ToArray(), "The readable conditions still apply.");
-        Assert.AreEqual(3, project.Warnings.Count, string.Join(Environment.NewLine, project.Warnings));
-        StringAssert.Contains(project.Warnings[0], "cannot be read");
-        StringAssert.Contains(project.Warnings[1], "playstation");
-        StringAssert.Contains(project.Warnings[2], "Windows 95");
+        Assert.HasCount(3, project.Warnings, string.Join(Environment.NewLine, project.Warnings));
+        Assert.Contains("cannot be read", project.Warnings[0]);
+        Assert.Contains("playstation", project.Warnings[1]);
+        Assert.Contains("Windows 95", project.Warnings[2]);
 
         project.Warnings.Clear();
         project.UserOverride = "garbage";
         Assert.AreEqual("win", DesignTimeOptionsSettings.Load(project, project.Warn, out _).TargetPlatformId);
-        StringAssert.Contains(project.Warnings[0], "not understood");
+        Assert.Contains("not understood", project.Warnings[0]);
     }
 
     /// <summary>

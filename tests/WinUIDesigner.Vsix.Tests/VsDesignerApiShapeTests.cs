@@ -252,10 +252,13 @@ public sealed class VsDesignerApiShapeTests
         Assert.AreEqual(
             "TextChangedEventArgs",
             (textChanged.EventType as GenericInstanceType)?.GenericArguments.Single().Name,
-            $"Unexpected arguments of {_MarkupTextBuffer}.TextChanged.");
-        Assert.IsTrue(
-            bufferType.Interfaces.Any(implemented => implemented.InterfaceType.FullName == _MarkupTextReader),
-            $"{_MarkupTextBuffer} must be a {_MarkupTextReader}.");
+            $"Unexpected arguments of {_MarkupTextBuffer}.TextChanged."
+        );
+        Assert.Contains(
+            implemented => implemented.InterfaceType.FullName == _MarkupTextReader,
+            bufferType.Interfaces,
+            $"{_MarkupTextBuffer} must be a {_MarkupTextReader}."
+        );
 
         Assert.AreEqual("Int32", RequireProperty(_MarkupTextReader, "Version").PropertyType.Name, $"Unexpected type of {_MarkupTextReader}.Version.");
         Assert.AreEqual("Int32", RequireProperty(_MarkupTextReader, "Length").PropertyType.Name, $"Unexpected type of {_MarkupTextReader}.Length.");

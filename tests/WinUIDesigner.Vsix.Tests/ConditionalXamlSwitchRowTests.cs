@@ -12,20 +12,19 @@ using WinUIDesigner.Platform;
 [TestClass]
 public sealed class ConditionalXamlSwitchRowTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
-    private const string _C7 = "IsApiContractPresent(" + _Contract + ",7)";
-    private const string _C99 = "IsApiContractPresent(" + _Contract + ",99)";
+    private const string _C7 = $"IsApiContractPresent({_Contract},7)";
+    private const string _C99 = $"IsApiContractPresent({_Contract},99)";
     private const string _NewExperienceKey = "using:My.App|FeatureFlagCondition(NewExperience)";
 
     private const string _Page = $"""
-        <Page xmlns="{_Presentation}"
+        <Page xmlns="{XamlNamespaces.Presentation}"
               xmlns:cond="using:My.App"
-              xmlns:c7n="{_Presentation}?IsApiContractNotPresent({_Contract},7)"
-              xmlns:c7="{_Presentation}?IsApiContractPresent({_Contract},7)"
-              xmlns:c99="{_Presentation}?IsApiContractPresent({_Contract},99)"
-              xmlns:newExperience="{_Presentation}?cond:FeatureFlagCondition(NewExperience)"
-              xmlns:broken="{_Presentation}?IsApiContractPresent({_Contract},7.0)" />
+              xmlns:c7n="{XamlNamespaces.Presentation}?IsApiContractNotPresent({_Contract},7)"
+              xmlns:c7="{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},7)"
+              xmlns:c99="{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},99)"
+              xmlns:newExperience="{XamlNamespaces.Presentation}?cond:FeatureFlagCondition(NewExperience)"
+              xmlns:broken="{XamlNamespaces.Presentation}?IsApiContractPresent({_Contract},7.0)" />
         """;
 
     [TestMethod]
@@ -88,8 +87,8 @@ public sealed class ConditionalXamlSwitchRowTests
         Assert.IsFalse(row.IsSwitchable);
         Assert.AreEqual(false, row.Value);
         Assert.AreEqual("broken: skipped", row.Branches);
-        StringAssert.StartsWith(row.Status, "Cannot be switched: '7.0' is not a contract version");
-        StringAssert.EndsWith(row.Status, "Its members are skipped.");
+        Assert.StartsWith("Cannot be switched: '7.0' is not a contract version", row.Status);
+        Assert.EndsWith("Its members are skipped.", row.Status);
     }
 
     [TestMethod]
@@ -104,7 +103,8 @@ public sealed class ConditionalXamlSwitchRowTests
 
         CollectionAssert.AreEqual(
             new[] { _C7, _C99, "cond:FeatureFlagCondition(NewExperience)", $"IsApiContractPresent({_Contract},7.0)", "IsTypePresent(A)", "using:Other|Flag(B)" },
-            rows.Select(row => row.Title).ToArray());
+            rows.Select(row => row.Title).ToArray()
+        );
         ConditionalXamlSwitchRow other = rows[5];
         Assert.IsFalse(other.IsInDocument);
         Assert.IsTrue(other.IsSwitchable);
