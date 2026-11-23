@@ -581,24 +581,24 @@ internal sealed partial class SurfaceService
                         : ReferenceEquals(runtimeRoot, preparedXaml.Root)
                             ? preparedXaml.ToString(SaveOptions.DisableFormatting)
                             : runtimeRoot.ToString(SaveOptions.DisableFormatting);
-                    object root;
-                    IReadOnlyDictionary<string, DependencyObject> droppedChildOwners;
-                    try
+                    IReadOnlyDictionary<string, DependencyObject> droppedChildOwners = new Dictionary<string, DependencyObject>();
+                    object LoadDocument()
                     {
                         using (DroppedChildOwners.Collect(out droppedChildOwners))
                         {
-                            root = XamlReader.Load(Serialize());
+                            return XamlReader.Load(Serialize());
                         }
                     }
-                    catch (Exception ex) when (droppedChildCollections.Count != 0)
+
+                    // The reader sets a mark only on a DependencyObject and fails the document for any other owner.
+                    // Loaded without marks, the document behaves as it did before they existed; if it fails again, the
+                    // marks were not the cause, and that failure goes to construction actions as before.
+                    object root = DroppedChildOwnerMarks.Load(droppedChildCollections, LoadDocument, out Exception? marksFailure);
+                    if (marksFailure is not null)
                     {
-                        // The reader sets a mark only on a DependencyObject and fails the document for any other
-                        // owner. Loaded without marks, the document behaves as it did before they existed.
-                        WinUIDesignerLogger.LogWarning("Surface", $"Child indices: document {document.DocumentId} did not load with its collections marked; loading it without, so edits next to dropped elements may land elsewhere. {ex.Message}");
-                        DroppedChildOwnerMarks.Unmark(droppedChildCollections);
+                        WinUIDesignerLogger.LogWarning("Surface", $"Child indices: document {document.DocumentId} loaded only without its collections marked, so edits next to dropped elements may land elsewhere. {marksFailure.Message}");
                         droppedChildCollections = [];
                         droppedChildOwners = new Dictionary<string, DependencyObject>();
-                        root = XamlReader.Load(Serialize());
                     }
 
                     _objectIdentity.Track(root);

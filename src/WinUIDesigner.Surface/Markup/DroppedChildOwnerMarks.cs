@@ -90,6 +90,46 @@ internal static class DroppedChildOwnerMarks
     }
 
     /// <summary>
+    /// Loads a document whose owners are marked; when that fails, loads it again without the marks.
+    /// </summary>
+    /// <typeparam name="T">What loading the document gives.</typeparam>
+    /// <param name="collections">What <see cref="Mark"/> returned. A document without marks is loaded once.</param>
+    /// <param name="load">Loads the document from its current text.</param>
+    /// <param name="marksFailure">
+    /// The failure of the load with marks when the load without them worked, which is the case in which the marks were
+    /// the reason; <see langword="null"/> otherwise.
+    /// </param>
+    /// <returns>The loaded document.</returns>
+    /// <remarks>
+    /// The first failure says nothing about its cause: a missing resource or a constructor that throws fails the load
+    /// as well. Only a load that works without the marks shows that they were the reason. When it fails again, the
+    /// document fails for another reason, and its exception is the one that is thrown.
+    /// </remarks>
+    public static T Load<T>(IReadOnlyCollection<DroppedChildCollection> collections, Func<T> load, out Exception? marksFailure)
+    {
+        ArgumentNullException.ThrowIfNull(collections);
+        ArgumentNullException.ThrowIfNull(load);
+
+        marksFailure = null;
+        if (collections.Count == 0)
+        {
+            return load();
+        }
+
+        try
+        {
+            return load();
+        }
+        catch (Exception ex)
+        {
+            Unmark(collections);
+            T document = load();
+            marksFailure = ex;
+            return document;
+        }
+    }
+
+    /// <summary>
     /// Removes the marks <see cref="Mark"/> added, so that the document can be loaded as it was prepared.
     /// </summary>
     /// <remarks>

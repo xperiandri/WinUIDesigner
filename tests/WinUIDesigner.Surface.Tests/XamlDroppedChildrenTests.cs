@@ -464,6 +464,64 @@ public sealed class XamlDroppedChildrenTests
     }
 
     [TestMethod]
+    public void ADocumentThatLoadsWithItsMarksIsLoadedOnce()
+    {
+        List<DroppedChildCollection> collections = MarkedStackPanel(out XDocument document);
+        int loads = 0;
+
+        string loaded = DroppedChildOwnerMarks.Load(collections, () => Load(document, ref loads), out Exception? marksFailure);
+
+        Assert.AreEqual(1, loads);
+        Assert.IsNull(marksFailure);
+        Assert.Contains(":DT.DroppedChildOwner=\"0\"", loaded, "The marks stay: the surface finds the owners through them.");
+    }
+
+    [TestMethod]
+    public void ADocumentThatLoadsOnlyWithoutItsMarksIsLoadedAgainAndTheFirstFailureIsReturned()
+    {
+        // The reader fails on a mark; the same text without marks loads.
+        List<DroppedChildCollection> collections = MarkedStackPanel(out XDocument document);
+        int loads = 0;
+
+        string loaded = DroppedChildOwnerMarks.Load(
+            collections,
+            () => Load(document, ref loads, failOnMarks: true),
+            out Exception? marksFailure);
+
+        Assert.AreEqual(2, loads);
+        Assert.AreEqual("The reader cannot set the mark.", marksFailure?.Message);
+        Assert.DoesNotContain("DT.DroppedChildOwner", loaded);
+        Assert.IsFalse(HasMarks(document), "The marks are gone from the document.");
+    }
+
+    [TestMethod]
+    public void ADocumentThatFailsForAnotherReasonThrowsTheFailureOfTheSecondLoad()
+    {
+        // A resource that is missing, or a constructor that throws, fails the load with and without marks: the marks
+        // were not the reason, so there is nothing to report, and the failure is the one of the load without them.
+        List<DroppedChildCollection> collections = MarkedStackPanel(out XDocument document);
+        int loads = 0;
+
+        InvalidOperationException failure = Assert.ThrowsExactly<InvalidOperationException>(() =>
+            DroppedChildOwnerMarks.Load<string>(collections, () => throw new InvalidOperationException($"load {++loads}"), out _));
+
+        Assert.AreEqual(2, loads);
+        Assert.AreEqual("load 2", failure.Message);
+        Assert.IsFalse(HasMarks(document));
+    }
+
+    [TestMethod]
+    public void ADocumentWithoutMarksIsLoadedOnceEvenWhenItFails()
+    {
+        int loads = 0;
+
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            DroppedChildOwnerMarks.Load<string>([], () => throw new InvalidOperationException($"load {++loads}"), out _));
+
+        Assert.AreEqual(1, loads);
+    }
+
+    [TestMethod]
     public void ADocumentWithoutPolicyNamespacesReportsNothing()
     {
         string xaml = $"""<StackPanel xmlns="{_Presentation}"><TextBlock /><TextBlock /></StackPanel>""";
@@ -490,6 +548,30 @@ public sealed class XamlDroppedChildrenTests
                     ? XamlPrefixDisposition.Keep
                     : XamlPrefixDisposition.Drop,
         });
+    }
+
+    /// <summary>
+    /// Marks the owners of a document with one dropped element, so that it has a mark.
+    /// </summary>
+    private static List<DroppedChildCollection> MarkedStackPanel(out XDocument document)
+    {
+        XamlNamespaceRewriteResult result = Rewrite($"""<StackPanel {_Namespaces}><TextBlock /><c99:TextBlock /></StackPanel>""", out document);
+        return DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren);
+    }
+
+    /// <summary>
+    /// Stands in for the XAML reader: it returns the text it is given, and fails on a mark when told to.
+    /// </summary>
+    private static string Load(XDocument document, ref int loads, bool failOnMarks = false)
+    {
+        loads++;
+        string text = document.ToString(SaveOptions.DisableFormatting);
+        return failOnMarks && HasMarks(document) ? throw new InvalidOperationException("The reader cannot set the mark.") : text;
+    }
+
+    private static bool HasMarks(XDocument document)
+    {
+        return document.Descendants().Any(element => element.Attribute(DroppedChildOwnerMarks.MarkName) is not null);
     }
 
     private static string[] DescribeCollections(List<DroppedChildCollection> collections)
