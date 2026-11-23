@@ -212,6 +212,7 @@ internal static class WindowsVersionCatalog
             return true;
         }
 
+        // No release name matched: a display name such as Windows 11 22H2 names one release.
         for (int index = 0; index < releases.Count; index++)
         {
             if (string.Equals(NormalizeName(releases[index].DisplayName), name, StringComparison.Ordinal))
