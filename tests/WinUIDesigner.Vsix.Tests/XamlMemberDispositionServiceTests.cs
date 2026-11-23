@@ -16,6 +16,7 @@ using WinUIDesigner.Platform;
 [TestClass]
 public sealed class XamlMemberDispositionServiceTests
 {
+    private const string _Contract = "Windows.Foundation.UniversalApiContract";
     private const string _Xaml = $"""<Page xmlns="{XamlNamespaces.Presentation}" />""";
     private const string _AndroidDeclaration = $" xmlns:android=\"{TestXamlNamespaces.Android}\"";
 
@@ -150,7 +151,7 @@ public sealed class XamlMemberDispositionServiceTests
     [TestMethod]
     [DataRow("IsTypePresent(My.App.Card)", "IsTypeNotPresent(My.App.Card)")]
     [DataRow("IsTypeNotPresent(My.App.Card)", "IsTypePresent(My.App.Card)")]
-    [DataRow("IsApiContractPresent(Windows.Foundation.UniversalApiContract,99)", "IsApiContractNotPresent(Windows.Foundation.UniversalApiContract,99)")]
+    [DataRow($"IsApiContractPresent({_Contract},99)", $"IsApiContractNotPresent({_Contract},99)")]
     public void HalvesOfAnIfElsePairHaveOneAnswerWhileTheirVerdictsAreKept(string judgedFirst, string judgedLater)
     {
         var outcomes = new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal);

@@ -337,13 +337,14 @@ internal sealed class XamlMemberDispositionService
             XamlConditionQuery query = XamlConditionQuery.Create(condition, resolveNamespace);
 
             // The first condition that asks the question gives the answer, which is kept in its positive form.
-            bool? positive = outcomes.GetOrAdd(query.Key, _ => ApplyNegation(evaluator(condition, resolveNamespace), query.Condition));
-            return ApplyNegation(positive, query.Condition);
+            bool isNegated = query.Condition.IsNegated;
+            bool? positive = outcomes.GetOrAdd(query.Key, _ => ApplyNegation(evaluator(condition, resolveNamespace), isNegated));
+            return ApplyNegation(positive, isNegated);
         };
     }
 
     // The answer to a negated condition is the opposite of the answer to the question, and the other way round.
-    private static bool? ApplyNegation(bool? outcome, XamlCondition condition) => outcome.HasValue && condition.IsNegated ? !outcome.Value : outcome;
+    private static bool? ApplyNegation(bool? outcome, bool isNegated) => isNegated && outcome.HasValue ? !outcome.Value : outcome;
 
     private static string? ReadText(IMarkupTextBuffer buffer, int length)
     {
