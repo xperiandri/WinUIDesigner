@@ -49,13 +49,30 @@ public sealed class ResourceDictionarySourceUriTests
     }
 
     [TestMethod]
-    [DataRow("ms-appx:///Ecierge.Console.UI/~vs]~359530~Resources.xaml", "Resources.xaml")]
-    [DataRow("ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml", "Segmented.xaml")]
-    [DataRow("ms-appx:///Themes/My%20Dictionary.xaml", "My Dictionary.xaml")]
+    [DataRow("ms-appx:///Ecierge.Console.UI/~vs]~359530~Resources.xaml", "Ecierge.Console.UI/Resources.xaml")]
+    [DataRow("ms-appx:///Ecierge.Console.UI/Styles/~vs]~359453~AutoSuggestBoxStyle.xaml", "Ecierge.Console.UI/Styles/AutoSuggestBoxStyle.xaml")]
+    [DataRow("ms-appx:///CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml", "CommunityToolkit.WinUI.Controls.Segmented/Segmented/Segmented.xaml")]
+    [DataRow("ms-appx:///Themes/My%20Dictionary.xaml", "Themes/My Dictionary.xaml")]
+    [DataRow("ms-appx:///~vs]~359056~App.xaml", "App.xaml")]
     [DataRow("Colors.xaml", "Colors.xaml")]
-    public void DisplayNameIsTheFileNameOfTheProject(string value, string expected)
+    public void DisplayNameIsThePathOfTheDictionaryInThePackage(string value, string expected)
     {
         Assert.AreEqual(expected, ResourceDictionarySourceUri.GetDisplayName(value));
+    }
+
+    [TestMethod]
+    public void DictionariesOfDifferentProjectsThatShareAFileNameHaveDifferentNames()
+    {
+        // The log of an application that merges the Resources.xaml of five libraries must name the one that fails.
+        string[] names = new[]
+        {
+            "ms-appx:///Ecierge.Console.UI/~vs]~105412~Resources.xaml",
+            "ms-appx:///Ecierge.Console.Administration/~vs]~105691~Resources.xaml",
+            "ms-appx:///Ecierge.Console.Construction/~vs]~104946~Resources.xaml",
+        }.Select(ResourceDictionarySourceUri.GetDisplayName).ToArray();
+
+        Assert.HasCount(3, names.Distinct(StringComparer.Ordinal));
+        Assert.DoesNotContain("~vs]~", string.Concat(names), "The marker of a prepared copy is not part of its name.");
     }
 
     [TestMethod]

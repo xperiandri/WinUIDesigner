@@ -85,15 +85,20 @@ internal static class ResourceDictionarySourceUri
     }
 
     /// <summary>
-    /// Returns the name a log message uses for a dictionary: the file name it has in the project.
+    /// Returns the name a log message uses for a dictionary: where it is in the package, the project and the file,
+    /// without the <c>ms-appx:///</c> root and the marker of a prepared copy. The project stays in the name because
+    /// dictionaries of different projects often share a file name, such as <c>Resources.xaml</c>, and the log (and
+    /// the once-per-request de-duplication of its messages) must tell them apart.
     /// </summary>
     public static string GetDisplayName(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
 
         string trimmed = value.Trim().TrimEnd('/');
-        int slash = trimmed.LastIndexOfAny(['/', '\\']);
-        string fileName = slash >= 0 ? trimmed[(slash + 1)..] : trimmed;
+        string path = trimmed.StartsWith(_AppxRoot, StringComparison.OrdinalIgnoreCase) ? trimmed[_AppxRoot.Length..] : trimmed;
+        int slash = path.LastIndexOfAny(['/', '\\']);
+        string folder = path[..(slash + 1)];
+        string fileName = path[(slash + 1)..];
 
         // "~vs]~{id}~{file name}" is how Visual Studio names a prepared copy.
         if (fileName.StartsWith(DesignTimeFileMarker, StringComparison.OrdinalIgnoreCase))
@@ -105,7 +110,8 @@ internal static class ResourceDictionarySourceUri
             }
         }
 
-        return fileName.Length == 0 ? value : Uri.UnescapeDataString(fileName);
+        string name = $"{folder}{fileName}";
+        return name.Length == 0 ? value : Uri.UnescapeDataString(name);
     }
 
     /// <summary>

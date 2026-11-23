@@ -25,6 +25,8 @@ public sealed class ResourceDictionarySourceExpanderTests
     private const string _Styles = "ms-appx:///App/Themes/~vs]~12~Styles.xaml";
     private const string _Margins = "ms-appx:///Library/~vs]~13~Margins.xaml";
     private const string _Cards = "ms-appx:///Library/Styles/~vs]~14~Cards.xaml";
+    private const string _AppResources = "ms-appx:///App/~vs]~15~Resources.xaml";
+    private const string _LibraryResources = "ms-appx:///Library/~vs]~16~Resources.xaml";
 
     private static readonly XNamespace _P = _Presentation;
     private static readonly XNamespace _X = _XamlLanguage;
@@ -145,8 +147,8 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.AreEqual(new ResourceDictionaryExpansion(2, 0, 1), expansion);
         CollectionAssert.AreEquivalent(new[] { "A", "B" }, AllKeys(page));
         Assert.AreEqual(1, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "Colors.xaml → Styles.xaml → Colors.xaml");
-        StringAssert.Contains(cache.Warnings[0], "merged by 'Styles.xaml'");
+        Assert.Contains("App/Themes/Colors.xaml → App/Themes/Styles.xaml → App/Themes/Colors.xaml", cache.Warnings[0]);
+        Assert.Contains("merged by 'App/Themes/Styles.xaml'", cache.Warnings[0]);
     }
 
     [TestMethod]
@@ -161,7 +163,7 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion);
         CollectionAssert.AreEqual(new[] { "A" }, AllKeys(page));
         Assert.AreEqual(1, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "Colors.xaml → Colors.xaml");
+        Assert.Contains("App/Themes/Colors.xaml → App/Themes/Colors.xaml", cache.Warnings[0]);
     }
 
     [TestMethod]
@@ -176,7 +178,7 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion);
         CollectionAssert.AreEqual(new[] { "B" }, AllKeys(document));
-        StringAssert.Contains(cache.Warnings.Single(), "Colors.xaml → Styles.xaml → Colors.xaml");
+        Assert.Contains("App/Themes/Colors.xaml → App/Themes/Styles.xaml → App/Themes/Colors.xaml", cache.Warnings.Single());
     }
 
     [TestMethod]
@@ -227,10 +229,27 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion);
         CollectionAssert.AreEqual(new[] { "B" }, AllKeys(page));
         Assert.AreEqual(1, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "Resource dictionary 'Colors.xaml' merged by document 10 is left empty");
+        Assert.Contains("Resource dictionary 'App/Themes/Colors.xaml' merged by document 10 is left empty", cache.Warnings[0]);
         StringAssert.Contains(cache.Warnings[0], _ContentDirectory + @"\App\Themes\~vs]~11~Colors.xaml");
         StringAssert.Contains(cache.Warnings[0], "does not exist");
         AssertReadableByTheXamlReader(page);
+    }
+
+    [TestMethod]
+    public void MissingCopiesThatShareAFileNameAreReportedApart()
+    {
+        // App.xaml of an application that merges the Resources.xaml of its libraries: each library is its own
+        // problem, and the log reports a message once per request, so equal messages would hide all but the first.
+        var cache = new ShadowCache();
+        XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_LibraryResources)}{Merge(_AppResources)}</ResourceDictionary.MergedDictionaries>""");
+
+        ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(0, 0, 2), expansion);
+        Assert.HasCount(2, cache.Warnings);
+        Assert.HasCount(2, cache.Warnings.Distinct(StringComparer.Ordinal));
+        Assert.Contains("Resource dictionary 'Library/Resources.xaml' merged by document 10", cache.Warnings[0]);
+        Assert.Contains("Resource dictionary 'App/Resources.xaml' merged by document 10", cache.Warnings[1]);
     }
 
     [TestMethod]
