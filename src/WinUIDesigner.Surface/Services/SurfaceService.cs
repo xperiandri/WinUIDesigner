@@ -34,6 +34,8 @@ internal sealed partial class SurfaceService : IDisposable
         _resourceScopes = new ResourceScopeService(objectIdentity);
         _diagnosticsPropertySource = new DiagnosticsPropertySourceService();
         _styleEdits = new StyleEditService(_diagnosticsPropertySource.StartInitialization);
+        _droppedChildren = new DroppedChildren(objectIdentity.Track, RemoveChildAt);
+        _dictionaryEntries = new DictionaryEntryActions(new LiveDictionaryEntries(_styleEdits));
         _serializer = new LiveValueSerializer(objectIdentity);
 
         // The matching request/response types come from the Visual Studio side.
@@ -74,6 +76,7 @@ internal sealed partial class SurfaceService : IDisposable
     {
         _actionObjects.Clear();
         _trackedActionObjects.Clear();
+        _droppedChildren.Clear();
 
         foreach (int registrationId in _registrationIds)
         {

@@ -501,7 +501,7 @@ internal sealed partial class SurfaceService
 
                     // Parse the prepared XAML once. The namespace policies, the clean-up below and the source
                     // mapping all work on this document, so its line information keeps referring to the prepared file.
-                    XDocument preparedXaml = LoadPreparedXaml(xaml, document.DocumentId);
+                    XDocument preparedXaml = LoadPreparedXaml(xaml, document.DocumentId, out IReadOnlyList<XamlDroppedChild> droppedChildren);
                     XElement? runtimeRoot = preparedXaml.Root;
                     if (resources)
                     {
@@ -568,14 +568,41 @@ internal sealed partial class SurfaceService
                         }
                     }
 
+                    // Visual Studio still counts the elements the namespace policies removed when it addresses the
+                    // children of a collection. The elements that hold such collections are marked, so that the
+                    // objects the reader creates for them can be found and given the positions of what is missing.
+                    List<DroppedChildCollection> droppedChildCollections = runtimeRoot is null
+                        ? []
+                        : DroppedChildOwnerMarks.Mark(runtimeRoot, droppedChildren, DroppedChildren.CanCarryMark);
+
                     // App.xaml contributes only its resource dictionary; every other document is loaded whole.
-                    string sanitizedXaml = runtimeRoot is null
+                    string Serialize() => runtimeRoot is null
                         ? xaml
                         : ReferenceEquals(runtimeRoot, preparedXaml.Root)
                             ? preparedXaml.ToString(SaveOptions.DisableFormatting)
                             : runtimeRoot.ToString(SaveOptions.DisableFormatting);
-                    object root = XamlReader.Load(sanitizedXaml);
+                    IReadOnlyDictionary<string, DependencyObject> droppedChildOwners = new Dictionary<string, DependencyObject>();
+                    object LoadDocument()
+                    {
+                        using (DroppedChildOwners.Collect(out droppedChildOwners))
+                        {
+                            return XamlReader.Load(Serialize());
+                        }
+                    }
+
+                    // The reader sets a mark only on a DependencyObject and fails the document for any other owner.
+                    // Loaded without marks, the document behaves as it did before they existed; if it fails again, the
+                    // marks were not the cause, and that failure goes to construction actions as before.
+                    object root = DroppedChildOwnerMarks.Load(droppedChildCollections, LoadDocument, out Exception? marksFailure);
+                    if (marksFailure is not null)
+                    {
+                        WinUIDesignerLogger.LogWarning("Surface", $"Child indices: document {document.DocumentId} loaded only without its collections marked, so edits next to dropped elements may land elsewhere. {marksFailure.Message}");
+                        droppedChildCollections = [];
+                        droppedChildOwners = new Dictionary<string, DependencyObject>();
+                    }
+
                     _objectIdentity.Track(root);
+                    _droppedChildren.RegisterLoaded(document.DocumentId, droppedChildCollections, droppedChildOwners);
                     return (root, (XDocument?)preparedXaml);
                 }, _protocolHandler.CancellationToken).ConfigureAwait(false);
             }

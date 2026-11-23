@@ -28,6 +28,23 @@ internal sealed class DeferredInsertionQueue<TEntry>(Func<TEntry, object> getTar
     public void Add(TEntry entry) => _entries.Add(entry);
 
     /// <summary>
+    /// Counts the pending insertions into <paramref name="target"/>.
+    /// </summary>
+    public int CountFor(object target)
+    {
+        int count = 0;
+        foreach (TEntry entry in _entries)
+        {
+            if (ReferenceEquals(getTarget(entry), target))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>
     /// Removes and returns the pending insertions into <paramref name="target"/>, oldest first.
     /// </summary>
     /// <remarks>

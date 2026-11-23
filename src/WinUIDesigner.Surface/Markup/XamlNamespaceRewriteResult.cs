@@ -16,13 +16,15 @@ internal sealed class XamlNamespaceRewriteResult
         int droppedAttributes,
         int normalizedMembers,
         int repointedDeclarations,
-        IReadOnlyList<string> diagnostics)
+        IReadOnlyList<string> diagnostics,
+        IReadOnlyList<XamlDroppedChild>? droppedChildren = null)
     {
         DroppedElements = droppedElements;
         DroppedAttributes = droppedAttributes;
         NormalizedMembers = normalizedMembers;
         RepointedDeclarations = repointedDeclarations;
         Diagnostics = diagnostics;
+        DroppedChildren = droppedChildren ?? Array.Empty<XamlDroppedChild>();
     }
 
     /// <summary>
@@ -59,4 +61,11 @@ internal sealed class XamlNamespaceRewriteResult
     /// Gets the diagnostic messages of the run, in the order they were reported.
     /// </summary>
     public IReadOnlyList<string> Diagnostics { get; }
+
+    /// <summary>
+    /// Gets the removed elements that Visual Studio's document model still counts among the items of a collection,
+    /// in document order. An element removed together with its parent is not listed, and neither is an element that
+    /// the document model has no node for, such as one under an Uno platform prefix listed in <c>mc:Ignorable</c>.
+    /// </summary>
+    public IReadOnlyList<XamlDroppedChild> DroppedChildren { get; }
 }

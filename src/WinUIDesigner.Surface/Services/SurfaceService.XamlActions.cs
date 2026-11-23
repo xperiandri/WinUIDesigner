@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Shared;
 using Microsoft.VisualStudio.DesignTools.RuntimeHost.TapOM;
+using WinUIDesigner.Markup;
 
 namespace WinUIDesigner.Surface.Services;
 
@@ -19,6 +20,8 @@ internal sealed partial class SurfaceService
 
     private readonly ResourceScopeService _resourceScopes;
     private readonly StyleEditService _styleEdits;
+    private readonly DroppedChildren _droppedChildren;
+    private readonly DictionaryEntryActions _dictionaryEntries;
     private readonly Dictionary<long, object?> _actionObjects = [];
     private readonly Dictionary<long, object?> _trackedActionObjects = [];
 
@@ -146,7 +149,8 @@ internal sealed partial class SurfaceService
             InsertSetter(insertion);
         }
 
-        return serializer.Serialize(captured);
+        // A lookup that ends at a dropped element finds nothing: the element has no object.
+        return serializer.Serialize(captured is DroppedElement ? null : captured);
     }
 
     private object BuildDocument(CreateDocumentInfo document)
@@ -249,6 +253,7 @@ internal sealed partial class SurfaceService
     {
         var released = _objectIdentity.ReleaseDocument(documentId);
         _resourceScopes.RemoveObjects(released);
+        _droppedChildren.Release(released);
 
         foreach (var key in new List<long>(_actionObjects.Keys))
         {
@@ -288,6 +293,11 @@ internal sealed partial class SurfaceService
             // proxy/object map: the same handle still identifies the live WinUI object
             // used by a following ConnectToLiveTreeAction.
             case SetDispatcherAction:
+                break;
+            case CreateInstanceAction create when DroppedElementStandIn.IsTypeName(create.TypeName):
+                // An element a namespace policy dropped from a collection: Visual Studio adds the stand-in where the
+                // element is in its document model, and the collection records a hole there instead.
+                _actionObjects[create.LiveHandle] = new DroppedElement();
                 break;
             case CreateInstanceAction create:
                 {
@@ -364,13 +374,33 @@ internal sealed partial class SurfaceService
                 break;
             case GetPropertyAction getProperty:
                 object valueOwner = (ResolveObject(getProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getProperty.ParentHandle}."));
+                if (valueOwner is DroppedElement)
+                {
+                    // The stand-in ends the path: what Visual Studio still asks beneath a dropped element is answered
+                    // with the stand-in.
+                    _actionObjects[getProperty.PropertyValueHandle] = valueOwner;
+                    break;
+                }
+
                 object? propertyValue = XamlRuntimeUtilities.GetPropertyValue(valueOwner, getProperty.FullPropertyName);
                 _actionObjects[getProperty.PropertyValueHandle] = propertyValue;
                 _styleEdits.TrackPropertyValue(valueOwner, propertyValue);
                 break;
             case SetPropertyAction setProperty:
                 object propertyOwner = (ResolveObject(setProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {setProperty.ParentHandle}."));
+                if (propertyOwner is DroppedElement)
+                {
+                    // Nothing lives in place of a dropped element, so there is nothing to set.
+                    break;
+                }
+
                 object? newValue = ResolveActionValue(setProperty.PropertyValueHandle, propertyOwner);
+                if (newValue is DroppedElement)
+                {
+                    // The value stands in for a dropped element and is nothing to set.
+                    break;
+                }
+
                 if (!_styleEdits.TrySetProperty(propertyOwner, setProperty.FullPropertyName, newValue))
                 {
                     XamlRuntimeUtilities.SetPropertyValue(propertyOwner, setProperty.FullPropertyName, newValue);
@@ -380,6 +410,12 @@ internal sealed partial class SurfaceService
                 break;
             case ClearPropertyAction clearProperty:
                 object clearedOwner = (ResolveObject(clearProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearProperty.ParentHandle}."));
+                if (clearedOwner is DroppedElement)
+                {
+                    // Nothing lives in place of a dropped element, so there is nothing to clear.
+                    break;
+                }
+
                 if (!_styleEdits.TrySetProperty(clearedOwner, clearProperty.FullPropertyName, null))
                 {
                     XamlRuntimeUtilities.ClearPropertyValue(clearedOwner, clearProperty.FullPropertyName, clearProperty.UseDefaultValue, clearProperty.DefaultValue, clearProperty.DefaultValueType);
@@ -388,9 +424,17 @@ internal sealed partial class SurfaceService
                 break;
             case ClearCollectionPropertyAction clearCollection:
                 object collectionOwner = (ResolveObject(clearCollection.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearCollection.ParentHandle}."));
+                if (collectionOwner is DroppedElement)
+                {
+                    // Nothing lives in place of a dropped element, so it has no collection to clear.
+                    break;
+                }
+
                 object? clearedCollection = XamlRuntimeUtilities.GetPropertyValue(collectionOwner, clearCollection.FullPropertyName);
                 deferredSetterInsertions.RunAfterPendingInsertions(clearedCollection, InsertSetter, () =>
                 {
+                    // Visual Studio adds the children again afterwards, the dropped ones included.
+                    _droppedChildren.ForgetCollection(collectionOwner, clearCollection.FullPropertyName);
                     if (!_styleEdits.TryClearSetters(collectionOwner, clearedCollection))
                     {
                         XamlRuntimeUtilities.ClearCollectionProperty(collectionOwner, clearCollection.FullPropertyName);
@@ -403,63 +447,54 @@ internal sealed partial class SurfaceService
                 break;
             case GetChildAction getChild:
                 object indexedParent = (ResolveObject(getChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getChild.ParentHandle}."));
-                deferredSetterInsertions.RunAfterPendingInsertions(indexedParent, InsertSetter, () => _actionObjects[getChild.ChildHandle] = XamlRuntimeUtilities.GetChild(indexedParent, getChild.Index));
+                _actionObjects[getChild.ChildHandle] = _droppedChildren.GetChild(indexedParent, getChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
                 break;
             case AddChildAction addChild:
                 object childOwner = (ResolveObject(addChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {addChild.ParentHandle}."));
-                object? child = ResolveActionValue(addChild.ChildHandle, childOwner);
+
+                // A stand-in takes no child, so its value is not resolved either. The setters that wait for the end of
+                // the batch are part of the collection as Visual Studio sees it, and count for the index.
+                object? child = childOwner is DroppedElement ? null : ResolveActionValue(addChild.ChildHandle, childOwner);
+                if (_droppedChildren.PlaceChild(childOwner, addChild.Index, child, collection => deferredSetterInsertions.CountFor(collection)) is not int liveIndex)
+                {
+                    // Nothing is added: the child stands in for a dropped element and its position is a hole of the
+                    // collection now, or the owner stands in for one.
+                    break;
+                }
+
                 if (childOwner is SetterBaseCollection setterCollection && child is SetterBase setter)
                 {
-                    deferredSetterInsertions.Add(new(action, setterCollection, addChild.Index, setter));
+                    deferredSetterInsertions.Add(new(action, setterCollection, liveIndex, setter));
                 }
                 else
                 {
-                    XamlRuntimeUtilities.AddChild(childOwner, addChild.Index, child);
+                    XamlRuntimeUtilities.AddChild(childOwner, liveIndex, child);
                 }
 
                 break;
             case RemoveChildAction removeChild:
                 object removalParent = (ResolveObject(removeChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {removeChild.ParentHandle}."));
-                deferredSetterInsertions.RunAfterPendingInsertions(removalParent, InsertSetter, () =>
-                {
-                    if (removalParent is not SetterBaseCollection removalSetters || !_styleEdits.TryRemoveSetter(removalSetters, removeChild.Index))
-                    {
-                        XamlRuntimeUtilities.RemoveChild(removalParent, removeChild.Index);
-                    }
-                });
 
+                // The removal goes through the index translation; a sealed setter collection is changed through XAML
+                // Diagnostics there (see RemoveChildAt).
+                _droppedChildren.RemoveChild(removalParent, removeChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
                 break;
+            // Visual Studio reaches the entries of a dropped merged dictionary through the dictionary, so these four
+            // actions can address the stand-in of a dropped dictionary; DictionaryEntryActions ends them there.
             case GetDictionaryEntryAction getDictionaryEntry:
-                _actionObjects[getDictionaryEntry.ValueHandle] = XamlRuntimeUtilities.GetDictionaryEntry((ResolveObject(getDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getDictionaryEntry.DictionaryHandle}.")), ResolveObject(getDictionaryEntry.KeyHandle));
+                _actionObjects[getDictionaryEntry.ValueHandle] = _dictionaryEntries.GetEntry((ResolveObject(getDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getDictionaryEntry.DictionaryHandle}.")), ResolveObject(getDictionaryEntry.KeyHandle));
                 break;
             case AddDictionaryEntryAction addDictionaryEntry:
                 object dictionaryOwner = (ResolveObject(addDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {addDictionaryEntry.DictionaryHandle}."));
-                object? addedKey = ResolveObject(addDictionaryEntry.KeyHandle);
-                object? addedValue = ResolveActionValue(addDictionaryEntry.ValueHandle, dictionaryOwner);
-                if (!_styleEdits.TryAddDictionaryEntry(dictionaryOwner, addedKey, addedValue))
-                {
-                    XamlRuntimeUtilities.SetDictionaryEntry(dictionaryOwner, addedKey, addedValue);
-                }
-
+                _dictionaryEntries.AddEntry(dictionaryOwner, ResolveObject(addDictionaryEntry.KeyHandle), () => ResolveActionValue(addDictionaryEntry.ValueHandle, dictionaryOwner));
                 break;
             case RemoveDictionaryEntryAction removeDictionaryEntry:
                 object removalDictionary = (ResolveObject(removeDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {removeDictionaryEntry.DictionaryHandle}."));
-                object? removedKey = ResolveObject(removeDictionaryEntry.KeyHandle);
-                if (!_styleEdits.TryRemoveDictionaryEntry(removalDictionary, removedKey))
-                {
-                    XamlRuntimeUtilities.RemoveDictionaryEntry(removalDictionary, removedKey);
-                }
-
+                _dictionaryEntries.RemoveEntry(removalDictionary, ResolveObject(removeDictionaryEntry.KeyHandle));
                 break;
             case UpdateDictionaryValueAction updateDictionaryValue:
                 object updatedDictionaryOwner = (ResolveObject(updateDictionaryValue.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {updateDictionaryValue.DictionaryHandle}."));
-                object? updatedKey = ResolveObject(updateDictionaryValue.KeyHandle);
-                object? updatedValue = ResolveActionValue(updateDictionaryValue.ValueHandle, updatedDictionaryOwner);
-                if (!_styleEdits.TryReplaceDictionaryEntry(updatedDictionaryOwner, updatedKey, updatedValue))
-                {
-                    XamlRuntimeUtilities.SetDictionaryEntry(updatedDictionaryOwner, updatedKey, updatedValue);
-                }
-
+                _dictionaryEntries.ReplaceEntry(updatedDictionaryOwner, ResolveObject(updateDictionaryValue.KeyHandle), () => ResolveActionValue(updateDictionaryValue.ValueHandle, updatedDictionaryOwner));
                 break;
             case NullReferenceAction nullReference:
                 _actionObjects[nullReference.LiveHandle] = null;
@@ -502,6 +537,30 @@ internal sealed partial class SurfaceService
             default:
                 throw new NotSupportedException($"XAML action '{action.Action}' is not implemented by the WinUI designer surface.");
         }
+    }
+
+    // The indices of a batch assume that the earlier actions ran, so the setters that wait for the end of the batch go
+    // into their collection before an index of it is used.
+    private void InsertPendingSetters(DeferredInsertionQueue<DeferredSetterInsertion> pending, object collection)
+    {
+        pending.RunAfterPendingInsertions(collection, InsertSetter, static () => { });
+    }
+
+    /// <summary>
+    /// Removes the child at a live index, after the index translation: a sealed setter collection through XAML
+    /// Diagnostics, any other collection directly.
+    /// </summary>
+    /// <returns><see langword="false"/> when the index points past the end.</returns>
+    private bool RemoveChildAt(object owner, int liveIndex)
+    {
+        // A sealed setter collection of a style in use.
+        if (owner is SetterBaseCollection setters && _styleEdits.TryRemoveSetter(setters, liveIndex))
+        {
+            return true;
+        }
+
+        // Any other collection.
+        return XamlRuntimeUtilities.RemoveChild(owner, liveIndex);
     }
 
     private object? ResolveObject(long handle)
