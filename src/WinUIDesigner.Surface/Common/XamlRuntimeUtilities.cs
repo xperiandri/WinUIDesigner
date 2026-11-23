@@ -130,6 +130,13 @@ internal static class XamlRuntimeUtilities
             return Enum.Parse(type, value ?? string.Empty, ignoreCase: true);
         }
 
+        // The markup form of NaN for the size of an element (Width="Auto"); neither the XAML binding helper nor the
+        // type converter of Double reads it.
+        if (type == typeof(double) && value.AsSpan().Trim().Equals("Auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return double.NaN;
+        }
+
         try
         {
             return XamlBindingHelper.ConvertValue(type, value ?? string.Empty);
