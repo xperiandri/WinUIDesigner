@@ -9,8 +9,9 @@ using XSurfUwp;
 
 /// <summary>
 /// Sends Visual Studio's child actions, serialized and read back with Visual Studio's own serializer, through the
-/// translator the surface uses, and checks the collections that result. The collections are plain lists; the replay
-/// handles each action the way SurfaceService.Execute does, setters that wait for the end of the batch included.
+/// translator the surface uses, and checks the collections that result. The collections are plain lists. SurfaceService.Execute
+/// needs WinUI and is not compiled here, so the replay is a dispatch of its own; it hands the child actions to the same
+/// translator, with the same queue for the setters that wait for the end of the batch, and mirrors nothing else of Execute.
 /// </summary>
 [TestClass]
 public sealed class DroppedChildActionTests
@@ -274,6 +275,77 @@ public sealed class DroppedChildActionTests
     }
 
     [TestMethod]
+    public void ARemovalSeesTheSettersThatWaitForTheEndOfTheBatch()
+    {
+        // Visual Studio adds X at 1 and then removes the setter at 3, which is C once X is in. A removal that ran on
+        // the collection without X would point past its end, and X would end up one place off.
+        var replay = new Replay();
+        var setters = new FakeSetters("A", "B", "C");
+        replay.Live[_PanelHandle] = setters;
+
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
+            .. Item(-5, "X", 1),
+            new RemoveChildAction(-3, 3),
+        ]);
+
+        CollectionAssert.AreEqual(new[] { "A", "X", "B" }, Names(setters));
+        Assert.IsEmpty(replay.Warnings);
+    }
+
+    [TestMethod]
+    public void ALookupAndARemovalCountTheWaitingSettersAmongHoles()
+    {
+        // Model: A, a dropped setter, B. X is added at the end of the model and waits; it is then looked up and removed.
+        var replay = new Replay();
+        var setters = new FakeSetters("A", "B");
+        replay.Live[_PanelHandle] = setters;
+        replay.Translator.Register(setters, [1]);
+
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
+            .. Item(-5, "X", 3),
+            new GetChildAction(-3, 3, -7),
+            new RemoveChildAction(-3, 3),
+        ]);
+
+        Assert.AreEqual("X", (replay.Get(-7) as LiveItem)?.Name, "The lookup finds the setter that was waiting.");
+        CollectionAssert.AreEqual(new[] { "A", "B" }, Names(setters));
+        CollectionAssert.AreEqual(new[] { 1 }, replay.Holes(setters));
+        Assert.IsEmpty(replay.Warnings);
+    }
+
+    [TestMethod]
+    public void ActionsBeneathAStandInChangeNothingAndEndAtIt()
+    {
+        var replay = new Replay();
+        var panel = new FakePanel("a");
+        replay.Live[_PanelHandle] = panel;
+
+        replay.Run(
+        [
+            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+            new GetPropertyAction(-1, _Children, -3, 0),
+            .. StandIn(-5, 1),
+            new GetChildAction(-3, 1, -7),
+            new GetPropertyAction(-7, _Children, -9, 0),
+            new GetChildAction(-9, 0, -11),
+            new CreateInstanceAction(-13, "Item:late"),
+            new AddChildAction(-9, 0, -13),
+            new RemoveChildAction(-9, 0),
+        ]);
+
+        CollectionAssert.AreEqual(new[] { "a" }, Names(panel.Children));
+        CollectionAssert.AreEqual(new[] { 1 }, replay.Holes(panel.Children));
+        Assert.IsInstanceOfType<DroppedElement>(replay.Get(-7), "A lookup at a dropped element gives a stand-in.");
+        Assert.AreSame(replay.Get(-7), replay.Get(-9), "A property of a stand-in is the stand-in.");
+        Assert.AreSame(replay.Get(-7), replay.Get(-11), "A child of a stand-in is the stand-in.");
+        Assert.IsEmpty(replay.Warnings);
+    }
+
+    [TestMethod]
     public void ACollectionWithoutDroppedElementsKeepsTheIndicesAsTheyAre()
     {
         var replay = new Replay();
@@ -416,7 +488,16 @@ public sealed class DroppedChildActionTests
     /// </summary>
     private sealed class FakeSetters : List<object>
     {
+        public FakeSetters(params string[] names)
+        {
+            AddRange(names.Select(name => (object)new LiveItem(name)));
+        }
     }
+
+    /// <summary>
+    /// A setter that waits for the end of its batch, at the live index its action was given.
+    /// </summary>
+    private readonly record struct PendingSetter(FakeSetters Collection, int Index, object? Child);
 
     /// <summary>
     /// Gives the translator access to plain lists, as the surface gives it access to WinUI collections.
@@ -453,7 +534,8 @@ public sealed class DroppedChildActionTests
     }
 
     /// <summary>
-    /// Executes the actions the way SurfaceService.Execute does for these kinds.
+    /// Executes the child actions of a batch through the translator and the queue of waiting setters that
+    /// SurfaceService.Execute uses. The other kinds of action are mirrored only as far as the sequences need them.
     /// </summary>
     private sealed class Replay
     {
@@ -487,7 +569,7 @@ public sealed class DroppedChildActionTests
             IList<XamlAction> received = XamlActionJsonSerializer.Deserialize(XamlActionJsonSerializer.Serialize(actions));
             Assert.AreEqual(actions.Length, received.Count, "Every action survives Visual Studio's serializer.");
 
-            var deferred = new List<(FakeSetters Collection, int Index, object? Child)>();
+            var pending = new DeferredInsertionQueue<PendingSetter>(entry => entry.Collection);
             foreach (XamlAction action in received)
             {
                 switch (action)
@@ -502,7 +584,9 @@ public sealed class DroppedChildActionTests
                         _objects[create.LiveHandle] = new LiveItem(create.TypeName["Item:".Length..]);
                         break;
                     case GetPropertyAction getProperty:
-                        _objects[getProperty.PropertyValueHandle] = ((FakePanel)_objects[getProperty.ParentHandle]!).Children;
+                        // The stand-in ends the path; this guard is a copy of the one in Execute.
+                        object valueOwner = _objects[getProperty.ParentHandle]!;
+                        _objects[getProperty.PropertyValueHandle] = valueOwner is DroppedElement ? valueOwner : ((FakePanel)valueOwner).Children;
                         break;
                     case ClearCollectionPropertyAction clear:
                         List<object> cleared = ((FakePanel)_objects[clear.ParentHandle]!).Children;
@@ -511,29 +595,27 @@ public sealed class DroppedChildActionTests
                         break;
                     case AddChildAction addChild:
                         object owner = _objects[addChild.ParentHandle]!;
-                        object? child = _objects[addChild.ChildHandle];
-                        if (Translator.PlaceChild(owner, addChild.Index, child, collection => deferred.Count(entry => ReferenceEquals(entry.Collection, collection))) is not int liveIndex)
+                        object? child = owner is DroppedElement ? null : _objects[addChild.ChildHandle];
+                        if (Translator.PlaceChild(owner, addChild.Index, child, pending.CountFor) is not int liveIndex)
                         {
                             break;
                         }
 
                         if (owner is FakeSetters setters)
                         {
-                            deferred.Add((setters, liveIndex, child));
+                            pending.Add(new PendingSetter(setters, liveIndex, child));
                         }
                         else
                         {
-                            var list = (IList)new ListAccess().GetCollection(owner);
-                            list.Insert(liveIndex < 0 || liveIndex > list.Count ? list.Count : liveIndex, child);
+                            Insert((IList)new ListAccess().GetCollection(owner), liveIndex, child);
                         }
 
                         break;
                     case RemoveChildAction removeChild:
-                        Translator.RemoveChild(_objects[removeChild.ParentHandle]!, removeChild.Index);
+                        Translator.RemoveChild(_objects[removeChild.ParentHandle]!, removeChild.Index, collection => InsertPending(pending, collection));
                         break;
                     case GetChildAction getChild:
-                        object lookupOwner = _objects[getChild.ParentHandle]!;
-                        _objects[getChild.ChildHandle] = lookupOwner is DroppedElement ? lookupOwner : Translator.GetChild(lookupOwner, getChild.Index);
+                        _objects[getChild.ChildHandle] = Translator.GetChild(_objects[getChild.ParentHandle]!, getChild.Index, collection => InsertPending(pending, collection));
                         break;
                     default:
                         Assert.Fail($"The replay does not handle {action.Action}.");
@@ -541,10 +623,20 @@ public sealed class DroppedChildActionTests
                 }
             }
 
-            foreach ((FakeSetters collection, int index, object? child) in deferred)
+            foreach (PendingSetter setter in pending.TakeAll())
             {
-                collection.Insert(index < 0 || index > collection.Count ? collection.Count : index, child!);
+                Insert(setter.Collection, setter.Index, setter.Child);
             }
+        }
+
+        private static void InsertPending(DeferredInsertionQueue<PendingSetter> pending, object collection)
+        {
+            pending.RunAfterPendingInsertions(collection, setter => Insert(setter.Collection, setter.Index, setter.Child), static () => { });
+        }
+
+        private static void Insert(IList list, int index, object? child)
+        {
+            list.Insert(index < 0 || index > list.Count ? list.Count : index, child);
         }
     }
 }

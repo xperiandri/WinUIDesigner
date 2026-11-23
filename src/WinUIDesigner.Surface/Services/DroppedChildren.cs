@@ -58,15 +58,15 @@ internal sealed class DroppedChildren : IChildCollectionAccess
     }
 
     /// <inheritdoc cref="ChildIndexTranslator.RemoveChild"/>
-    public void RemoveChild(object owner, int modelIndex)
+    public void RemoveChild(object owner, int modelIndex, Action<object>? flushPending = null)
     {
-        Translator.RemoveChild(owner, modelIndex);
+        Translator.RemoveChild(owner, modelIndex, flushPending);
     }
 
     /// <inheritdoc cref="ChildIndexTranslator.GetChild"/>
-    public object? GetChild(object owner, int modelIndex)
+    public object? GetChild(object owner, int modelIndex, Action<object>? flushPending = null)
     {
-        return Translator.GetChild(owner, modelIndex);
+        return Translator.GetChild(owner, modelIndex, flushPending);
     }
 
     /// <summary>

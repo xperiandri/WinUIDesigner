@@ -442,26 +442,18 @@ internal sealed partial class SurfaceService
                 break;
             case GetChildAction getChild:
                 object lookupOwner = ResolveObject(getChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getChild.ParentHandle}.");
-                if (lookupOwner is DroppedElement)
-                {
-                    _actionObjects[getChild.ChildHandle] = lookupOwner;
-                    break;
-                }
-
-                deferredSetterInsertions.RunAfterPendingInsertions(lookupOwner, InsertSetter, () => _actionObjects[getChild.ChildHandle] = _droppedChildren.GetChild(lookupOwner, getChild.Index));
+                _actionObjects[getChild.ChildHandle] = _droppedChildren.GetChild(lookupOwner, getChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
                 break;
             case AddChildAction addChild:
                 object childOwner = (ResolveObject(addChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {addChild.ParentHandle}."));
-                if (childOwner is DroppedElement)
-                {
-                    // Nothing lives in place of a dropped element, so nothing is added to it.
-                    break;
-                }
 
-                object? child = ResolveActionValue(addChild.ChildHandle, childOwner);
-                if (_droppedChildren.PlaceChild(childOwner, addChild.Index, child, collection => CountDeferredInsertions(deferredSetterInsertions, collection)) is not int liveIndex)
+                // A stand-in takes no child, so its value is not resolved either. The setters that wait for the end of
+                // the batch are part of the collection as Visual Studio sees it, and count for the index.
+                object? child = childOwner is DroppedElement ? null : ResolveActionValue(addChild.ChildHandle, childOwner);
+                if (_droppedChildren.PlaceChild(childOwner, addChild.Index, child, collection => deferredSetterInsertions.CountFor(collection)) is not int liveIndex)
                 {
-                    // The child stands in for a dropped element: its position is a hole of the collection now.
+                    // Nothing is added: the child stands in for a dropped element and its position is a hole of the
+                    // collection now, or the owner stands in for one.
                     break;
                 }
 
@@ -477,13 +469,10 @@ internal sealed partial class SurfaceService
                 break;
             case RemoveChildAction removeChild:
                 object removalOwner = ResolveObject(removeChild.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {removeChild.ParentHandle}.");
-                if (removalOwner is not DroppedElement)
-                {
-                    // The removal goes through the index translation; a sealed setter collection is changed
-                    // through XAML Diagnostics there (see RemoveChildAt).
-                    deferredSetterInsertions.RunAfterPendingInsertions(removalOwner, InsertSetter, () => _droppedChildren.RemoveChild(removalOwner, removeChild.Index));
-                }
 
+                // The removal goes through the index translation; a sealed setter collection is changed through XAML
+                // Diagnostics there (see RemoveChildAt).
+                _droppedChildren.RemoveChild(removalOwner, removeChild.Index, collection => InsertPendingSetters(deferredSetterInsertions, collection));
                 break;
             case GetDictionaryEntryAction getDictionaryEntry:
                 _actionObjects[getDictionaryEntry.ValueHandle] = XamlRuntimeUtilities.GetDictionaryEntry((ResolveObject(getDictionaryEntry.DictionaryHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {getDictionaryEntry.DictionaryHandle}.")), ResolveObject(getDictionaryEntry.KeyHandle));
@@ -560,13 +549,11 @@ internal sealed partial class SurfaceService
         }
     }
 
-    /// <summary>
-    /// Counts the setters the current batch has yet to add to <paramref name="collection"/>. Visual Studio's indices
-    /// already count them, so they are part of the collection when an index is translated.
-    /// </summary>
-    private static int CountDeferredInsertions(DeferredInsertionQueue<DeferredSetterInsertion>? deferredSetterInsertions, object collection)
+    // The indices of a batch assume that the earlier actions ran, so the setters that wait for the end of the batch go
+    // into their collection before an index of it is used.
+    private void InsertPendingSetters(DeferredInsertionQueue<DeferredSetterInsertion> pending, object collection)
     {
-        return deferredSetterInsertions?.CountFor(collection) ?? 0;
+        pending.RunAfterPendingInsertions(collection, InsertSetter, static () => { });
     }
 
     /// <summary>

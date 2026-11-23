@@ -76,11 +76,17 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
     /// collection as Visual Studio sees it. <see langword="null"/> when there are none.
     /// </param>
     /// <returns>
-    /// The index in the live collection to insert at; <see langword="null"/> when the child stands in for a dropped
-    /// element, which is recorded as a hole and must not be added.
+    /// The index in the live collection to insert at; <see langword="null"/> when nothing is added: the child stands
+    /// in for a dropped element, which is recorded as a hole, or the owner itself stands in for one.
     /// </returns>
     public int? PlaceChild(object owner, int modelIndex, object? child, Func<object, int>? countPending = null)
     {
+        if (owner is DroppedElement)
+        {
+            // Nothing lives in place of a dropped element, so nothing is added to it.
+            return null;
+        }
+
         if (child is not DroppedElement && _maps.Count == 0)
         {
             // Nothing was dropped anywhere: the common case costs no lookup.
@@ -108,10 +114,23 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
 
     /// <summary>
     /// Removes the child Visual Studio removes at <paramref name="modelIndex"/>: the object the document model means,
-    /// nothing when it means a dropped element, and nothing when the index points past the end.
+    /// nothing when it means a dropped element, and nothing when the index points past the end. Nothing is removed
+    /// from an owner that itself stands in for a dropped element.
     /// </summary>
-    public void RemoveChild(object owner, int modelIndex)
+    /// <param name="owner">The object the action removes from: a collection, or an object that holds one.</param>
+    /// <param name="modelIndex">The index of the child in Visual Studio's document model.</param>
+    /// <param name="flushPending">
+    /// Adds the children of the owner's collection that the current batch has yet to add, such as setters: Visual
+    /// Studio's index assumes the earlier actions ran. It runs before the index is translated.
+    /// </param>
+    public void RemoveChild(object owner, int modelIndex, Action<object>? flushPending = null)
     {
+        if (owner is DroppedElement)
+        {
+            return;
+        }
+
+        flushPending?.Invoke(owner);
         object collection = _maps.Count == 0 ? owner : collections.GetCollection(owner);
         int liveIndex = modelIndex;
         if (_maps.Count != 0 && _maps.TryGet(collection, out ChildIndexMap? holes))
@@ -140,10 +159,24 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
 
     /// <summary>
     /// Returns the child Visual Studio looks up at <paramref name="modelIndex"/>: the object the document model means,
-    /// a stand-in when it means a dropped element, and <see langword="null"/> when the index points past the end.
+    /// a stand-in when it means a dropped element, and <see langword="null"/> when the index points past the end. A
+    /// lookup in an owner that itself stands in for a dropped element gives that stand-in again.
     /// </summary>
-    public object? GetChild(object owner, int modelIndex)
+    /// <param name="owner">The object the action looks into: a collection, or an object that holds one.</param>
+    /// <param name="modelIndex">The index of the child in Visual Studio's document model.</param>
+    /// <param name="flushPending">
+    /// Adds the children of the owner's collection that the current batch has yet to add, such as setters: Visual
+    /// Studio's index assumes the earlier actions ran. It runs before the index is translated.
+    /// </param>
+    public object? GetChild(object owner, int modelIndex, Action<object>? flushPending = null)
     {
+        if (owner is DroppedElement)
+        {
+            // The stand-in ends the path: nothing lives beneath a dropped element.
+            return owner;
+        }
+
+        flushPending?.Invoke(owner);
         int liveIndex = modelIndex;
         object collection = _maps.Count == 0 ? owner : collections.GetCollection(owner);
         if (_maps.Count != 0 && _maps.TryGet(collection, out ChildIndexMap? holes))

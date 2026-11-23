@@ -403,10 +403,13 @@ public sealed class VsDesignerApiShapeTests
     }
 
     [TestMethod]
-    public void InstanceBuildersAddEveryChildWithTheIndexOfItsNode()
+    public void CoreInstanceBuilderHasTheChildMethodsAndChildActionsCarryAnIndex()
     {
-        // The parent builders emit AddChild and RemoveChild through ModifyChild, with the index of the node in the
-        // document model, both when they build a collection and when they apply an edit.
+        // A shape pin, not a behaviour test. The package relies on the parent builders emitting AddChild and
+        // RemoveChild through ModifyChild with the index of the node in the document model, both when they build a
+        // collection and when they apply an edit. That the indices are the ones of the model is read in the
+        // decompiled designer and confirmed in the live designer; the tests of the surface (DroppedChildActionTests)
+        // assume it.
         MethodDefinition modifyChild = RequireMethod(_CoreInstanceBuilder, "ModifyChild", "IInstanceBuilderContext", "LiveNodeProxy", "LiveNodeProxy", "Int32");
         AssertOverridable(modifyChild);
 
