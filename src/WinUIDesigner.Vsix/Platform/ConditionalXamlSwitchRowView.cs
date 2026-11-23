@@ -141,11 +141,19 @@ internal sealed class ConditionalXamlSwitchRowView
 
     private static string GetItemStatus(ConditionalXamlSwitchRow row)
     {
+        // A malformed predicate: no answer can be forced, its members are skipped, and the help text says so.
+        if (!row.IsSwitchable)
+        {
+            return "Cannot be switched";
+        }
+
+        // The user forces the answer.
         if (row.IsOverridden)
         {
             return "Overridden";
         }
 
+        // The answer is evaluated, or the surface has not answered the question yet.
         return row.EvaluatedValue.HasValue ? "Evaluated" : "Not evaluated yet";
     }
 

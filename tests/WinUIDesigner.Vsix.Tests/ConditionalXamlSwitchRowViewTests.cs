@@ -120,6 +120,10 @@ public sealed class ConditionalXamlSwitchRowViewTests
         Assert.IsFalse(view.CheckBox.IsEnabled);
         Assert.ThrowsExactly<ElementNotEnabledException>(() => Toggle(view.CheckBox));
 
+        // A screen reader is told by the status, as by the help text, that it cannot be switched, not that it was evaluated.
+        Assert.AreEqual("Cannot be switched", AutomationProperties.GetItemStatus(view.CheckBox));
+        Assert.Contains("Cannot be switched", AutomationProperties.GetHelpText(view.CheckBox));
+
         // Nothing can be switched while the options cannot be sent to the design surface.
         view.Update(Row(XamlConditionOverrides.Empty, Holds, 0), canSwitch: false);
         Assert.IsFalse(view.CheckBox.IsEnabled);
