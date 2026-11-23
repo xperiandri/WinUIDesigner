@@ -40,6 +40,10 @@ internal sealed partial class SurfaceService
 
     private async Task<CreateSurfaceResponseInfo> HandleCreateSurfaceAsync(CreateSurfaceRequestContract requestInfo)
     {
+        // Keep this before the first await: until then the handler runs on the protocol thread in message order, so a
+        // CloseDocument that arrives while the request waits for the gate forgets the options stored here.
+        StoreDesignTimeOptions(requestInfo);
+
         try
         {
             if (!await _constructionGate.WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false))
@@ -65,8 +69,6 @@ internal sealed partial class SurfaceService
             {
                 throw new ArgumentException("A nonzero document ID is required.");
             }
-
-            StoreDesignTimeOptions(requestInfo);
 
             await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
             {
