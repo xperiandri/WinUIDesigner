@@ -208,18 +208,6 @@ internal sealed class DesignTimeOptions : IEquatable<DesignTimeOptions>
     /// <param name="text">The text form.</param>
     /// <param name="targetPlatformId">The <c>target</c> field, or <see langword="null"/> when the text has none.</param>
     /// <param name="contractVersion">The <c>contract</c> field, or <see langword="null"/> when the text has none.</param>
-    /// <returns>Whether <paramref name="text"/> has a valid <c>v</c> field.</returns>
-    internal static bool TryReadFields(string? text, out string? targetPlatformId, out string? contractVersion)
-    {
-        return TryReadFields(text, out targetPlatformId, out contractVersion, out _);
-    }
-
-    /// <summary>
-    /// Reads the raw field values of the text form without interpreting them.
-    /// </summary>
-    /// <param name="text">The text form.</param>
-    /// <param name="targetPlatformId">The <c>target</c> field, or <see langword="null"/> when the text has none.</param>
-    /// <param name="contractVersion">The <c>contract</c> field, or <see langword="null"/> when the text has none.</param>
     /// <param name="conditionOverrides">The <c>cond</c> field, or <see langword="null"/> when the text has none.</param>
     /// <returns>Whether <paramref name="text"/> has a valid <c>v</c> field.</returns>
     internal static bool TryReadFields(string? text, out string? targetPlatformId, out string? contractVersion, out string? conditionOverrides)

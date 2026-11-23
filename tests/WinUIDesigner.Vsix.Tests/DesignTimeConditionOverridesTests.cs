@@ -56,8 +56,7 @@ public sealed class DesignTimeConditionOverridesTests
     {
         var plain = new DesignTimeOptions(DesignTimeTargetPlatform.Ios, 10);
         var forced = new DesignTimeOptions(DesignTimeTargetPlatform.Ios, 10, _Overrides);
-        var same = new DesignTimeOptions(DesignTimeTargetPlatform.Ios, 10, XamlConditionOverrides.Create(
-            [new(_Hostile, true), new(_C7, false)]));
+        var same = new DesignTimeOptions(DesignTimeTargetPlatform.Ios, 10, XamlConditionOverrides.Empty.With(_Hostile, true).With(_C7, false));
 
         Assert.AreNotEqual(plain, forced);
         Assert.AreEqual(forced, same);

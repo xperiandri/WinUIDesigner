@@ -198,7 +198,7 @@ public sealed class XamlConditionOverridesTests
     public void OverridesAreImmutableAndCompareByContent()
     {
         XamlConditionOverrides first = XamlConditionOverrides.Empty.With("b", true).With("a", false);
-        XamlConditionOverrides second = XamlConditionOverrides.Create([new("a", true), new("b", true), new("a", false), new(string.Empty, true)]);
+        XamlConditionOverrides second = XamlConditionOverrides.Empty.With("a", true).With("b", true).With("a", false);
 
         Assert.AreEqual(first, second);
         Assert.AreEqual(first.GetHashCode(), second.GetHashCode());

@@ -69,7 +69,6 @@ public sealed class XamlConditionSwitchesTests
         Assert.IsFalse(switches[0].Query.Condition.IsNegated);
         Assert.AreEqual(XamlConditionKind.ApiContract, switches[0].Query.Condition.Kind);
         Assert.AreEqual("WinUIDesignerSampleApp.Conditions.FeatureFlagCondition", switches[3].Query.TypeName);
-        Assert.AreEqual(6, switches[0].Prefixes[0].LineNumber);
     }
 
     [TestMethod]

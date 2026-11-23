@@ -11,11 +11,10 @@ namespace WinUIDesigner.Markup;
 /// </summary>
 internal sealed class XamlConditionSwitchPrefix
 {
-    public XamlConditionSwitchPrefix(string prefix, bool isNegated, int lineNumber)
+    public XamlConditionSwitchPrefix(string prefix, bool isNegated)
     {
         Prefix = prefix;
         IsNegated = isNegated;
-        LineNumber = lineNumber;
     }
 
     /// <summary>
@@ -28,11 +27,6 @@ internal sealed class XamlConditionSwitchPrefix
     /// so that its members apply when the question does not hold.
     /// </summary>
     public bool IsNegated { get; }
-
-    /// <summary>
-    /// Gets the 1-based line of the first declaration of the prefix with this question, or 0 when unknown.
-    /// </summary>
-    public int LineNumber { get; }
 
     /// <summary>
     /// Returns whether the members written under this prefix apply when the question has the answer <paramref name="holds"/>.
@@ -210,7 +204,7 @@ internal static class XamlConditionSwitches
         {
             if (_seen.Add((declaration.Prefix, isNegated)))
             {
-                _prefixes.Add(new XamlConditionSwitchPrefix(declaration.Prefix, isNegated, declaration.LineNumber));
+                _prefixes.Add(new XamlConditionSwitchPrefix(declaration.Prefix, isNegated));
             }
         }
 

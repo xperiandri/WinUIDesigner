@@ -77,23 +77,6 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
     }
 
     /// <summary>
-    /// Creates a set from <see cref="XamlConditionQuery.Key"/> and value pairs; a key given twice keeps its last value.
-    /// </summary>
-    public static XamlConditionOverrides Create(IEnumerable<KeyValuePair<string, bool>> values)
-    {
-        var copy = new SortedDictionary<string, bool>(StringComparer.Ordinal);
-        foreach (KeyValuePair<string, bool> value in values ?? throw new ArgumentNullException(nameof(values)))
-        {
-            if (!string.IsNullOrEmpty(value.Key))
-            {
-                copy[value.Key] = value.Value;
-            }
-        }
-
-        return copy.Count == 0 ? Empty : new XamlConditionOverrides(copy);
-    }
-
-    /// <summary>
     /// Returns whether a condition can be overridden: it has to be a well-formed predicate. Malformed text is
     /// decided by the grammar both processes share, and a namespace without a predicate always applies.
     /// </summary>
