@@ -31,10 +31,7 @@ internal sealed class XamlConditionSwitchPrefix
     /// <summary>
     /// Returns whether the members written under this prefix apply when the question has the answer <paramref name="holds"/>.
     /// </summary>
-    public bool Applies(bool holds)
-    {
-        return holds != IsNegated;
-    }
+    public bool Applies(bool holds) => holds != IsNegated;
 }
 
 /// <summary>
@@ -101,6 +98,7 @@ internal static class XamlConditionSwitches
     /// </remarks>
     public static IReadOnlyList<XamlConditionSwitch> Collect(XamlNamespaceScanResult? scan)
     {
+        // A document without text or without a conditional namespace asks nothing.
         if (scan is null || !scan.HasConditionalNamespaces)
         {
             return [];
@@ -112,12 +110,15 @@ internal static class XamlConditionSwitches
         for (int index = 0; index < declarations.Count; index++)
         {
             XamlNamespaceDeclaration declaration = declarations[index];
+
+            // A namespace without a condition is unconditional.
             string? condition = declaration.Uri.Condition;
             if (condition is null)
             {
                 continue;
             }
 
+            // A condition without a predicate always applies.
             XamlCondition parsed = XamlCondition.Parse(condition);
             if (parsed.Kind == XamlConditionKind.Empty)
             {
@@ -126,6 +127,7 @@ internal static class XamlConditionSwitches
 
             foreach (XamlConditionQuery query in CreateQueries(condition, parsed, declarations))
             {
+                // The first declaration that asks a question lists it; the others add their prefix to it.
                 if (!byKey.TryGetValue(query.Key, out Builder? builder))
                 {
                     builder = new Builder(CreatePositiveQuery(query));
@@ -148,12 +150,14 @@ internal static class XamlConditionSwitches
 
     private static IEnumerable<XamlConditionQuery> CreateQueries(string condition, XamlCondition parsed, IReadOnlyList<XamlNamespaceDeclaration> declarations)
     {
+        // A built-in method asks one question, whatever the document declares.
         if (parsed.Kind != XamlConditionKind.Custom)
         {
             yield return XamlConditionQuery.Create(condition, resolveNamespace: null);
             yield break;
         }
 
+        // A custom condition asks one question for every namespace its prefix is bound to.
         bool isDeclared = false;
         for (int index = 0; index < declarations.Count; index++)
         {
@@ -165,6 +169,7 @@ internal static class XamlConditionSwitches
             }
         }
 
+        // A prefix that is not declared asks it with no namespace, as the designer does when it evaluates the document.
         if (!isDeclared)
         {
             yield return XamlConditionQuery.Create(condition, resolveNamespace: null);
@@ -177,6 +182,7 @@ internal static class XamlConditionSwitches
     /// </summary>
     private static XamlConditionQuery CreatePositiveQuery(XamlConditionQuery query)
     {
+        // A built-in method that is negated or spelled another way than its key is asked in the form of its key.
         if (IsBuiltIn(query)
             && (query.Condition.IsNegated || !string.Equals(query.Condition.Text, query.Key, StringComparison.Ordinal)))
         {
@@ -187,6 +193,7 @@ internal static class XamlConditionSwitches
             }
         }
 
+        // A custom condition, or a built-in one in its plain form, is its own positive form.
         return query;
     }
 

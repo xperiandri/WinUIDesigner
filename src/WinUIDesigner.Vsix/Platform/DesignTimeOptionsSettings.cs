@@ -135,10 +135,12 @@ internal static class DesignTimeOptionsSettings
                 return true;
             }
 
+            // Visual Studio had nowhere to keep the value.
             warn($"Visual Studio did not keep the design-time options '{userOverride}' for project '{project.ProjectName}'.", null);
         }
         catch (Exception exception)
         {
+            // The project failed while the value was written or read back.
             warn($"Design-time options: storing the override '{userOverride}' failed; the affected options keep their defaults.", exception);
         }
 

@@ -71,10 +71,7 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
         return left is null ? right is null : left.Equals(right);
     }
 
-    public static bool operator !=(XamlConditionOverrides? left, XamlConditionOverrides? right)
-    {
-        return !(left == right);
-    }
+    public static bool operator !=(XamlConditionOverrides? left, XamlConditionOverrides? right) => !(left == right);
 
     /// <summary>
     /// Returns whether a condition can be overridden: it has to be a well-formed predicate. Malformed text is
@@ -93,29 +90,34 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
     /// <returns>Whether every entry could be read.</returns>
     public static bool TryParse(string? text, out XamlConditionOverrides overrides)
     {
+        // No text reads as no overrides.
         overrides = Empty;
-        if (text is null || text.Trim().Length == 0)
+        if (string.IsNullOrWhiteSpace(text))
         {
             return true;
         }
 
         bool isComplete = true;
         var values = new SortedDictionary<string, bool>(StringComparer.Ordinal);
-        foreach (string entry in text.Split(_EntrySeparator))
-        {
-            int separator = entry.LastIndexOf(_ValueSeparator);
-            string value = separator < 0 ? string.Empty : entry.Substring(separator + 1).Trim();
-            bool? holds = value switch
-            {
-                _Holds => true,
-                _DoesNotHold => false,
-                _ => null,
-            };
 
-            if (separator <= 0 || !holds.HasValue || !TryUnescape(entry.Substring(0, separator).Trim(), out string key) || key.Length == 0)
+        // The text is read in place; only the keys that are kept become strings.
+        ReadOnlySpan<char> rest = text.AsSpan();
+        bool isLastEntry = false;
+        while (!isLastEntry)
+        {
+            int end = rest.IndexOf(_EntrySeparator);
+            ReadOnlySpan<char> entry = end < 0 ? rest : rest.Slice(0, end);
+            isLastEntry = end < 0;
+            rest = isLastEntry ? ReadOnlySpan<char>.Empty : rest.Slice(end + 1);
+
+            int separator = entry.LastIndexOf(_ValueSeparator);
+            bool? holds = separator < 0 ? null : ParseHolds(entry.Slice(separator + 1).Trim());
+
+            // An entry without a key, without a readable answer or with a key that cannot be unescaped is skipped.
+            if (separator <= 0 || !holds.HasValue || !TryUnescape(entry.Slice(0, separator).Trim(), out string key) || key.Length == 0)
             {
                 // A stray separator, for example a trailing comma, is not worth a complaint.
-                isComplete &= entry.Trim().Length == 0;
+                isComplete &= entry.Trim().IsEmpty;
                 continue;
             }
 
@@ -142,6 +144,7 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
         XamlConditionOverrides effective = overrides ?? Empty;
         return (condition, resolveNamespace) =>
         {
+            // An overridden question is answered with its override, and any other one is asked.
             XamlConditionQuery query = XamlConditionQuery.Create(condition, resolveNamespace);
             return effective.Evaluate(query) ?? evaluate(query);
         };
@@ -162,11 +165,13 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
     /// </summary>
     public bool? Evaluate(XamlConditionQuery? query)
     {
+        // A condition that cannot be overridden, or a question nobody forces, is left to the evaluation.
         if (!CanOverride(query) || !_values.TryGetValue(query!.Key, out bool holds))
         {
             return null;
         }
 
+        // The negated form of a question gets the opposite of the answer that is kept for it.
         return query.Condition.IsNegated ? !holds : holds;
     }
 
@@ -175,11 +180,13 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
     /// </summary>
     public XamlConditionOverrides With(string key, bool holds)
     {
+        // Every override is kept under the key of its question.
         if (string.IsNullOrEmpty(key))
         {
             throw new ArgumentException("A condition key is required.", nameof(key));
         }
 
+        // The question is forced to that answer already.
         if (_values.TryGetValue(key, out bool current) && current == holds)
         {
             return this;
@@ -197,6 +204,7 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
     /// </summary>
     public XamlConditionOverrides Without(string key)
     {
+        // The question is evaluated already.
         if (key is null || !_values.ContainsKey(key))
         {
             return this;
@@ -230,16 +238,19 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
 
     public bool Equals(XamlConditionOverrides? other)
     {
+        // Nothing to compare with, or another number of questions.
         if (other is null || other._values.Count != _values.Count)
         {
             return false;
         }
 
+        // The same set.
         if (ReferenceEquals(this, other))
         {
             return true;
         }
 
+        // The same questions with the same answers.
         foreach (KeyValuePair<string, bool> value in _values)
         {
             if (!other._values.TryGetValue(value.Key, out bool otherValue) || otherValue != value.Value)
@@ -251,10 +262,7 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
         return true;
     }
 
-    public override bool Equals(object? obj)
-    {
-        return Equals(obj as XamlConditionOverrides);
-    }
+    public override bool Equals(object? obj) => Equals(obj as XamlConditionOverrides);
 
     public override int GetHashCode()
     {
@@ -271,9 +279,16 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
         }
     }
 
-    public override string ToString()
+    public override string ToString() => Format();
+
+    private static bool? ParseHolds(ReadOnlySpan<char> value)
     {
-        return Format();
+        if (value.Equals(_Holds.AsSpan(), StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return value.Equals(_DoesNotHold.AsSpan(), StringComparison.Ordinal) ? false : null;
     }
 
     private static bool NeedsEscape(char character)
@@ -302,29 +317,33 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
         }
     }
 
-    private static bool TryUnescape(string text, out string value)
+    private static bool TryUnescape(ReadOnlySpan<char> text, out string value)
     {
-        value = text;
+        // Nothing is escaped: the text is the key.
         if (text.IndexOf(_Escape) < 0)
         {
+            value = text.ToString();
             return true;
         }
 
+        value = string.Empty;
         var builder = new StringBuilder(text.Length);
         for (int index = 0; index < text.Length; index++)
         {
             char character = text[index];
+
+            // An ordinary character stands for itself.
             if (character != _Escape)
             {
                 builder.Append(character);
                 continue;
             }
 
+            // %XX, or %uXXXX above U+00FF: two or four hexadecimal digits follow, or the text is no escape.
             bool isWide = index + 1 < text.Length && text[index + 1] == 'u';
             int start = isWide ? index + 2 : index + 1;
             int length = isWide ? 4 : 2;
-            if (start + length > text.Length
-                || !int.TryParse(text.Substring(start, length), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int code))
+            if (start + length > text.Length || !TryParseHex(text.Slice(start, length), out int code))
             {
                 return false;
             }
@@ -334,6 +353,32 @@ internal sealed class XamlConditionOverrides : IEquatable<XamlConditionOverrides
         }
 
         value = builder.ToString();
+        return true;
+    }
+
+    // .NET Framework parses numbers only from strings, so the digits are read here, without making one.
+    private static bool TryParseHex(ReadOnlySpan<char> digits, out int value)
+    {
+        value = 0;
+        foreach (char digit in digits)
+        {
+            int number = digit switch
+            {
+                >= '0' and <= '9' => digit - '0',
+                >= 'a' and <= 'f' => digit - 'a' + 10,
+                >= 'A' and <= 'F' => digit - 'A' + 10,
+                _ => -1,
+            };
+
+            // Not a hexadecimal digit.
+            if (number < 0)
+            {
+                return false;
+            }
+
+            value = (value << 4) | number;
+        }
+
         return true;
     }
 }

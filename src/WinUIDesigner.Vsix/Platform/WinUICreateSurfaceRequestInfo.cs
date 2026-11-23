@@ -93,10 +93,12 @@ internal sealed class WinUICreateSurfaceRequestInfo : CreateSurfaceRequestInfo
         const int documentId = 516;
 
         // The overrides carry arbitrary text of custom conditions, so the probe carries some as well.
-        string options = new DesignTimeOptions(
+        var probeOptions = new DesignTimeOptions(
             DesignTimeTargetPlatform.AndroidSkia,
             7,
-            XamlConditionOverrides.Empty.With("using:Probe|Flag( é ∑ \"q\" \\ / %;=, (x) )", holds: true)).Serialize();
+            XamlConditionOverrides.Empty.With("using:Probe|Flag( é ∑ \"q\" \\ / %;=, (x) )", holds: true)
+        );
+        string options = probeOptions.Serialize();
         var request = new WinUICreateSurfaceRequestInfo()
         {
             Document = new CreateDocumentInfo() { DocumentId = documentId },

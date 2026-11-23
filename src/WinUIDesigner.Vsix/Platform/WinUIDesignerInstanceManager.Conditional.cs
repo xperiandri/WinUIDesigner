@@ -98,7 +98,10 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// Whether the condition holds as written, or <see langword="null"/> while no document of this surface process
     /// has been prepared or the condition is not known yet.
     /// </returns>
-    internal bool? EvaluateConditionIgnoringOverrides(XamlConditionQuery query) => Volatile.Read(ref _conditionAnswers)?.EvaluateIgnoringOverrides(query);
+    internal bool? EvaluateConditionIgnoringOverrides(XamlConditionQuery query)
+    {
+        return Volatile.Read(ref _conditionAnswers)?.EvaluateIgnoringOverrides(query);
+    }
 
     /// <summary>
     /// Makes the documents of this request be judged with the answers that took effect.
@@ -199,7 +202,10 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// Returns the conditions the user forces: the ones of the design-time options that the CreateSurface request
     /// carries to the surface, so that both loading paths apply the same ones.
     /// </summary>
-    private XamlConditionOverrides ReadConditionOverrides() => DesignTimeTargetProvider.GetDesignTimeOptions(SurfaceProcessContext).ConditionOverrides;
+    private XamlConditionOverrides ReadConditionOverrides()
+    {
+        return DesignTimeTargetProvider.GetDesignTimeOptions(SurfaceProcessContext).ConditionOverrides;
+    }
 
     private void AddConditions(Dictionary<string, XamlConditionQuery> queries, HashSet<IDocumentRoot> scanned, ISurfaceProcessDocument? document)
     {

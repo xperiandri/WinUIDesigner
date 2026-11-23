@@ -81,6 +81,7 @@ internal sealed class DesignTimeOptionsStore
 
         Guard("storing the override", () => ThreadHelperBase.RunOnUIThread(() =>
         {
+            // The project is not loaded: there is nothing to store the choice in.
             HostProjectSettings? project = FindSettingsProject();
             if (project is null)
             {
@@ -96,12 +97,14 @@ internal sealed class DesignTimeOptionsStore
 
     private HostProjectSettings? FindSettingsProject()
     {
+        // The project is not one of Visual Studio's, or it is gone.
         IHostProject? project = (_project as ProjectContextBase)?.HostProject;
         if (project is null || !project.IsValid)
         {
             return null;
         }
 
+        // The settings live in the application project when there is one, and in the project itself otherwise.
         return new HostProjectSettings(project.FindApplicationProject() ?? project);
     }
 
@@ -135,10 +138,7 @@ internal sealed class DesignTimeOptionsStore
             : null;
     }
 
-    private static void Warn(string message, Exception? exception)
-    {
-        WinUIDesignerLogger.LogWarning(_Category, message, exception);
-    }
+    private static void Warn(string message, Exception? exception) => WinUIDesignerLogger.LogWarning(_Category, message, exception);
 
     private static void Guard(string action, Action call)
     {
@@ -159,19 +159,10 @@ internal sealed class DesignTimeOptionsStore
     {
         public string ProjectName => project.ProjectName;
 
-        public string? ReadUserOverride()
-        {
-            return project.GetProjectSetting(UserOverrideSettingName) as string;
-        }
+        public string? ReadUserOverride() => project.GetProjectSetting(UserOverrideSettingName) as string;
 
-        public void WriteUserOverride(string? userOverride)
-        {
-            project.SetProjectSetting(UserOverrideSettingName, userOverride);
-        }
+        public void WriteUserOverride(string? userOverride) => project.SetProjectSetting(UserOverrideSettingName, userOverride);
 
-        public string? ReadBuildProperty(string propertyName)
-        {
-            return DesignTimeOptionsStore.ReadBuildProperty(project, propertyName);
-        }
+        public string? ReadBuildProperty(string propertyName) => DesignTimeOptionsStore.ReadBuildProperty(project, propertyName);
     }
 }

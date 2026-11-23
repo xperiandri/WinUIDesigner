@@ -91,6 +91,7 @@ internal sealed partial class SurfaceService
                 WinUIDesignerLogger.LogWarning("Surface", $"The design-time options '{text}' for document {documentId} are not understood; using {options}.");
             }
 
+            // The conditions the user forces are named when they changed; nothing forced is not worth a line.
             XamlConditionOverrides overrides = options.ConditionOverrides;
             if (!overrides.Equals(previousOverrides) && !overrides.IsEmpty)
             {

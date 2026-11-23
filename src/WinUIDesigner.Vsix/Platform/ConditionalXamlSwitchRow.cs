@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text;
 using WinUIDesigner.Markup;
 
@@ -119,11 +118,12 @@ internal sealed class ConditionalXamlSwitchRow
             rows.Add(CreateRow(entry, effective, evaluate));
         }
 
+        // An override of the project that the document does not ask is listed after its own questions.
         foreach (string key in effective.Keys)
         {
             if (keys.Add(key) && effective.TryGetValue(key, out bool holds))
             {
-                rows.Add(new ConditionalXamlSwitchRow(
+                var projectRow = new ConditionalXamlSwitchRow(
                     key,
                     key,
                     isInDocument: false,
@@ -131,7 +131,9 @@ internal sealed class ConditionalXamlSwitchRow
                     evaluatedValue: null,
                     overrideValue: holds,
                     string.Empty,
-                    $"Overridden: {Describe(holds)}. This document does not use it."));
+                    $"Overridden: {Describe(holds)}. This document does not use it."
+                );
+                rows.Add(projectRow);
             }
         }
 
@@ -146,7 +148,7 @@ internal sealed class ConditionalXamlSwitchRow
     {
         return overrideCount <= 0
             ? "Conditions"
-            : string.Format(CultureInfo.InvariantCulture, "Conditions ({0} overridden)", overrideCount);
+            : FormattableString.Invariant($"Conditions ({overrideCount} overridden)");
     }
 
     /// <summary>
@@ -158,12 +160,13 @@ internal sealed class ConditionalXamlSwitchRow
         {
             <= 0 => "No condition is overridden in this project.",
             1 => "1 condition is overridden in this project.",
-            _ => string.Format(CultureInfo.InvariantCulture, "{0} conditions are overridden in this project.", overrideCount),
+            _ => FormattableString.Invariant($"{overrideCount} conditions are overridden in this project."),
         };
     }
 
     private static ConditionalXamlSwitchRow CreateRow(XamlConditionSwitch entry, XamlConditionOverrides overrides, Func<XamlConditionQuery, bool?>? evaluate)
     {
+        // A malformed predicate is skipped on both loading paths, whatever the user wants.
         if (!entry.IsSwitchable)
         {
             return new ConditionalXamlSwitchRow(
@@ -174,7 +177,8 @@ internal sealed class ConditionalXamlSwitchRow
                 evaluatedValue: false,
                 overrideValue: null,
                 DescribeBranches(entry, holds: null, isSkipped: true),
-                $"Cannot be switched: {entry.Error}. Its members are skipped.");
+                $"Cannot be switched: {entry.Error}. Its members are skipped."
+            );
         }
 
         bool? overrideValue = overrides.TryGetValue(entry.Key, out bool forced) ? forced : null;
@@ -191,7 +195,8 @@ internal sealed class ConditionalXamlSwitchRow
             }
         }
 
-        string evaluated = evaluatedValue.HasValue ? Describe(evaluatedValue.Value) + "." : "not known yet.";
+        // Where the answer comes from: the user's override with what the evaluation says, the evaluation, or nothing yet.
+        string evaluated = evaluatedValue.HasValue ? $"{Describe(evaluatedValue.Value)}." : "not known yet.";
         string status = overrideValue.HasValue
             ? $"Overridden: {Describe(overrideValue.Value)}. Evaluated: {evaluated}"
             : evaluatedValue.HasValue ? $"Evaluated: {evaluated}" : "Not evaluated yet.";
@@ -204,7 +209,8 @@ internal sealed class ConditionalXamlSwitchRow
             evaluatedValue,
             overrideValue,
             DescribeBranches(entry, overrideValue ?? evaluatedValue, isSkipped: false),
-            status);
+            status
+        );
     }
 
     private static string DescribeBranches(XamlConditionSwitch entry, bool? holds, bool isSkipped)
@@ -220,14 +226,17 @@ internal sealed class ConditionalXamlSwitchRow
             text.Append(prefix.Prefix).Append(": ");
             if (isSkipped)
             {
+                // The question is malformed.
                 text.Append("skipped");
             }
             else if (holds.HasValue)
             {
+                // The answer is known: the members of the prefix are in the preview or not.
                 text.Append(prefix.Applies(holds.Value) ? "shown" : "hidden");
             }
             else
             {
+                // The answer is not known yet: say when the members would be shown.
                 text.Append(prefix.IsNegated ? "shown when it does not hold" : "shown when it holds");
             }
         }
@@ -235,8 +244,5 @@ internal sealed class ConditionalXamlSwitchRow
         return text.ToString();
     }
 
-    private static string Describe(bool holds)
-    {
-        return holds ? "holds" : "does not hold";
-    }
+    private static string Describe(bool holds) => holds ? "holds" : "does not hold";
 }

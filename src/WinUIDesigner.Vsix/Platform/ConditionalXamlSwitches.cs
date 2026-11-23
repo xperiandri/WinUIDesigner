@@ -118,7 +118,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         chevron.SetBinding(Shape.FillProperty, new Binding(nameof(Control.Foreground)) { Source = _button });
         AutomationProperties.SetName(_button, "Conditional XAML conditions");
         AutomationProperties.SetHelpText(_button, "Lists the conditions of the conditional XAML namespaces of this document and lets you choose whether each one holds in the preview.");
-        AutomationProperties.SetAutomationId(_button, _AutomationIdPrefix + "Button");
+        AutomationProperties.SetAutomationId(_button, $"{_AutomationIdPrefix}Button");
 
         _rowsPanel = new StackPanel();
         _emptyText = new TextBlock
@@ -145,7 +145,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         _resetAllButton.SetResourceReference(FrameworkElement.StyleProperty, VsResourceKeys.ButtonStyleKey);
         AutomationProperties.SetName(_resetAllButton, "Reset all conditions");
         AutomationProperties.SetHelpText(_resetAllButton, "Lets every condition of the project follow its evaluation again.");
-        AutomationProperties.SetAutomationId(_resetAllButton, _AutomationIdPrefix + "ResetAll");
+        AutomationProperties.SetAutomationId(_resetAllButton, $"{_AutomationIdPrefix}ResetAll");
         _resetAllButton.Click += (_, _) => Guard("resetting all conditions", ResetAllOverrides);
 
         _popupRoot = CreatePopupContent();
@@ -215,6 +215,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
     /// <returns>The drop-down, to be disposed with the designer, or <see langword="null"/> when there is none.</returns>
     public static ConditionalXamlSwitches? TryAttach(SceneScrollViewer scrollViewer, Func<IDocumentRoot?> getDocument, Func<IProjectContext?> getProject)
     {
+        // The option is off: the designer gets no drop-down.
         if (!_isEnabled)
         {
             return null;
@@ -225,6 +226,8 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         {
             switches = new ConditionalXamlSwitches(getDocument, getProject);
             string? placement = switches.Place(scrollViewer);
+
+            // There is no place for the button.
             if (placement is null)
             {
                 ReportPlacementOnce(isPlaced: false, "Conditional XAML switches: the designer has neither a device toolbar nor content to put them above; the designer works without them.");
@@ -246,6 +249,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         }
         catch (Exception exception)
         {
+            // Anything that goes wrong while the button is added leaves the designer without it.
             WinUIDesignerLogger.LogWarning(_Category, "Conditional XAML switches could not be added to the designer; the designer works without them.", exception);
             try
             {
@@ -417,13 +421,14 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Cycle);
         KeyboardNavigation.SetDirectionalNavigation(root, KeyboardNavigationMode.Cycle);
         AutomationProperties.SetName(root, "Conditional XAML conditions");
-        AutomationProperties.SetAutomationId(root, _AutomationIdPrefix + "List");
+        AutomationProperties.SetAutomationId(root, $"{_AutomationIdPrefix}List");
         root.PreviewKeyDown += OnPopupPreviewKeyDown;
         return root;
     }
 
     private string? Place(SceneScrollViewer scrollViewer)
     {
+        // The device toolbar is the first choice.
         try
         {
             if (TryPlaceInDeviceToolBar(scrollViewer))
@@ -437,6 +442,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
             WinUIDesignerLogger.LogTrace(_Category, $"The device toolbar cannot hold the conditional XAML switches: {exception}");
         }
 
+        // A strip above the content is the second.
         try
         {
             if (TryPlaceInStrip(scrollViewer))
@@ -446,6 +452,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         }
         catch (Exception exception)
         {
+            // The scroll viewer has no content to put the strip above.
             WinUIDesignerLogger.LogTrace(_Category, $"The scene scroll viewer cannot hold the conditional XAML switches: {exception}");
         }
 
@@ -459,11 +466,14 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         // Border around a grid (devicetoolbar.xaml in Visual Studio 18) with eight columns: the device size, a
         // separator, the orientation, a separator, the effective resolution, a separator, and two empty ones.
         object? toolBar = _DeviceToolBarProperty?.GetValue(scrollViewer);
+
+        // There is no toolbar of the shape that is known.
         if (toolBar is not Border { Child: Grid grid } || grid.ColumnDefinitions.Count == 0)
         {
             return false;
         }
 
+        // Every column is occupied: the button gets a column of its own.
         int column = ConditionalXamlSwitchButton.FindFreeColumn(grid);
         if (column >= grid.ColumnDefinitions.Count)
         {
@@ -479,6 +489,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     private bool TryPlaceInStrip(SceneScrollViewer scrollViewer)
     {
+        // There is no content to put the strip above.
         if (scrollViewer.Content is not UIElement content)
         {
             return false;
@@ -514,6 +525,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
     /// </summary>
     private void Refresh()
     {
+        // The designer is gone.
         if (_isDisposed)
         {
             return;
@@ -531,16 +543,19 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
         if (!isShown)
         {
+            // The button went away, and the list goes with it.
             ClosePopup();
         }
         else if (_popup.IsOpen)
         {
+            // The list is open: it follows the document and the overrides.
             UpdateRows(overrides);
         }
     }
 
     private void ScanDocument()
     {
+        // There is no document text.
         IMarkupTextBuffer? buffer = _buffer;
         if (buffer is null)
         {
@@ -553,6 +568,8 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         // edit resets the version that was scanned.
         int version = buffer.Version;
         int length = buffer.Length;
+
+        // The text is the one that was scanned.
         if (version == _scannedVersion && length == _scannedLength)
         {
             return;
@@ -572,6 +589,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         }
         catch (Exception exception)
         {
+            // The list shows the project as without overrides; the preview does not depend on what is shown here.
             WinUIDesignerLogger.LogTrace(_Category, $"Reading the conditional XAML overrides for the designer's user interface failed: {exception}");
             return XamlConditionOverrides.Empty;
         }
@@ -579,11 +597,13 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     private void SubscribeToBuffer(IMarkupTextBuffer? buffer)
     {
+        // Already listening to this buffer.
         if (ReferenceEquals(buffer, _buffer))
         {
             return;
         }
 
+        // The buffer of an earlier document is left.
         if (_buffer is not null && _textChangedHandler is not null)
         {
             _buffer.TextChanged -= _textChangedHandler;
@@ -592,6 +612,8 @@ internal sealed class ConditionalXamlSwitches : IDisposable
         _buffer = buffer;
         _textChangedHandler = null;
         _scannedVersion = -1;
+
+        // The buffer of the document now shown is listened to.
         if (buffer is not null)
         {
             // The buffer may outlive the designer; it must not keep the designer alive.
@@ -603,11 +625,13 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     private void SubscribeToProvider(IDesignTimeTargetProvider? provider)
     {
+        // Already listening to this surface process context.
         if (ReferenceEquals(provider, _provider))
         {
             return;
         }
 
+        // The context of an earlier surface process is left.
         if (_provider is not null && _optionsChangedHandler is not null)
         {
             _provider.DesignTimeOptionsChanged -= _optionsChangedHandler;
@@ -615,6 +639,8 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
         _provider = provider;
         _optionsChangedHandler = null;
+
+        // The context of the project now shown is listened to.
         if (provider is not null)
         {
             // The surface process context lives as long as the project; it must not keep the designer alive.
@@ -626,11 +652,13 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     private void OnTextChanged()
     {
+        // The designer is gone.
         if (_isDisposed)
         {
             return;
         }
 
+        // The text changed on another thread; the work belongs to the dispatcher of the designer.
         if (!_dispatcher.CheckAccess())
         {
             _ = _dispatcher.BeginInvoke(new Action(OnTextChanged));
@@ -645,11 +673,13 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     private void OnDesignTimeOptionsChanged()
     {
+        // The designer is gone.
         if (_isDisposed)
         {
             return;
         }
 
+        // The options changed on another thread; the work belongs to the dispatcher of the designer.
         if (!_dispatcher.CheckAccess())
         {
             _ = _dispatcher.BeginInvoke(new Action(OnDesignTimeOptionsChanged));
@@ -662,6 +692,8 @@ internal sealed class ConditionalXamlSwitches : IDisposable
     private void OpenPopup()
     {
         Refresh();
+
+        // There is nothing to list: the button goes back to closed.
         if (_button.Visibility != Visibility.Visible)
         {
             _button.IsChecked = false;
@@ -698,11 +730,13 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     private void FocusFirstControl()
     {
+        // The list closed before the focus could move.
         if (!_popup.IsOpen)
         {
             return;
         }
 
+        // The first row that can take the focus gets it.
         foreach (ConditionalXamlSwitchRowView row in _rowViews)
         {
             if (row.CheckBox.IsEnabled && row.CheckBox.Focus())
@@ -711,6 +745,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
             }
         }
 
+        // No row can: Reset all gets it, and when it cannot either, the focus stays on the button.
         _resetAllButton.Focus();
     }
 
@@ -735,6 +770,7 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
     private void OnPopupPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Only Escape is for the list; the other keys move through its controls.
         if (e.Key != Key.Escape)
         {
             return;
@@ -797,25 +833,29 @@ internal sealed class ConditionalXamlSwitches : IDisposable
     {
         ChangeOverrides(
             overrides => overrides.With(key, holds),
-            $"the user forces '{title}' to {(holds ? "hold" : "not hold")} (key '{key}')");
+            $"the user forces '{title}' to {(holds ? "hold" : "not hold")} (key '{key}')"
+        );
     }
 
     private void ResetOverride(string key, string title)
     {
         ChangeOverrides(
             overrides => overrides.Without(key),
-            $"'{title}' follows its evaluation again (key '{key}')");
+            $"'{title}' follows its evaluation again (key '{key}')"
+        );
     }
 
     private void ResetAllOverrides()
     {
         ChangeOverrides(
             _ => XamlConditionOverrides.Empty,
-            "every condition follows its evaluation again");
+            "every condition follows its evaluation again"
+        );
     }
 
     private void ChangeOverrides(Func<XamlConditionOverrides, XamlConditionOverrides> change, string description)
     {
+        // The options cannot reach the surface, so the choice would change nothing; the list shows the current state again.
         IDesignTimeTargetProvider? provider = _provider;
         if (provider is null || !WinUICreateSurfaceRequestInfo.IsTransportEnabled)
         {
@@ -826,6 +866,8 @@ internal sealed class ConditionalXamlSwitches : IDisposable
 
         DesignTimeOptions options = provider.DesignTimeOptions;
         XamlConditionOverrides overrides = change(options.ConditionOverrides);
+
+        // A change that leaves the overrides as they are needs no reload.
         if (!overrides.Equals(options.ConditionOverrides))
         {
             WinUIDesignerLogger.LogInformation(_Category, $"Conditional XAML switches: {description}; the design surface reloads.");
@@ -859,7 +901,10 @@ internal sealed class ConditionalXamlSwitches : IDisposable
             WinUIDesignerLogger.LogWarning(
                 _Category,
                 $"Conditional XAML switches: {action} failed{(turnOff ? "; the switches are turned off for this designer" : string.Empty)}.",
-                exception);
+                exception
+            );
+
+            // The drop-down gave up: it leaves the designer alone from now on.
             if (turnOff)
             {
                 Dispose();
