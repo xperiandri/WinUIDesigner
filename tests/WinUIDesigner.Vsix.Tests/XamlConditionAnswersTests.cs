@@ -206,16 +206,18 @@ public sealed class XamlConditionAnswersTests
     {
         var surface = new FakeSurface { Hold = true };
         XamlConditionAnswers answers = surface.CreateAnswers();
-        TimeSpan firstAnswerTimeout = TimeSpan.FromMilliseconds(800);
+        TimeSpan firstAnswerTimeout = TimeSpan.FromMilliseconds(2000);
 
         var elapsed = Stopwatch.StartNew();
         await answers.AskAsync(Queries(_C7), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
-        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(700), elapsed.Elapsed.ToString());
+        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(1900), elapsed.Elapsed.ToString());
 
+        // The stretch is used up. The two calls take about a tenth of a second together, a new long wait for each
+        // would take four seconds, and the bound is far from both so that a slow machine does not fail the test.
         elapsed.Restart();
         await answers.AskAsync(Queries(_C99), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
         await answers.AskAsync(Queries(_NewExperience), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
-        Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromMilliseconds(700), elapsed.Elapsed.ToString());
+        Assert.IsTrue(elapsed.Elapsed < TimeSpan.FromMilliseconds(1500), elapsed.Elapsed.ToString());
 
         Assert.IsFalse(answers.SurfaceAnswers);
         Assert.AreEqual(1, surface.RequestCount);
@@ -643,13 +645,13 @@ public sealed class XamlConditionAnswersTests
         await Task.Delay(300);
         Task second = answers.AskAsync(Queries(_LegacyMode), TimeSpan.FromMilliseconds(50), firstAnswerTimeout);
 
-        // The second document does not give up after the usual time: it waits for the same answer.
-        await Task.Delay(500);
-        Assert.IsFalse(second.IsCompleted, "The second document waits for the first answer as the first one does.");
+        // The second document does not give up after the usual time, which would be at about 350 ms: it waits for the
+        // same answer and ends with the stretch. The bound is a lower one, which a slow machine only makes more true.
+        await second;
+        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(1400), elapsed.Elapsed.ToString());
 
         // Both end when the stretch ends, with one warning between them.
-        await Task.WhenAll(first, second);
-        Assert.IsTrue(elapsed.Elapsed >= TimeSpan.FromMilliseconds(1400), elapsed.Elapsed.ToString());
+        await first;
         Assert.HasCount(1, surface.Warnings);
 
         // The answer that arrives in the stretch is what both wait for.
@@ -722,11 +724,11 @@ public sealed class XamlConditionAnswersTests
     [TestMethod]
     public async Task AnswersAreAppliedOneCallerAtATime()
     {
-        var surface = new FakeSurface();
+        var surface = new FakeSurface { Hold = true };
         using var entered = new ManualResetEventSlim();
         using var proceed = new ManualResetEventSlim();
         var answers = new XamlConditionAnswers(
-            request => Task.FromResult(surface.Answer(request)),
+            surface.Ask,
             CancellationToken.None,
             () =>
             {
@@ -736,7 +738,10 @@ public sealed class XamlConditionAnswersTests
             new XamlConditionProbeSet(),
             (_, _) => { }
         );
+
+        // The reply is held back until the test lets it go, so that it reaches the first caller below and not this one.
         await answers.AskAsync([], _Long);
+        surface.Release();
         await WaitFor(() => !answers.IsRequestInFlight);
 
         // The first caller takes the reply and is in the middle of putting it into effect.
