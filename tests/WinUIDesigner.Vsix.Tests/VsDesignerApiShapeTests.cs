@@ -187,7 +187,8 @@ public sealed class VsDesignerApiShapeTests
         PropertyDefinition surfaceInfo = RequireProperty(_SurfaceProcessMarkupProvider, "SurfaceInfo");
         Assert.IsTrue(
             surfaceInfo.GetMethod is { IsStatic: false } getter && IsVisibleToDerivedClasses(getter),
-            $"{_SurfaceProcessMarkupProvider}.SurfaceInfo needs a getter that derived classes can call.");
+            $"{_SurfaceProcessMarkupProvider}.SurfaceInfo needs a getter that derived classes can call."
+        );
         Assert.AreEqual("SurfaceProcessInfo", surfaceInfo.PropertyType.Name, $"Unexpected type of {_SurfaceProcessMarkupProvider}.SurfaceInfo.");
 
         PropertyDefinition shadowCache = RequireProperty(_SurfaceProcessInfo, "ShadowCacheContent");
@@ -237,7 +238,7 @@ public sealed class VsDesignerApiShapeTests
         Assert.IsTrue(states.IsEnum, $"{states.FullName} must be an enumeration.");
         foreach (string name in new[] { "Prepared", "Loading" })
         {
-            Assert.IsTrue(states.Fields.Any(field => field.IsStatic && field.Name == name), $"{states.FullName} has no member {name}.");
+            Assert.Contains(field => field.IsStatic && field.Name == name, states.Fields, $"{states.FullName} has no member {name}.");
         }
     }
 

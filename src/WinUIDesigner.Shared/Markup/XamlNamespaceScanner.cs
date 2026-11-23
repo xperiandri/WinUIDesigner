@@ -17,7 +17,8 @@ internal static class XamlNamespaceScanner
     private const string _IgnorableAttribute = "Ignorable";
 
     /// <summary>
-    /// Scans <paramref name="xaml"/> for namespace declarations and platform-prefixed elements.
+    /// Scans <paramref name="xaml"/> for namespace declarations, platform-prefixed elements, and the platform
+    /// namespaces that elements or attributes are written under.
     /// Never throws: malformed XML ends the scan and yields the facts collected so far.
     /// </summary>
     public static XamlNamespaceScanResult Scan(string? xaml)
@@ -33,6 +34,7 @@ internal static class XamlNamespaceScanner
         bool hasConditionalNamespaces = false;
         bool hasPlatformNamespaces = false;
         bool hasPlatformPrefixedObjectElements = false;
+        var usedPlatformNamespaces = new HashSet<(string Prefix, string Namespace)>();
         bool isComplete = false;
 
         try
@@ -62,11 +64,13 @@ internal static class XamlNamespaceScanner
 
                 // The reader resolves the prefix against the declarations in scope, so a prefix
                 // redeclared on a nested element is attributed to the right namespace.
-                if (reader.Prefix.Length != 0
-                    && reader.LocalName.IndexOf('.') < 0
-                    && UnoPlatformPrefixes.IsPlatformUri(reader.NamespaceURI))
+                if (reader.Prefix.Length != 0 && UnoPlatformPrefixes.IsPlatformUri(reader.NamespaceURI))
                 {
-                    hasPlatformPrefixedObjectElements = true;
+                    // Any element under the prefix, a property element included, uses its declaration.
+                    usedPlatformNamespaces.Add((reader.Prefix, reader.NamespaceURI));
+
+                    // A property element has a dot in its name; only an object element is replaced by the XAML cleaner.
+                    hasPlatformPrefixedObjectElements |= reader.LocalName.IndexOf('.') < 0;
                 }
 
                 // An element without attributes declares nothing.
@@ -99,6 +103,11 @@ internal static class XamlNamespaceScanner
                         // mc:Ignorable lists the prefixes whose members a reader may skip.
                         AddPrefixes(ignorablePrefixes, reader.Value);
                     }
+                    else if (reader.Prefix.Length != 0 && UnoPlatformPrefixes.IsPlatformUri(reader.NamespaceURI))
+                    {
+                        // An attribute under the prefix uses its declaration as well.
+                        usedPlatformNamespaces.Add((reader.Prefix, reader.NamespaceURI));
+                    }
                 }
                 while (reader.MoveToNextAttribute());
 
@@ -118,6 +127,7 @@ internal static class XamlNamespaceScanner
             hasConditionalNamespaces,
             hasPlatformNamespaces,
             hasPlatformPrefixedObjectElements,
+            usedPlatformNamespaces,
             isComplete
         );
     }

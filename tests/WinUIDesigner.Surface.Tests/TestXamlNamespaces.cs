@@ -24,6 +24,11 @@ internal static class TestXamlNamespaces
     public const string NotWin = "http://uno.ui/not_win";
 
     /// <summary>
+    /// The Uno Platform namespace of the <c>skia</c> prefix.
+    /// </summary>
+    public const string Skia = "http://uno.ui/skia";
+
+    /// <summary>
     /// The API contract that the conditions ask about.
     /// </summary>
     public const string Contract = "Windows.Foundation.UniversalApiContract";

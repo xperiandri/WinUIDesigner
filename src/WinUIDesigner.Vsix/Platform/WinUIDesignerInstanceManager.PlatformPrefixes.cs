@@ -5,18 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation;
+using Microsoft.VisualStudio.DesignTools.Utility.Text;
 using WinUIDesigner.Markup;
 
 namespace WinUIDesigner.Platform;
 
 internal sealed partial class WinUIDesignerInstanceManager
 {
-    /// <summary>
-    /// The environment variable that turns <see cref="_ReprepareRawPlatformElements"/> on when it is set
-    /// to <c>1</c> or <c>true</c> before Visual Studio starts.
-    /// </summary>
-    internal const string ReprepareRawPlatformElementsVariable = "WINUIDESIGNER_REPREPARE_RAW_PLATFORM_ELEMENTS";
-
     /// <summary>
     /// Whether a document with elements under an Uno platform prefix is cleaned a second time, so that those
     /// elements reach the surface in the prepared XAML and the namespace policies decide about them there.
@@ -25,35 +20,51 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// Off by default: loading a document this way was confirmed in Visual Studio 18.13, but editing it
     /// afterwards and Visual Studio 17.14 have not been checked. While it is off, such a document is built
     /// from construction actions, which are generated from a document model that leaves out the members of
-    /// an ignorable namespace nothing resolves.
+    /// an ignorable namespace nothing resolves. The environment variable
+    /// <see cref="UnoPlatformPrefixes.ReprepareRawElementsVariable"/> turns it on when it is set to <c>1</c> or
+    /// <c>true</c> before Visual Studio starts.
     /// </remarks>
-    private static readonly bool _ReprepareRawPlatformElements = IsSwitchOn(ReprepareRawPlatformElementsVariable);
+    private static readonly bool _ReprepareRawPlatformElements = IsSwitchOn(UnoPlatformPrefixes.ReprepareRawElementsVariable);
 
     // The documents whose prepared XAML lost its platform elements. Only touched while a request is created.
     private readonly HashSet<int> _documentsBuiltFromActions = [];
+
+    // The text of each document that was last checked for platform namespaces that are missing from mc:Ignorable.
+    // Only touched while a request is created.
+    private readonly ReportedTextVersions _reportedMissingIgnorable = new();
 
     /// <summary>
     /// Prepares the Uno platform the designer previews before a document is sent to the surface.
     /// </summary>
     private Task PreparePlatformPrefixesAsync(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
     {
-        // The designer previews the Windows flavor of the markup. Previewing another platform means setting
-        // another target here and in the surface; the policies themselves do not change.
+        // The designer previews the Windows flavor of the markup. The classification is the same for every target,
+        // but another target would also have to keep every document on the prepared-XAML route (the second
+        // cleaning): construction actions have no nodes for the members of an ignorable Uno namespace.
         _memberDispositions.TargetPlatform = UnoPlatformPrefixes.DefaultTargetPlatform;
 
-        // The request can carry App.xaml and the design-time resources as well; they were not necessarily
-        // prepared together with the target, so they are looked at on their own.
+        // The request carries exactly the target, App.xaml and the design-time resources, so only those are looked
+        // at. The other documents that Visual Studio prepared, such as dictionaries merged through Source, are not
+        // sent with it, and nothing in this package loads them: they keep their prepared XAML as it is.
         var seen = new HashSet<int>();
         PreparePlatformElements(targetDocument, seen);
-        for (int index = 0; index < preparedDocuments.Count; index++)
-        {
-            PreparePlatformElements(preparedDocuments[index], seen);
-        }
 
+        // App.xaml and the design-time resources are the business of the WinUI provider.
         if (MarkupProvider is WinUISurfaceProcessMarkupProvider provider)
         {
-            PreparePlatformElements(provider.AppXaml, seen);
-            PreparePlatformElements(provider.DesignTimeResources, seen);
+            // CreateRequestAsync sends App.xaml while it is prepared and the design-time resources only when they are
+            // prepared. A document in the Loading state belongs to a request that is still waiting for the surface,
+            // which may be reading its prepared file right now: the second cleaning would rewrite that file.
+            if (provider.AppXaml is { ConstructionState: <= ConstructionState.Prepared } application)
+            {
+                PreparePlatformElements(application, seen);
+            }
+
+            // The design-time resources are sent when they are exactly prepared.
+            if (provider.DesignTimeResources is { ConstructionState: ConstructionState.Prepared } resources)
+            {
+                PreparePlatformElements(resources, seen);
+            }
         }
 
         return Task.CompletedTask;
@@ -74,6 +85,7 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// </summary>
     private void PreparePlatformElements(ISurfaceProcessDocument? document, HashSet<int> seen)
     {
+        // A document that is missing, or that was looked at for this request already, needs nothing more.
         if (document is null || !seen.Add(document.DocumentId))
         {
             return;
@@ -82,38 +94,38 @@ internal sealed partial class WinUIDesignerInstanceManager
         int documentId = document.DocumentId;
         try
         {
-            // The scan is cached per text version, and a document without Uno namespaces ends here.
+            // The scan is cached per text version, and a document without Uno namespaces needs nothing further.
             XamlNamespaceScanResult namespaces = _memberDispositions.GetNamespaces(document.Document);
-            if (!namespaces.HasPlatformNamespaces)
+            string? path = null;
+            if (namespaces.HasPlatformNamespaces)
             {
-                _documentsBuiltFromActions.Remove(documentId);
-                return;
+                path = document.Document?.DocumentContext?.DocumentPath;
+                ReportPrefixesMissingFromIgnorable(document, namespaces, path);
             }
 
-            string? path = document.Document?.DocumentContext?.DocumentPath;
-            ReportPrefixesMissingFromIgnorable(namespaces, path);
-
-            // Attributes and property elements under a platform prefix pass through the XAML cleaner as they
-            // are written. Object elements do not: the cleaner cannot resolve their type and replaces each of
-            // them with a fallback control without its children.
-            if (!namespaces.HasPlatformPrefixedObjectElements)
+            switch (UnoPlatformPrefixes.ChooseBuild(namespaces, _ReprepareRawPlatformElements, () => TryReprepareRawPlatformElements(document)))
             {
-                _documentsBuiltFromActions.Remove(documentId);
-                return;
-            }
+                // The prepared XAML lost the elements: the document is built from construction actions.
+                case PlatformElementsBuild.ConstructionActions:
+                    _documentsBuiltFromActions.Add(documentId);
+                    WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) has elements under an Uno platform prefix; it is built from construction actions.");
+                    break;
 
-            if (_ReprepareRawPlatformElements && TryReprepareRawPlatformElements(document))
-            {
-                _documentsBuiltFromActions.Remove(documentId);
-                WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) was prepared again to keep its Uno platform elements.");
-                return;
-            }
+                // The prepared XAML was made again and keeps the elements.
+                case PlatformElementsBuild.PreparedAgain:
+                    _documentsBuiltFromActions.Remove(documentId);
+                    WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) was prepared again to keep its Uno platform elements.");
+                    break;
 
-            _documentsBuiltFromActions.Add(documentId);
-            WinUIDesignerLogger.LogTrace("Platform", $"Document {documentId} ({path}) has elements under an Uno platform prefix; it is built from construction actions.");
+                // The prepared XAML has everything the surface needs.
+                default:
+                    _documentsBuiltFromActions.Remove(documentId);
+                    break;
+            }
         }
         catch (Exception ex)
         {
+            // The document is built as Visual Studio prepared it.
             WinUIDesignerLogger.LogWarning("Platform", $"Preparing the Uno platform prefixes of document {documentId} failed; it is built as prepared.", ex);
         }
     }
@@ -122,6 +134,7 @@ internal sealed partial class WinUIDesignerInstanceManager
     {
         try
         {
+            // Only the markup provider of this extension can prepare a document a second time.
             return MarkupProvider is WinUISurfaceProcessMarkupProvider provider && provider.ReprepareRawPlatformElements(document);
         }
         catch (Exception ex)
@@ -132,19 +145,27 @@ internal sealed partial class WinUIDesignerInstanceManager
         }
     }
 
-    private static void ReportPrefixesMissingFromIgnorable(XamlNamespaceScanResult namespaces, string? path)
+    private void ReportPrefixesMissingFromIgnorable(ISurfaceProcessDocument document, XamlNamespaceScanResult namespaces, string? path)
     {
-        IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorable(namespaces);
+        // A document without a text buffer has no version to record, and nothing was scanned of it.
+        IMarkupTextBuffer? buffer = document.Document?.TextBuffer;
+        if (buffer is null)
+        {
+            return;
+        }
+
+        // Every request looks at the same text again; it is reported once for each text version of the document.
+        IReadOnlyList<XamlNamespaceDeclaration> missing = UnoPlatformPrefixes.FindMissingIgnorableOncePerText(
+            _reportedMissingIgnorable,
+            document.DocumentId,
+            buffer.Version,
+            buffer.Length,
+            namespaces
+        );
+
         for (int index = 0; index < missing.Count; index++)
         {
-            XamlNamespaceDeclaration declaration = missing[index];
-            string consequence = UnoPlatformPrefixes.TryParse(declaration.Prefix, out _, out _)
-                ? "The designer applies the platform prefix regardless."
-                : "Its members are left as written for the XAML reader to reject.";
-            WinUIDesignerLogger.LogWarning(
-                "Platform",
-                $"{path}({declaration.LineNumber},{declaration.LinePosition}): xmlns:{declaration.Prefix}=\"{declaration.Uri.Original}\" is an Uno platform namespace that is not listed in mc:Ignorable, " +
-                $"so the Windows XAML compiler cannot resolve it. {consequence}");
+            WinUIDesignerLogger.LogWarning("Platform", UnoPlatformPrefixes.DescribeMissingIgnorable(path, missing[index], _ReprepareRawPlatformElements));
         }
     }
 
