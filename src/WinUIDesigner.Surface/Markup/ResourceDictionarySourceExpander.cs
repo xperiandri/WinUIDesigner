@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Xml;
 using System.Xml.Linq;
 using WinUIDesigner.Markup;
 
@@ -391,33 +390,31 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     /// names the resources that only the second has.
     /// </summary>
     /// <returns><see langword="null"/> when there is nothing to say, no built copy among it.</returns>
+    /// <remarks>
+    /// A diagnostic never fails the dictionary it is about: whatever goes wrong, it says nothing and the prepared copy
+    /// is merged as before.
+    /// </remarks>
     private string? DescribeLeftOutResources(string path, string name, string preparedText)
     {
+        // The name of the prepared copy has no marker, so there is no name for a built copy beside it.
         if (ResourceDictionarySourceUri.TryGetBuildLayoutPath(path) is not { } layoutPath)
         {
             return null;
         }
 
-        string? builtText;
         try
         {
-            builtText = _options.ReadFile(layoutPath);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        {
-            return null;
-        }
+            // The build did not lay the file out.
+            if (_options.ReadFile(layoutPath) is not { } builtText)
+            {
+                return null;
+            }
 
-        if (builtText is null)
-        {
-            return null;
-        }
-
-        try
-        {
             // As written: the namespace policies drop members that the file has, which Visual Studio did not remove.
             XElement? prepared = XDocument.Parse(preparedText).Root;
             XElement? built = XDocument.Parse(builtText).Root;
+
+            // A file with no root element has nothing to compare.
             if (prepared is null || built is null)
             {
                 return null;
@@ -426,9 +423,10 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             IReadOnlyList<LeftOutResource> leftOut = PreparedCopyComparison.FindLeftOut(prepared, built, out int resourcesInBuilt);
             return leftOut.Count == 0 ? null : PreparedCopyComparison.Describe(name, leftOut, resourcesInBuilt);
         }
-        catch (XmlException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // A file that is no XML has nothing to compare; the prepared copy reports its own malformation.
+            // The built copy cannot be read, or is no XML (the prepared copy reports its own malformation).
+            Report($"The prepared copy of '{name}' was not compared with the copy that the build laid out: {ex.Message}");
             return null;
         }
     }

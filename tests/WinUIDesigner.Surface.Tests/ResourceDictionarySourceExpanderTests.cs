@@ -838,6 +838,35 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.IsEmpty(cache.Warnings);
     }
 
+    [TestMethod]
+    public void BuiltCopyThatCannotBeComparedNeverFailsTheDictionary()
+    {
+        // The comparison is a diagnostic: whatever reading the built copy throws, and whatever it holds, the prepared
+        // copy is merged as before and nothing but a trace message is said.
+        foreach (Exception failure in new Exception[] { new IOException("locked"), new NotSupportedException("path form"), new ArgumentException("invalid characters") })
+        {
+            var cache = new ShadowCache();
+            cache.Add(_Cards, Dictionary("""<Style x:Key="PlainStyle" TargetType="Border" />"""));
+            cache.FailBuilt(_Cards, failure);
+            XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+            ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
+
+            Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 0), expansion, failure.Message);
+            CollectionAssert.AreEqual(new[] { "PlainStyle" }, AllKeys(page), failure.Message);
+            Assert.IsEmpty(cache.Warnings, failure.Message);
+            Assert.Contains(report => report.Contains(failure.Message, StringComparison.Ordinal), cache.Reports, failure.Message);
+        }
+
+        var malformed = new ShadowCache();
+        malformed.Add(_Cards, Dictionary("""<Style x:Key="PlainStyle" TargetType="Border" />"""));
+        malformed.AddBuilt(_Cards, $"""<ResourceDictionary xmlns="{XamlNamespaces.Presentation}"><Style>""");
+        XElement merged = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
+
+        Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 0), malformed.Expander.Expand(merged, _PageUri, "document 10"));
+        Assert.IsEmpty(malformed.Warnings);
+    }
+
     /// <summary>
     /// A dictionary as the project has it in its source, which is what the build lays out in the shadow cache.
     /// </summary>

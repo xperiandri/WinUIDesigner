@@ -14,6 +14,7 @@ internal sealed class ShadowCache
     public const string Contract = "Windows.Foundation.UniversalApiContract";
 
     private readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Exception> _failures = new(StringComparer.OrdinalIgnoreCase);
     private readonly XamlConditionService _conditions = new(new XamlConditionProbeSet
     {
         IsApiContractPresent = (name, major, _) => name == Contract && major <= 10,
@@ -24,7 +25,9 @@ internal sealed class ShadowCache
         Expander = new ResourceDictionarySourceExpander(new ResourceDictionarySourceOptions
         {
             ContentDirectory = ContentDirectory,
-            ReadFile = path => _files.TryGetValue(path, out string? text) ? text : null,
+            ReadFile = path => _failures.TryGetValue(path, out Exception? failure)
+                ? throw failure
+                : _files.TryGetValue(path, out string? text) ? text : null,
             Parse = (xaml, description) =>
             {
                 Parsed.Add(description);
@@ -74,6 +77,16 @@ internal sealed class ShadowCache
     {
         string prepared = ResourceDictionarySourceUri.TryGetLocalPath(uri, ContentDirectory)!;
         _files[ResourceDictionarySourceUri.TryGetBuildLayoutPath(prepared)!] = xaml;
+    }
+
+    /// <summary>
+    /// Makes reading the copy of the file of the dictionary <paramref name="uri"/> names that the build laid out
+    /// throw <paramref name="failure"/>.
+    /// </summary>
+    public void FailBuilt(string uri, Exception failure)
+    {
+        string prepared = ResourceDictionarySourceUri.TryGetLocalPath(uri, ContentDirectory)!;
+        _failures[ResourceDictionarySourceUri.TryGetBuildLayoutPath(prepared)!] = failure;
     }
 
     /// <summary>
