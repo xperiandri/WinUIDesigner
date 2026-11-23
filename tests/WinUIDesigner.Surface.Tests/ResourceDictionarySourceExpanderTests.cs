@@ -16,8 +16,6 @@ using static ShadowCache;
 [TestClass]
 public sealed class ResourceDictionarySourceExpanderTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _XamlLanguage = "http://schemas.microsoft.com/winfx/2006/xaml";
     private const string _PageUri = "ms-appx:///App/Views/~vs]~10~Page.xaml";
 
     private const string _Colors = "ms-appx:///App/Themes/~vs]~11~Colors.xaml";
@@ -27,8 +25,8 @@ public sealed class ResourceDictionarySourceExpanderTests
     private const string _AppResources = "ms-appx:///App/~vs]~15~Resources.xaml";
     private const string _LibraryResources = "ms-appx:///Library/~vs]~16~Resources.xaml";
 
-    private static readonly XNamespace _P = _Presentation;
-    private static readonly XNamespace _X = _XamlLanguage;
+    private static readonly XNamespace _P = XamlNamespaces.Presentation;
+    private static readonly XNamespace _X = XamlNamespaces.XamlLanguage;
 
     [TestMethod]
     public void PreparedDictionaryIsMergedLastIntoTheDictionaryThatNamedIt()
@@ -51,10 +49,10 @@ public sealed class ResourceDictionarySourceExpanderTests
         CollectionAssert.AreEqual(new[] { "AccentBrush" }, Keys(inserted));
 
         // The source is gone; what the document had stays where it was.
-        Assert.IsFalse(page.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName).Any());
+        Assert.IsEmpty(page.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName));
         CollectionAssert.AreEqual(new[] { "Inline", "AccentBrush" }, page.Descendants(_P + "SolidColorBrush").Select(KeyOf).ToArray());
         Assert.IsFalse(ResourceDictionarySourceExpander.IsInserted(page.Descendants(_P + "SolidColorBrush").First()));
-        Assert.AreEqual(0, cache.Warnings.Count, string.Join(Environment.NewLine, cache.Warnings));
+        Assert.IsEmpty(cache.Warnings, string.Join(Environment.NewLine, cache.Warnings));
         AssertReadableByTheXamlReader(page);
     }
 
@@ -65,7 +63,7 @@ public sealed class ResourceDictionarySourceExpanderTests
         var cache = new ShadowCache();
         cache.Add(_Colors, Dictionary("""<SolidColorBrush x:Key="AccentBrush" Color="SeaGreen" />"""));
         XElement dictionary = XElement.Parse($"""
-            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" _0:DT.ResourceDictionarySource="{_Colors}">
+            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" _0:DT.ResourceDictionarySource="{_Colors}">
               <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary><SolidColorBrush x:Key="AccentBrush" Color="Red" /></ResourceDictionary>
               </ResourceDictionary.MergedDictionaries>
@@ -75,9 +73,9 @@ public sealed class ResourceDictionarySourceExpanderTests
         cache.Expander.Expand(dictionary, _PageUri, "document 10");
 
         XElement[] merged = dictionary.Elements(_P + "ResourceDictionary.MergedDictionaries").Single().Elements().ToArray();
-        Assert.AreEqual(2, merged.Length);
+        Assert.HasCount(2, merged);
         Assert.AreEqual("SeaGreen", (string?)merged[1].Element(_P + "SolidColorBrush")!.Attribute("Color"));
-        Assert.AreEqual(1, dictionary.Elements(_P + "ResourceDictionary.MergedDictionaries").Count());
+        Assert.HasCount(1, dictionary.Elements(_P + "ResourceDictionary.MergedDictionaries"));
     }
 
     [TestMethod]
@@ -86,7 +84,7 @@ public sealed class ResourceDictionarySourceExpanderTests
         var cache = new ShadowCache();
         cache.Add(_Colors, Dictionary("""<SolidColorBrush x:Key="AccentBrush" Color="SeaGreen" />"""));
         XElement dictionary = XElement.Parse($"""
-            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" _0:DT.ResourceDictionarySource="{_Colors}"><x:String x:Key="Own">own</x:String></ResourceDictionary>
+            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" _0:DT.ResourceDictionarySource="{_Colors}"><x:String x:Key="Own">own</x:String></ResourceDictionary>
             """);
 
         cache.Expander.Expand(dictionary, _PageUri, "document 10");
@@ -111,8 +109,8 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(3, 0, 0), expansion);
         CollectionAssert.AreEquivalent(new[] { "CardPadding", "CardStyle" }, AllKeys(page));
-        Assert.IsFalse(page.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName).Any());
-        Assert.AreEqual(0, cache.Warnings.Count, string.Join(Environment.NewLine, cache.Warnings));
+        Assert.IsEmpty(page.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName));
+        Assert.IsEmpty(cache.Warnings, string.Join(Environment.NewLine, cache.Warnings));
         AssertReadableByTheXamlReader(page);
     }
 
@@ -128,9 +126,9 @@ public sealed class ResourceDictionarySourceExpanderTests
         ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
 
         Assert.AreEqual(new ResourceDictionaryExpansion(3, 0, 0), expansion);
-        Assert.AreEqual(2, AllKeys(page).Count(key => key == "CardPadding"));
-        Assert.AreEqual(1, cache.Parsed.Count(description => description.Contains("Margins.xaml", StringComparison.Ordinal)));
-        Assert.AreEqual(0, cache.Warnings.Count);
+        Assert.HasCount(2, AllKeys(page).Where(key => key == "CardPadding"));
+        Assert.HasCount(1, cache.Parsed.Where(description => description.Contains("Margins.xaml", StringComparison.Ordinal)));
+        Assert.IsEmpty(cache.Warnings);
     }
 
     [TestMethod]
@@ -145,7 +143,7 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(2, 0, 1), expansion);
         CollectionAssert.AreEquivalent(new[] { "A", "B" }, AllKeys(page));
-        Assert.AreEqual(1, cache.Warnings.Count);
+        Assert.HasCount(1, cache.Warnings);
         Assert.Contains("App/Themes/Colors.xaml → App/Themes/Styles.xaml → App/Themes/Colors.xaml", cache.Warnings[0]);
         Assert.Contains("merged by 'App/Themes/Styles.xaml'", cache.Warnings[0]);
     }
@@ -161,7 +159,7 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion);
         CollectionAssert.AreEqual(new[] { "A" }, AllKeys(page));
-        Assert.AreEqual(1, cache.Warnings.Count);
+        Assert.HasCount(1, cache.Warnings);
         Assert.Contains("App/Themes/Colors.xaml → App/Themes/Colors.xaml", cache.Warnings[0]);
     }
 
@@ -233,8 +231,8 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(4, 0, 1), expansion);
         CollectionAssert.AreEquivalent(new[] { "L0", "L1", "L2", "L3" }, AllKeys(page));
-        Assert.AreEqual(1, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "more than 4 levels deep");
+        Assert.HasCount(1, cache.Warnings);
+        Assert.Contains("more than 4 levels deep", cache.Warnings[0]);
 
         static string Level(int level) => $"ms-appx:///App/Chain/~vs]~{100 + level}~Level{level}.xaml";
     }
@@ -250,10 +248,10 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion);
         CollectionAssert.AreEqual(new[] { "B" }, AllKeys(page));
-        Assert.AreEqual(1, cache.Warnings.Count);
+        Assert.HasCount(1, cache.Warnings);
         Assert.Contains("Resource dictionary 'App/Themes/Colors.xaml' merged by document 10 is left empty", cache.Warnings[0]);
-        StringAssert.Contains(cache.Warnings[0], ShadowCache.ContentDirectory + @"\App\Themes\~vs]~11~Colors.xaml");
-        StringAssert.Contains(cache.Warnings[0], "does not exist");
+        Assert.Contains($@"{ShadowCache.ContentDirectory}\App\Themes\~vs]~11~Colors.xaml", cache.Warnings[0]);
+        Assert.Contains("does not exist", cache.Warnings[0]);
         AssertReadableByTheXamlReader(page);
     }
 
@@ -278,8 +276,8 @@ public sealed class ResourceDictionarySourceExpanderTests
     public void MalformedCopyAndCopyThatIsNoDictionaryAreLeftOut()
     {
         var cache = new ShadowCache();
-        cache.Add(_Colors, "<ResourceDictionary xmlns=\"" + _Presentation + "\"><SolidColorBrush>");
-        cache.Add(_Styles, $"""<Page xmlns="{_Presentation}" />""");
+        cache.Add(_Colors, $"<ResourceDictionary xmlns=\"{XamlNamespaces.Presentation}\"><SolidColorBrush>");
+        cache.Add(_Styles, $"""<Page xmlns="{XamlNamespaces.Presentation}" />""");
         cache.Add(_Margins, Dictionary("""<Thickness x:Key="CardPadding">12</Thickness>"""));
         XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Colors)}{Merge(_Styles)}{Merge(_Margins)}</ResourceDictionary.MergedDictionaries>""");
 
@@ -287,16 +285,16 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 2), expansion);
         CollectionAssert.AreEqual(new[] { "CardPadding" }, AllKeys(page));
-        Assert.AreEqual(2, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "not well-formed XAML");
-        StringAssert.Contains(cache.Warnings[1], "root element <Page> is not a resource dictionary");
+        Assert.HasCount(2, cache.Warnings);
+        Assert.Contains("not well-formed XAML", cache.Warnings[0]);
+        Assert.Contains("root element <Page> is not a resource dictionary", cache.Warnings[1]);
     }
 
     [TestMethod]
     public void DictionaryClassOfTheProjectIsAcceptedThroughItsType()
     {
         var cache = new ShadowCache { DictionaryTypes = { "using:My.App:ThemeResources" } };
-        cache.Add(_Colors, $"""<local:ThemeResources xmlns:local="using:My.App" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}"><x:String x:Key="K">v</x:String></local:ThemeResources>""");
+        cache.Add(_Colors, $"""<local:ThemeResources xmlns:local="using:My.App" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}"><x:String x:Key="K">v</x:String></local:ThemeResources>""");
         XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Colors)}</ResourceDictionary.MergedDictionaries>""");
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 0), cache.Expander.Expand(page, _PageUri, "document 10"));
@@ -310,8 +308,8 @@ public sealed class ResourceDictionarySourceExpanderTests
         XElement page = Page("""<ResourceDictionary.MergedDictionaries><ResourceDictionary _0:DT.ResourceDictionarySource="" /></ResourceDictionary.MergedDictionaries>""");
 
         Assert.AreEqual(new ResourceDictionaryExpansion(0, 0, 0), cache.Expander.Expand(page, _PageUri, "document 10"));
-        Assert.AreEqual(0, cache.Warnings.Count);
-        Assert.IsFalse(page.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName).Any());
+        Assert.IsEmpty(cache.Warnings);
+        Assert.IsEmpty(page.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName));
     }
 
     [TestMethod]
@@ -326,7 +324,7 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(0, 2, 0), expansion);
         XElement[] inserted = page.Descendants(_P + "ResourceDictionary").Where(ResourceDictionarySourceExpander.IsInserted).ToArray();
-        Assert.AreEqual(2, inserted.Length);
+        Assert.HasCount(2, inserted);
         Assert.IsTrue(inserted.All(element => (string?)element.Attribute("Source") == segmented));
 
         // A source that loaded is not asked about again, not even by a later request.
@@ -346,10 +344,10 @@ public sealed class ResourceDictionarySourceExpanderTests
         ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
 
         Assert.AreEqual(new ResourceDictionaryExpansion(0, 0, 1), expansion);
-        Assert.IsFalse(page.Descendants().Any(ResourceDictionarySourceExpander.IsInserted));
-        Assert.AreEqual(1, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "Visual Studio did not find it in the solution");
-        StringAssert.Contains(cache.Warnings[0], "Cannot locate resource");
+        Assert.DoesNotContain(ResourceDictionarySourceExpander.IsInserted, page.Descendants());
+        Assert.HasCount(1, cache.Warnings);
+        Assert.Contains("Visual Studio did not find it in the solution", cache.Warnings[0]);
+        Assert.Contains("Cannot locate resource", cache.Warnings[0]);
     }
 
     [TestMethod]
@@ -390,7 +388,7 @@ public sealed class ResourceDictionarySourceExpanderTests
         XElement second = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 1, 0), cache.Expander.Expand(second, _PageUri, "document 11"));
-        Assert.IsTrue(second.Descendants(_P + "ResourceDictionary").Any(element => (string?)element.Attribute("Source") == package));
+        Assert.Contains(element => (string?)element.Attribute("Source") == package, second.Descendants(_P + "ResourceDictionary"));
     }
 
     [TestMethod]
@@ -432,7 +430,7 @@ public sealed class ResourceDictionarySourceExpanderTests
         CollectionAssert.AreEqual(new[] { "ms-appx:///Library/Shared/Brushes.xaml" }, cache.RuntimeLoads);
         string[] sources = page.Descendants(_P + "ResourceDictionary").Select(element => (string?)element.Attribute("Source")).OfType<string>().ToArray();
         CollectionAssert.AreEqual(new[] { "ms-appx:///Library/Shared/Brushes.xaml" }, sources);
-        Assert.AreEqual(0, cache.Warnings.Count);
+        Assert.IsEmpty(cache.Warnings);
         AssertReadableByTheXamlReader(page);
     }
 
@@ -449,8 +447,8 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 1), expansion);
         CollectionAssert.AreEqual(new[] { "CardStyle" }, AllKeys(page));
-        Assert.IsFalse(page.Descendants().Attributes("Source").Any(), "A source that does not load must not reach the reader.");
-        Assert.AreEqual(1, cache.Warnings.Count);
+        Assert.IsEmpty(page.Descendants().Attributes("Source"), "A source that does not load must not reach the reader.");
+        Assert.HasCount(1, cache.Warnings);
         Assert.Contains("merged by 'Library/Styles/Cards.xaml'", cache.Warnings[0]);
         Assert.Contains("Cannot locate resource", cache.Warnings[0]);
         AssertReadableByTheXamlReader(page);
@@ -498,8 +496,8 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         Assert.AreEqual(new ResourceDictionaryExpansion(1, 0, 0), expansion);
         CollectionAssert.AreEqual(new[] { "AccentBrush" }, AllKeys(page));
-        Assert.AreEqual(0, cache.RuntimeLoads.Count);
-        Assert.IsFalse(page.Descendants().Attributes("Source").Any());
+        Assert.IsEmpty(cache.RuntimeLoads);
+        Assert.IsEmpty(page.Descendants().Attributes("Source"));
     }
 
     [TestMethod]
@@ -507,7 +505,7 @@ public sealed class ResourceDictionarySourceExpanderTests
     {
         const string package = "ms-appx:///Pkg/Colors.xaml";
         var cache = new ShadowCache { DictionaryTypes = { "using:My.App:ThemeResources" } };
-        XElement page = XElement.Parse($"""<Page xmlns="{_Presentation}" xmlns:local="using:My.App"><Page.Resources><local:ThemeResources Source="{package}" /></Page.Resources></Page>""");
+        XElement page = XElement.Parse($"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:local="using:My.App"><Page.Resources><local:ThemeResources Source="{package}" /></Page.Resources></Page>""");
 
         ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
 
@@ -520,15 +518,16 @@ public sealed class ResourceDictionarySourceExpanderTests
     {
         // Images, media and the like have a Source as well. It is no dictionary, and the runtime is not asked.
         var cache = new ShadowCache();
-        XElement page = XElement.Parse($"""<Page xmlns="{_Presentation}" xmlns:local="using:My.App"><Image Source="Assets/Logo.png" /><local:Icon Source="Assets/Icon.png" /><MediaPlayerElement Source="Assets/Clip.mp4" /></Page>""");
+        XElement page = XElement.Parse($"""<Page xmlns="{XamlNamespaces.Presentation}" xmlns:local="using:My.App"><Image Source="Assets/Logo.png" /><local:Icon Source="Assets/Icon.png" /><MediaPlayerElement Source="Assets/Clip.mp4" /></Page>""");
 
         ResourceDictionaryExpansion expansion = cache.Expander.Expand(page, _PageUri, "document 10");
 
         Assert.AreEqual(new ResourceDictionaryExpansion(0, 0, 0), expansion);
-        Assert.AreEqual(0, cache.RuntimeLoads.Count);
+        Assert.IsEmpty(cache.RuntimeLoads);
         CollectionAssert.AreEqual(
             new[] { "Assets/Logo.png", "Assets/Icon.png", "Assets/Clip.mp4" },
-            page.Elements().Select(element => (string?)element.Attribute("Source")).ToArray());
+            page.Elements().Select(element => (string?)element.Attribute("Source")).ToArray()
+        );
     }
 
     [TestMethod]
@@ -537,11 +536,11 @@ public sealed class ResourceDictionarySourceExpanderTests
         // The sample's Themes\ConditionalResources.xaml, as Visual Studio prepares it.
         var cache = new ShadowCache();
         cache.Add(_Colors, $"""
-            <ResourceDictionary xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}"
-                xmlns:contract7NotPresent="{_Presentation}?IsApiContractNotPresent({ShadowCache.Contract},7)"
-                xmlns:contract7Present="{_Presentation}?IsApiContractPresent({ShadowCache.Contract},7)"
-                xmlns:contract99NotPresent="{_Presentation}?IsApiContractNotPresent({ShadowCache.Contract},99)"
-                xmlns:contract99Present="{_Presentation}?IsApiContractPresent({ShadowCache.Contract},99)">
+            <ResourceDictionary xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}"
+                xmlns:contract7NotPresent="{XamlNamespaces.Presentation}?IsApiContractNotPresent({ShadowCache.Contract},7)"
+                xmlns:contract7Present="{XamlNamespaces.Presentation}?IsApiContractPresent({ShadowCache.Contract},7)"
+                xmlns:contract99NotPresent="{XamlNamespaces.Presentation}?IsApiContractNotPresent({ShadowCache.Contract},99)"
+                xmlns:contract99Present="{XamlNamespaces.Presentation}?IsApiContractPresent({ShadowCache.Contract},99)">
               <SolidColorBrush x:Key="ConditionalAccentBrush" contract7NotPresent:Color="Firebrick" contract7Present:Color="SeaGreen" />
               <Style x:Key="ConditionalCardStyle" TargetType="Border">
                 <Setter Property="Padding" Value="12" />
@@ -561,7 +560,8 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.AreEqual("SeaGreen", (string?)page.Descendants(_P + "SolidColorBrush").Single().Attribute("Color"));
         CollectionAssert.AreEqual(
             new[] { "Padding=12", "CornerRadius=8", "BorderThickness=3" },
-            page.Descendants(_P + "Setter").Select(setter => $"{setter.Attribute("Property")?.Value}={setter.Attribute("Value")?.Value}").ToArray());
+            page.Descendants(_P + "Setter").Select(setter => $"{setter.Attribute("Property")?.Value}={setter.Attribute("Value")?.Value}").ToArray()
+        );
         AssertReadableByTheXamlReader(page);
     }
 
@@ -571,13 +571,13 @@ public sealed class ResourceDictionarySourceExpanderTests
         // In Visual Studio's copies "_1" is the presentation namespace in App.xaml and the fallback namespace elsewhere.
         var cache = new ShadowCache();
         cache.Add(_Colors, $"""
-            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns:_1="using:XSurfUwp.Fallback" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" xmlns:conv="using:My.Library.Converters">
+            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns:_1="using:XSurfUwp.Fallback" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:conv="using:My.Library.Converters">
               <_1:FallbackValueConverter x:Key="BoolToVisibilityConverter" />
               <Style x:Key="S" TargetType="_1:FallbackControl" />
             </ResourceDictionary>
             """);
         XElement application = XElement.Parse($"""
-            <_0:Application xmlns:_0="using:XSurfUwp" xmlns:_1="{_Presentation}" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}" xmlns:conv="using:My.App.Converters">
+            <_0:Application xmlns:_0="using:XSurfUwp" xmlns:_1="{XamlNamespaces.Presentation}" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:conv="using:My.App.Converters">
               <_0:Application.Resources>
                 <ResourceDictionary>
                   <ResourceDictionary.MergedDictionaries>
@@ -592,9 +592,9 @@ public sealed class ResourceDictionarySourceExpanderTests
         cache.Expander.Expand(application, "ms-appx:///~vs]~9~App.xaml", "document 9");
 
         string xaml = application.ToString(SaveOptions.DisableFormatting);
-        Assert.AreEqual(0, XamlFragmentGrafterTests.ResolveAsWinUIReader(xaml).Count, string.Join(Environment.NewLine, XamlFragmentGrafterTests.ResolveAsWinUIReader(xaml)));
-        StringAssert.Contains(xaml, "<_1_1:FallbackValueConverter ");
-        StringAssert.Contains(xaml, "TargetType=\"_1_1:FallbackControl\"");
+        Assert.IsEmpty(XamlFragmentGrafterTests.ResolveAsWinUIReader(xaml), string.Join(Environment.NewLine, XamlFragmentGrafterTests.ResolveAsWinUIReader(xaml)));
+        Assert.Contains("<_1_1:FallbackValueConverter ", xaml);
+        Assert.Contains("TargetType=\"_1_1:FallbackControl\"", xaml);
         Assert.AreEqual(XName.Get("FallbackValueConverter", "using:XSurfUwp.Fallback"), XElement.Parse(xaml).Descendants().Single(element => element.Name.LocalName == "FallbackValueConverter").Name);
     }
 
@@ -603,8 +603,8 @@ public sealed class ResourceDictionarySourceExpanderTests
     {
         var cache = new ShadowCache();
         cache.Add(_Colors, $"""
-            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}"
-                xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:not_win="http://uno.ui/not_win"
+            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}"
+                xmlns:mc="{XamlNamespaces.MarkupCompatibility}" xmlns:not_win="{TestXamlNamespaces.NotWin}"
                 mc:Ignorable="not_win" x:Class="My.Library.Colors" _0:DT.DesignWidth="200">
               <SolidColorBrush x:Key="A" Color="Red" not_win:Opacity="0.5" />
               <not_win:SolidColorBrush x:Key="B" Color="Blue" />
@@ -616,8 +616,8 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         XElement inserted = page.Descendants().Single(element => ResourceDictionarySourceExpander.IsInserted(element) && !ResourceDictionarySourceExpander.IsInserted(element.Parent!));
         CollectionAssert.AreEqual(new[] { "A" }, Keys(inserted));
-        Assert.IsFalse(inserted.Attributes().Any(attribute => !attribute.IsNamespaceDeclaration));
-        Assert.IsFalse(inserted.DescendantsAndSelf().Attributes().Any(attribute => attribute.Name.NamespaceName == "http://uno.ui/not_win"));
+        Assert.DoesNotContain(attribute => !attribute.IsNamespaceDeclaration, inserted.Attributes());
+        Assert.DoesNotContain(attribute => attribute.Name.NamespaceName == TestXamlNamespaces.NotWin, inserted.DescendantsAndSelf().Attributes());
     }
 
     [TestMethod]
@@ -652,8 +652,8 @@ public sealed class ResourceDictionarySourceExpanderTests
         var cache = new ShadowCache();
         cache.Add(_Margins, Dictionary("""<Thickness x:Key="CardPadding">12</Thickness>"""));
         cache.Add(_Cards, $"""
-            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{_Presentation}" xmlns:x="{_XamlLanguage}"
-                xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}"
+                xmlns:d="{XamlNamespaces.BlendDesign}" xmlns:mc="{XamlNamespaces.MarkupCompatibility}"
                 mc:Ignorable="d" x:Class="My.Library.Cards" _0:DT.RuntimeWidth="10">
               <ResourceDictionary.MergedDictionaries>{Merge(_Margins)}</ResourceDictionary.MergedDictionaries>
               <Style x:Key="CardStyle" TargetType="Border" d:IsDesignTime="True" />
@@ -667,10 +667,10 @@ public sealed class ResourceDictionarySourceExpanderTests
         XElement dictionary = content.Dictionary!;
         Assert.IsNull(dictionary.Parent);
         Assert.IsNull(dictionary.Attribute(_X + "Class"));
-        Assert.IsNull(dictionary.Attribute(XName.Get("DT.RuntimeWidth", "using:XSurfUwp")));
+        Assert.IsNull(dictionary.Attribute(XName.Get("DT.RuntimeWidth", ResourceDictionarySourceExpander.DesignTimeNamespace)));
 
         // Still a root: mc:Ignorable stays where the reader reads it.
-        Assert.AreEqual("d", (string?)dictionary.Attribute(XName.Get("Ignorable", "http://schemas.openxmlformats.org/markup-compatibility/2006")));
+        Assert.AreEqual("d", (string?)dictionary.Attribute(XName.Get("Ignorable", XamlNamespaces.MarkupCompatibility)));
         CollectionAssert.AreEquivalent(new[] { "CardPadding", "CardStyle" }, dictionary.Descendants().Select(KeyOf).OfType<string>().ToArray());
 
         // Each call gets an element of its own.
@@ -687,12 +687,12 @@ public sealed class ResourceDictionarySourceExpanderTests
         Assert.AreEqual(ResourceDictionarySourceContentKind.Runtime, content.Kind);
         Assert.AreEqual("ms-appx:///Library/Themes/Generic.xaml", content.Uri);
         Assert.IsNull(content.Dictionary);
-        Assert.AreEqual(0, cache.RuntimeLoads.Count);
-        Assert.AreEqual(0, cache.Warnings.Count);
+        Assert.IsEmpty(cache.RuntimeLoads);
+        Assert.IsEmpty(cache.Warnings);
 
         cache.Expander.ReportRuntimeLoadFailure(content.Uri!, "document 10", "Cannot locate resource.");
-        Assert.AreEqual(1, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "Resource dictionary 'ms-appx:///Library/Themes/Generic.xaml' merged by document 10 is left empty");
+        Assert.HasCount(1, cache.Warnings);
+        Assert.Contains("Resource dictionary 'ms-appx:///Library/Themes/Generic.xaml' merged by document 10 is left empty", cache.Warnings[0]);
     }
 
     [TestMethod]
@@ -701,11 +701,11 @@ public sealed class ResourceDictionarySourceExpanderTests
         var cache = new ShadowCache();
 
         Assert.AreSame(ResourceDictionarySourceContent.None, cache.Expander.Load("  ", documentUri: null, "document 10"));
-        Assert.AreEqual(0, cache.Warnings.Count);
+        Assert.IsEmpty(cache.Warnings);
 
         Assert.AreSame(ResourceDictionarySourceContent.Failed, cache.Expander.Load(_Colors, documentUri: null, "document 10"));
-        Assert.AreEqual(1, cache.Warnings.Count);
-        StringAssert.Contains(cache.Warnings[0], "does not exist");
+        Assert.HasCount(1, cache.Warnings);
+        Assert.Contains("does not exist", cache.Warnings[0]);
     }
 
     [TestMethod]
@@ -720,7 +720,7 @@ public sealed class ResourceDictionarySourceExpanderTests
         cache.Expander.Expand(page, _PageUri, "document 10");
 
         Assert.AreEqual("Blue", (string?)page.Descendants(_P + "SolidColorBrush").Single().Attribute("Color"));
-        Assert.AreEqual(2, cache.Parsed.Count);
+        Assert.HasCount(2, cache.Parsed);
     }
 
     [TestMethod]
@@ -731,14 +731,14 @@ public sealed class ResourceDictionarySourceExpanderTests
         cache.Add(_Cards, Dictionary($"""<ResourceDictionary.MergedDictionaries>{Merge(_Margins)}</ResourceDictionary.MergedDictionaries>"""));
         cache.Expander.Expand(Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>"""), _PageUri, "document 10");
         cache.Expander.Expand(Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>"""), _PageUri, "document 10");
-        Assert.AreEqual(2, cache.Parsed.Count);
+        Assert.HasCount(2, cache.Parsed);
 
         cache.Add(_Margins, Dictionary("""<Thickness x:Key="CardPadding">24</Thickness>"""));
         XElement page = Page($"""<ResourceDictionary.MergedDictionaries>{Merge(_Cards)}</ResourceDictionary.MergedDictionaries>""");
         cache.Expander.Expand(page, _PageUri, "document 10");
 
         Assert.AreEqual("24", page.Descendants(_P + "Thickness").Single().Value);
-        Assert.AreEqual(4, cache.Parsed.Count);
+        Assert.HasCount(4, cache.Parsed);
     }
 
     [TestMethod]
@@ -798,7 +798,7 @@ public sealed class ResourceDictionarySourceExpanderTests
 
         // Nothing failed, so the dictionary is kept: the second request did not read the file again.
         Assert.AreEqual(1, cache.Expander.Cache.Count);
-        Assert.AreEqual(1, cache.Parsed.Count);
+        Assert.HasCount(1, cache.Parsed);
     }
 
     [TestMethod]
@@ -820,7 +820,7 @@ public sealed class ResourceDictionarySourceExpanderTests
             Assert.Contains("'Library/Margins.xaml'", cache.Warnings[0]);
         }
 
-        Assert.AreEqual(2, cache.Parsed.Count, "Both dictionaries are read once.");
+        Assert.HasCount(2, cache.Parsed, "Both dictionaries are read once.");
     }
 
     [TestMethod]
@@ -875,9 +875,9 @@ public sealed class ResourceDictionarySourceExpanderTests
     {
         string xaml = root.ToString(SaveOptions.DisableFormatting);
         XElement reloaded = XElement.Parse(xaml);
-        Assert.IsFalse(reloaded.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName).Any(), xaml);
+        Assert.IsEmpty(reloaded.DescendantsAndSelf().Attributes(ResourceDictionarySourceExpander.SourceAttributeName), xaml);
         List<string> mismatches = XamlFragmentGrafterTests.ResolveAsWinUIReader(xaml);
-        Assert.AreEqual(0, mismatches.Count, string.Join(Environment.NewLine, mismatches));
-        Assert.IsFalse(reloaded.Descendants().Attributes(XName.Get("Ignorable", "http://schemas.openxmlformats.org/markup-compatibility/2006")).Any(), xaml);
+        Assert.IsEmpty(mismatches, string.Join(Environment.NewLine, mismatches));
+        Assert.IsEmpty(reloaded.Descendants().Attributes(XName.Get("Ignorable", XamlNamespaces.MarkupCompatibility)), xaml);
     }
 }

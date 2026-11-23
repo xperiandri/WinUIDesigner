@@ -33,7 +33,8 @@ public sealed class PreparedCopyComparisonTests
         Assert.AreEqual(4, resourcesInBuilt);
         CollectionAssert.AreEqual(
             new[] { "LoadingTextBoxErrorStyle (Style of local:LoadingTextBox)", "SfComboBoxErrorStyle (Style of sfe:SfComboBox)" },
-            leftOut.Select(resource => resource.ToString()).ToArray());
+            leftOut.Select(resource => resource.ToString()).ToArray()
+        );
     }
 
     [TestMethod]

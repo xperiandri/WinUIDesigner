@@ -80,7 +80,7 @@ public sealed class TransitiveProjectLookupTests
         Project app = new("App", new Project("A", shared), new Project("B", shared));
         int lookups = 0;
 
-        Assert.IsNull(TransitiveProjectLookup.Find(
+        ProjectLookupResult<Project>? found = TransitiveProjectLookup.Find(
             app,
             app,
             project =>
@@ -90,7 +90,10 @@ public sealed class TransitiveProjectLookupTests
             },
             project => project.Name,
             project => project.Id,
-            "Missing"));
+            "Missing"
+        );
+
+        Assert.IsNull(found);
 
         // The owner's references, then the application, A, B and Shared once each.
         Assert.AreEqual(5, lookups);

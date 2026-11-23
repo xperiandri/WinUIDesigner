@@ -448,7 +448,8 @@ public sealed class VsDesignerApiShapeTests
         Assert.IsNotNull(getter, $"{_WpfHostShadowCopyWorker}.HasAppXbf needs a getter.");
         Assert.IsTrue(
             getter.HasBody && getter.Body.Instructions.Select(instruction => instruction.OpCode).SequenceEqual(new[] { OpCodes.Ldc_I4_0, OpCodes.Ret }),
-            $"{_WpfHostShadowCopyWorker}.HasAppXbf no longer returns false.");
+            $"{_WpfHostShadowCopyWorker}.HasAppXbf no longer returns false."
+        );
     }
 
     [TestMethod]
@@ -482,7 +483,8 @@ public sealed class VsDesignerApiShapeTests
         Assert.AreEqual(
             "DT.ResourceDictionarySource",
             RequireType(_UwpStandInInfo).Fields.Single(field => field.Name == "ResourceDictionarySourceHandlePropertyName").Constant,
-            $"{_UwpStandInInfo}.ResourceDictionarySourceHandlePropertyName changed.");
+            $"{_UwpStandInInfo}.ResourceDictionarySourceHandlePropertyName changed."
+        );
     }
 
     [TestMethod]
@@ -492,7 +494,11 @@ public sealed class VsDesignerApiShapeTests
         TypeDefinition type = RequireType(_UwpDesignerInstanceBuilderPlatform);
         MethodDefinition[] constructors = type.Methods.Where(method => method.IsConstructor && !method.IsStatic).ToArray();
 
-        Assert.IsTrue(constructors.Any(constructor => LoadsString(constructor, "XSurfUwp.DT")), $"No constructor of {_UwpDesignerInstanceBuilderPlatform} creates the design-time builder for \"XSurfUwp.DT\".");
+        Assert.Contains(
+            constructor => LoadsString(constructor, "XSurfUwp.DT"),
+            constructors,
+            $"No constructor of {_UwpDesignerInstanceBuilderPlatform} creates the design-time builder for \"XSurfUwp.DT\"."
+        );
     }
 
     [TestMethod]
@@ -518,7 +524,11 @@ public sealed class VsDesignerApiShapeTests
         Assert.AreEqual(_UwpDesignerInstanceBuilderPlatform, platform.DeclaringType.FullName, $"The platform no longer serializes properties itself: {Describe(platform)}");
         Assert.IsTrue(CallsOn(platform, _DesignerInstanceBuilder, "SerializeProperty"), $"{Describe(platform)} no longer hands the property to the DesignerInstanceBuilder.");
         Assert.IsTrue(Calls(builder, "HasFlag"), $"{Describe(builder)} no longer looks at the member type of the property.");
-        Assert.IsTrue(builder.Body.Instructions.Any(instruction => instruction.OpCode == OpCodes.Ldfld && instruction.Operand is FieldReference { Name: "designTimeTypeName" }), $"{Describe(builder)} no longer names a design-time property with its design-time owner.");
+        Assert.Contains(
+            instruction => instruction.OpCode == OpCodes.Ldfld && instruction.Operand is FieldReference { Name: "designTimeTypeName" },
+            builder.Body.Instructions,
+            $"{Describe(builder)} no longer names a design-time property with its design-time owner."
+        );
         Assert.IsTrue(Calls(builder, "FormatFullMemberName"), $"{Describe(builder)} no longer formats \"Member:Owner\".");
     }
 

@@ -177,7 +177,8 @@ public sealed class ResourceEntryQuarantineTests
 
         CollectionAssert.AreEqual(
             new[] { "PlainErrorStyle", "LoadingTextBoxErrorStyle", "TokenizingTextBoxErrorStyle", "LoadingAutoSuggestBoxErrorStyle", "LastErrorStyle" },
-            AllKeysOf(later, null).ToArray());
+            AllKeysOf(later, null).ToArray()
+        );
     }
 
     [TestMethod]
@@ -279,7 +280,7 @@ public sealed class ResourceEntryQuarantineTests
 
         Assert.HasCount(1, outcome.Removed);
         Assert.AreEqual("DarkStyle", outcome.Removed[0].Key);
-        Assert.IsTrue(page.Descendants(_P + "ResourceDictionary").Any(dictionary => KeyOf(dictionary) == "Dark"), "The theme dictionary stays.");
+        Assert.Contains(dictionary => KeyOf(dictionary) == "Dark", page.Descendants(_P + "ResourceDictionary"), "The theme dictionary stays.");
         CollectionAssert.AreEqual(new[] { "DarkBrush" }, AllKeysOf(page, null).ToArray());
     }
 
@@ -358,8 +359,9 @@ public sealed class ResourceEntryQuarantineTests
                     "Console.UI/Resources.xaml",
                     "Console.UI/Styles/ErrorStyles.xaml",
                 },
-                copies);
-            Assert.AreEqual(1, cache.Expander.Origins.FindCopies(page).Count(copy => copy.Value.IsRuntime));
+                copies
+            );
+            Assert.HasCount(1, cache.Expander.Origins.FindCopies(page).Where(copy => copy.Value.IsRuntime));
         }
     }
 
@@ -399,10 +401,7 @@ public sealed class ResourceEntryQuarantineTests
             """);
     }
 
-    private static string Reference(string key)
-    {
-        return $"{{StaticResource {key}}}";
-    }
+    private static string Reference(string key) => $"{{StaticResource {key}}}";
 
     /// <summary>
     /// Creates the application: a package dictionary merged by URI, and the resources of three libraries.

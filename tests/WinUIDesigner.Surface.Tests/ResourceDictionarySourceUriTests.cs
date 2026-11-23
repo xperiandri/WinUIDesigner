@@ -83,7 +83,7 @@ public sealed class ResourceDictionarySourceUriTests
     public void AbsoluteSourceIsKeptAsWritten(string value)
     {
         Assert.AreEqual(value, ResourceDictionarySourceUri.Resolve(value, "ms-appx:///Views/~vs]~12~Page.xaml"));
-        Assert.AreEqual(value, ResourceDictionarySourceUri.Resolve("  " + value + " ", baseUri: null));
+        Assert.AreEqual(value, ResourceDictionarySourceUri.Resolve($"  {value} ", baseUri: null));
     }
 
     [TestMethod]
@@ -114,14 +114,17 @@ public sealed class ResourceDictionarySourceUriTests
     public void PreparedCopyIsBelowTheContentDirectory()
     {
         Assert.AreEqual(
-            _ContentDirectory + @"\Ecierge.Console.UI\~vs]~359530~Resources.xaml",
-            ResourceDictionarySourceUri.TryGetLocalPath("ms-appx:///Ecierge.Console.UI/~vs]~359530~Resources.xaml", _ContentDirectory));
+            $@"{_ContentDirectory}\Ecierge.Console.UI\~vs]~359530~Resources.xaml",
+            ResourceDictionarySourceUri.TryGetLocalPath("ms-appx:///Ecierge.Console.UI/~vs]~359530~Resources.xaml", _ContentDirectory)
+        );
         Assert.AreEqual(
-            _ContentDirectory + @"\~vs]~359056~App.xaml",
-            ResourceDictionarySourceUri.TryGetLocalPath("ms-appx:///~vs]~359056~App.xaml", _ContentDirectory + @"\"));
+            $@"{_ContentDirectory}\~vs]~359056~App.xaml",
+            ResourceDictionarySourceUri.TryGetLocalPath("ms-appx:///~vs]~359056~App.xaml", $@"{_ContentDirectory}\")
+        );
         Assert.AreEqual(
-            _ContentDirectory + @"\My Folder\~vs]~2~A B.xaml",
-            ResourceDictionarySourceUri.TryGetLocalPath("ms-appx:///My%20Folder/~vs]~2~A%20B.xaml", _ContentDirectory));
+            $@"{_ContentDirectory}\My Folder\~vs]~2~A B.xaml",
+            ResourceDictionarySourceUri.TryGetLocalPath("ms-appx:///My%20Folder/~vs]~2~A%20B.xaml", _ContentDirectory)
+        );
     }
 
     [TestMethod]
@@ -139,10 +142,7 @@ public sealed class ResourceDictionarySourceUriTests
     [DataRow(@"C:\DesignerCache\Styles\~vs]~12~")]
     [DataRow(@"C:\DesignerCache\Styles\")]
     [DataRow("")]
-    public void OtherPathsHaveNoBuildLayoutCopy(string path)
-    {
-        Assert.IsNull(ResourceDictionarySourceUri.TryGetBuildLayoutPath(path));
-    }
+    public void OtherPathsHaveNoBuildLayoutCopy(string path) => Assert.IsNull(ResourceDictionarySourceUri.TryGetBuildLayoutPath(path));
 
     [TestMethod]
     public void FileUriIsItsLocalPath()
@@ -162,7 +162,7 @@ public sealed class ResourceDictionarySourceUriTests
         string? path = ResourceDictionarySourceUri.TryGetLocalPath(uri, _ContentDirectory);
 
         // ".." cannot climb out of an ms-appx URI; what remains is either below the content directory or nothing.
-        Assert.IsTrue(path is null || path.StartsWith(_ContentDirectory + @"\", StringComparison.OrdinalIgnoreCase), path);
+        Assert.IsTrue(path is null || path.StartsWith($@"{_ContentDirectory}\", StringComparison.OrdinalIgnoreCase), path);
         if (!uri.StartsWith("ms-appx:///..", StringComparison.Ordinal))
         {
             Assert.IsNull(path);

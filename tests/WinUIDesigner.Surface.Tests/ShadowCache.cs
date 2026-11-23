@@ -32,7 +32,7 @@ internal sealed class ShadowCache
                 XamlNamespaceRewriter.Rewrite(document, new XamlNamespaceRewriteOptions { SourceXaml = xaml, EvaluateCondition = _conditions.Evaluate });
                 return document;
             },
-            IsDictionaryType = name => DictionaryTypes.Contains(name.NamespaceName + ":" + name.LocalName),
+            IsDictionaryType = name => DictionaryTypes.Contains($"{name.NamespaceName}:{name.LocalName}"),
             LoadWithRuntime = uri =>
             {
                 RuntimeLoads.Add(uri);
@@ -88,10 +88,7 @@ internal sealed class ShadowCache
     /// <summary>
     /// Returns a dictionary element whose source Visual Studio's cleaner replaced with the design-time property.
     /// </summary>
-    public static string Merge(string uri)
-    {
-        return $"""<ResourceDictionary _0:DT.ResourceDictionarySource="{uri}" />""";
-    }
+    public static string Merge(string uri) => $"""<ResourceDictionary _0:DT.ResourceDictionarySource="{uri}" />""";
 
     /// <summary>
     /// A page as Visual Studio prepares it, with <paramref name="resources"/> inside the dictionary of its resources.

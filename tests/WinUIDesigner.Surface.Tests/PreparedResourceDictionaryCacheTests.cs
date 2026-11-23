@@ -106,7 +106,8 @@ public sealed class PreparedResourceDictionaryCacheTests
             _Outer,
             "outer",
             new XElement("ResourceDictionary"),
-            [new(_Inner, "inner"), new(_Inner.ToUpperInvariant(), "inner"), new(_Outer, "outer")]);
+            [new(_Inner, "inner"), new(_Inner.ToUpperInvariant(), "inner"), new(_Outer, "outer")]
+        );
 
         CollectionAssert.AreEqual(new[] { new KeyValuePair<string, string?>(_Inner, "inner") }, stored.Dependencies.ToArray());
     }
@@ -139,8 +140,5 @@ public sealed class PreparedResourceDictionaryCacheTests
         Assert.IsFalse(cache.TryGet(_Outer, "outer", ReadFile, out _));
     }
 
-    private string? ReadFile(string path)
-    {
-        return _files.TryGetValue(path, out string? text) ? text : null;
-    }
+    private string? ReadFile(string path) => _files.TryGetValue(path, out string? text) ? text : null;
 }
