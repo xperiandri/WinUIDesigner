@@ -7,15 +7,15 @@ using Mono.Cecil;
 
 /// <summary>
 /// Pins the shape of the members of Visual Studio's closed-source XAML designer that the extension overrides
-/// or calls. The designer assemblies differ between Visual Studio versions, so every member has its own test:
-/// a failure names exactly the member that differs in the Visual Studio the tests were built with.
+/// or calls, in this package or in the packages built on it. The designer assemblies differ between Visual Studio
+/// versions, so every member has its own test: a failure names exactly the member that differs in the Visual
+/// Studio the tests were built with.
 /// </summary>
 [TestClass]
 public sealed class VsDesignerApiShapeTests
 {
     private const string _DesignerInstanceManager = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.DesignerInstanceManager";
     private const string _SurfaceProcessContext = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.SurfaceProcessContext";
-    private const string _UwpInstanceBuilderPlatform = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.Uwp.UwpInstanceBuilderPlatform";
     private const string _UwpDesignerInstanceBuilderPlatform = "Microsoft.VisualStudio.DesignTools.UwpSurfaceDesigner.SurfaceIsolation.UwpDesignerInstanceBuilderPlatform";
     private const string _SurfaceProcessMarkupProvider = "Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents.SurfaceProcessMarkupProvider";
     private const string _XamlCleaner = "Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents.XamlModify.XamlCleaner";
@@ -29,13 +29,16 @@ public sealed class VsDesignerApiShapeTests
     private const string _InstanceBuilderContext = "Microsoft.VisualStudio.DesignTools.RuntimeHost.InstanceBuilders.IInstanceBuilderContext";
     private const string _ProtocolHandler = "Microsoft.VisualStudio.DesignTools.RuntimeHost.Networking.IProtocolHandler";
     private const string _SurfaceProcessMarkupProviderContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessMarkupProvider";
-    private const string _SurfaceProcessDocument = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessDocument";
+    private const string _SurfaceProcessDocumentContract = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.ISurfaceProcessDocument";
     private const string _MarkupDocument = "Microsoft.VisualStudio.DesignTools.Markup.IMarkupDocument";
     private const string _SceneView = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Views.SceneView";
     private const string _UwpSceneView = "Microsoft.VisualStudio.DesignTools.UwpSurfaceDesigner.Views.UwpSceneView";
     private const string _SceneScrollViewer = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Views.SceneScrollViewer";
     private const string _DeviceToolBar = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Views.Device.DeviceToolBar";
     private const string _DocumentRoot = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.IDocumentRoot";
+    private const string _DocumentNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentNode";
+    private const string _DocumentCompositeNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentCompositeNode";
+    private const string _MarkupUtility = "Microsoft.VisualStudio.DesignTools.Markup.MarkupUtility";
     private const string _MarkupTextBuffer = "Microsoft.VisualStudio.DesignTools.Utility.Text.IMarkupTextBuffer";
     private const string _MarkupTextReader = "Microsoft.VisualStudio.DesignTools.Utility.Text.IMarkupTextReader";
 
@@ -56,7 +59,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _DesignerInstanceManager,
             "ShouldIgnoreProperty",
-            "IInstanceBuilderContext", "DocumentCompositeNode", "DocumentNode", "IProperty", "Boolean&");
+            "IInstanceBuilderContext", "DocumentCompositeNode", "DocumentNode", "IProperty", "Boolean&"
+        );
 
         AssertOverridable(method);
         Assert.IsTrue(method.Parameters[4].IsOut, $"The last parameter must be an out parameter: {Describe(method)}");
@@ -64,12 +68,15 @@ public sealed class VsDesignerApiShapeTests
     }
 
     [TestMethod]
-    public void InstanceBuilderPlatformLetsDerivedClassesChooseTheBuilder()
+    public void DesignerInstanceBuilderPlatformLetsDerivedClassesChooseTheBuilder()
     {
+        // The extension derives from the designer platform, so its override binds to the declaration nearest to
+        // that class, which is the one the lookup returns first; the base class is reached when there is none.
         MethodDefinition method = RequireMethod(
-            _UwpInstanceBuilderPlatform,
+            _UwpDesignerInstanceBuilderPlatform,
             "GetInstanceBuilder",
-            "IInstanceBuilderContext", "DocumentNode");
+            "IInstanceBuilderContext", "DocumentNode"
+        );
 
         AssertOverridable(method);
     }
@@ -80,7 +87,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _UwpDesignerInstanceBuilderPlatform,
             "GetFallbackTypeInfo",
-            "IType", "Boolean");
+            "IType", "Boolean"
+        );
 
         AssertOverridable(method);
     }
@@ -97,20 +105,23 @@ public sealed class VsDesignerApiShapeTests
             method.IsConstructor && !method.IsStatic && HasParameters(method, "IProjectContext"));
         Assert.IsNotNull(
             constructor,
-            $"{type.FullName} needs a constructor (IProjectContext). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}");
+            $"{type.FullName} needs a constructor (IProjectContext). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}"
+        );
         Assert.IsTrue(IsVisibleToDerivedClasses(constructor), $"The constructor must be public or protected: {Describe(constructor)}");
     }
 
     [TestMethod]
-    public void MarkupProviderLetsDerivedClassesSeeTheCleaningResult()
+    public void MarkupProviderLetsDerivedClassesSetTheCleaningResult()
     {
+        // The extension calls this method from a derived class; it does not override it.
         MethodDefinition method = RequireMethod(
             _SurfaceProcessMarkupProvider,
             "SetCleaningResult",
-            "SurfaceProcessDocument", "XamlResult");
+            "SurfaceProcessDocument", "XamlResult"
+        );
 
-        AssertOverridable(method);
-        Assert.IsTrue(method.IsFamily || method.IsFamilyOrAssembly, $"Expected a protected method: {Describe(method)}");
+        Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
+        Assert.IsTrue(IsVisibleToDerivedClasses(method), $"Expected a public or protected method: {Describe(method)}");
     }
 
     [TestMethod]
@@ -119,7 +130,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _SurfaceProcessMarkupProvider,
             "GetXamlCleanerContext",
-            "IProjectContext");
+            "IProjectContext"
+        );
 
         Assert.IsTrue(method.IsPublic, $"Expected a public method: {Describe(method)}");
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
@@ -131,7 +143,8 @@ public sealed class VsDesignerApiShapeTests
         MethodDefinition method = RequireMethod(
             _XamlCleaner,
             "Clean",
-            "String", "IXamlCleanerContext", "IDocumentContext");
+            "String", "IXamlCleanerContext", "IDocumentContext"
+        );
 
         Assert.IsTrue(method.IsPublic && method.IsStatic, $"Expected a public static method: {Describe(method)}");
         Assert.IsTrue(RequireType(_XamlCleaner).IsPublic, $"{_XamlCleaner} must be public.");
@@ -150,14 +163,18 @@ public sealed class VsDesignerApiShapeTests
     public void ElementReferenceResolvesPrefixes()
     {
         // XmlElementReference implements GetXmlNamespace publicly in Visual Studio 18 and explicitly in
-        // Visual Studio 17.14, so the extension calls it through the interface that both versions have.
+        // Visual Studio 17.14, so the interface member is the one both versions have. The extension calls the
+        // public member in the 18 build and reaches the interface member through XmlElementReferenceExtensions
+        // in the 17.14 build.
         MethodDefinition method = RequireMethod(_XmlNamespaceResolver, "GetXmlNamespace", "XmlnsPrefix");
 
         Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
         Assert.AreEqual("XmlNamespace", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
-        Assert.IsTrue(
-            RequireType(_XmlElementReference).Interfaces.Any(@interface => @interface.InterfaceType.FullName == _XmlNamespaceResolver),
-            $"{_XmlElementReference} must implement {_XmlNamespaceResolver}.");
+        Assert.Contains(
+            @interface => @interface.InterfaceType.FullName == _XmlNamespaceResolver,
+            RequireType(_XmlElementReference).Interfaces,
+            $"{_XmlElementReference} must implement {_XmlNamespaceResolver}."
+        );
 
         MethodDefinition isIgnorable = RequireMethod(_XmlElementReference, "IsIgnorable", "XmlNamespace");
         Assert.IsTrue(isIgnorable.IsPublic && !isIgnorable.IsStatic, $"Expected a public instance method: {Describe(isIgnorable)}");
@@ -262,9 +279,11 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.IsTrue(type.IsPublic, $"{type.FullName} must be public.");
         Assert.IsFalse(type.IsSealed, $"{type.FullName} must not be sealed.");
-        Assert.IsTrue(
-            type.Methods.Any(method => method.IsConstructor && !method.IsStatic && !method.HasParameters && IsVisibleToDerivedClasses(method)),
-            $"{type.FullName} needs an accessible parameterless constructor.");
+        Assert.Contains(
+            method => method.IsConstructor && !method.IsStatic && !method.HasParameters && IsVisibleToDerivedClasses(method),
+            type.Methods,
+            $"{type.FullName} needs an accessible parameterless constructor."
+        );
     }
 
     [TestMethod]
@@ -275,9 +294,11 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.IsTrue(type.IsPublic, $"{type.FullName} must be public.");
         Assert.IsFalse(type.IsSealed, $"{type.FullName} must not be sealed.");
-        Assert.IsTrue(
-            type.Methods.Any(method => method.IsConstructor && !method.IsStatic && IsVisibleToDerivedClasses(method) && method.Parameters.All(parameter => parameter.HasDefault)),
-            $"{type.FullName} needs an accessible constructor that can be called without arguments. Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}");
+        Assert.Contains(
+            method => method.IsConstructor && !method.IsStatic && IsVisibleToDerivedClasses(method) && method.Parameters.All(parameter => parameter.HasDefault),
+            type.Methods,
+            $"{type.FullName} needs an accessible constructor that can be called without arguments. Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}"
+        );
     }
 
     [TestMethod]
@@ -311,13 +332,15 @@ public sealed class VsDesignerApiShapeTests
         TypeDefinition type = RequireType(_InstanceBuilderContext);
         MethodDefinition[] candidates = type.Methods.Where(method => method.Name == "GetLiveNodeProxy").ToArray();
 
-        Assert.IsTrue(
-            candidates.Any(method =>
+        Assert.Contains(
+            method =>
                 method.Parameters.Count >= 1
                 && method.Parameters[0].ParameterType.Name == "DocumentNode"
                 && method.Parameters.Skip(1).All(parameter => parameter.HasDefault)
-                && method.ReturnType.Name == "LiveNodeProxy"),
-            $"{_InstanceBuilderContext}.GetLiveNodeProxy(DocumentNode) was not found. Methods named GetLiveNodeProxy: {DescribeAll(candidates)}");
+                && method.ReturnType.Name == "LiveNodeProxy",
+            candidates,
+            $"{_InstanceBuilderContext}.GetLiveNodeProxy(DocumentNode) was not found. Methods named GetLiveNodeProxy: {DescribeAll(candidates)}"
+        );
     }
 
     [TestMethod]
@@ -326,7 +349,7 @@ public sealed class VsDesignerApiShapeTests
         // The extension sends a message of its own to the surface and awaits the reply.
         MethodDefinition method = RequireMethod(_ProtocolHandler, "SendMessageAsync", "Int32", "Object");
 
-        Assert.AreEqual(1, method.GenericParameters.Count, $"Expected one type parameter for the reply: {Describe(method)}");
+        Assert.HasCount(1, method.GenericParameters, $"Expected one type parameter for the reply: {Describe(method)}");
         Assert.AreEqual("Task`1", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
     }
 
@@ -356,14 +379,88 @@ public sealed class VsDesignerApiShapeTests
         // Their text is scanned for conditional namespaces before a document is sent to the surface.
         PropertyDefinition registered = RequireProperty(_SurfaceProcessMarkupProviderContract, "RegisteredDocuments");
         PropertyDefinition application = RequireProperty(_SurfaceProcessMarkupProviderContract, "AppXaml");
-        PropertyDefinition document = RequireProperty(_SurfaceProcessDocument, "Document");
+        PropertyDefinition document = RequireProperty(_SurfaceProcessDocumentContract, "Document");
 
-        StringAssert.StartsWith(registered.PropertyType.Name, "IEnumerable", $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.RegisteredDocuments.");
+        Assert.StartsWith("IEnumerable", registered.PropertyType.Name, $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.RegisteredDocuments.");
         Assert.AreEqual("ISurfaceProcessDocument", application.PropertyType.Name, $"Unexpected type of {_SurfaceProcessMarkupProviderContract}.AppXaml.");
-        Assert.AreEqual("IMarkupDocument", document.PropertyType.Name, $"Unexpected type of {_SurfaceProcessDocument}.Document.");
-        Assert.IsTrue(
-            RequireType(_MarkupDocument).Interfaces.Any(implemented => implemented.InterfaceType.Name == "IDocumentRoot"),
-            $"{_MarkupDocument} must be a document root.");
+        Assert.AreEqual("IMarkupDocument", document.PropertyType.Name, $"Unexpected type of {_SurfaceProcessDocumentContract}.Document.");
+        Assert.Contains(
+            implemented => implemented.InterfaceType.Name == "IDocumentRoot",
+            RequireType(_MarkupDocument).Interfaces,
+            $"{_MarkupDocument} must be a document root."
+        );
+    }
+
+    [TestMethod]
+    [DataRow("ParseCompleted")]
+    [DataRow("Disposing")]
+    public void MarkupDocumentTellsWhenAnEditWasParsedAndWhenItGoes(string eventName)
+    {
+        // After each edit the extension looks at what the namespace policies drop, and stops when the document goes.
+        EventDefinition documentEvent = RequireEvent(_MarkupDocument, eventName);
+
+        Assert.AreEqual("EventHandler", documentEvent.EventType.Name, $"Unexpected type of {_MarkupDocument}.{eventName}.");
+    }
+
+    [TestMethod]
+    public void DocumentRootAnnouncesTheChangeOfANode()
+    {
+        // The change that builds a node again is announced the way every other change of the document is.
+        MethodDefinition method = RequireMethod(_DocumentRoot, "OnNodeChange", "DocumentNode", "DocumentNodeChange");
+
+        Assert.AreEqual("Void", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+        Assert.IsTrue(method.IsPublic && !method.IsStatic, $"Expected a public instance method: {Describe(method)}");
+    }
+
+    [TestMethod]
+    public void MarkupUtilityCreatesTheChangeThatBuildsANodeAgain()
+    {
+        MethodDefinition method = RequireMethod(_MarkupUtility, "CreateRebuild", "DocumentNode");
+
+        Assert.AreEqual("DocumentNodeChange", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+        Assert.IsTrue(method.IsPublic && method.IsStatic, $"Expected a public static method: {Describe(method)}");
+    }
+
+    [TestMethod]
+    [DataRow("DescendantNodes", "IEnumerable`1")]
+    [DataRow("IsInDocument", "Boolean")]
+    [DataRow("Parent", "DocumentCompositeNode")]
+    public void DocumentNodeCanBeWalked(string propertyName, string propertyType)
+    {
+        // The elements and the properties of a document are visited to see which of them the policies drop.
+        PropertyDefinition property = RequireProperty(_DocumentNode, propertyName);
+
+        Assert.AreEqual(propertyType, property.PropertyType.Name, $"Unexpected type of {_DocumentNode}.{propertyName}.");
+        Assert.IsTrue(property.GetMethod is { IsPublic: true, IsStatic: false }, $"{_DocumentNode}.{propertyName} needs a public instance getter.");
+    }
+
+    [TestMethod]
+    public void CompositeNodeListsItsProperties()
+    {
+        PropertyDefinition properties = RequireProperty(_DocumentCompositeNode, "Properties");
+        TypeDefinition dictionary = RequireType($"{properties.PropertyType.Namespace}.{properties.PropertyType.Name}");
+
+        Assert.Contains(
+            implemented => implemented.InterfaceType.FullName.StartsWith("System.Collections.Generic.IEnumerable`1<System.Collections.Generic.KeyValuePair`2<", StringComparison.Ordinal),
+            dictionary.Interfaces,
+            $"{dictionary.FullName} must list its properties as key and value pairs."
+        );
+    }
+
+    private static EventDefinition RequireEvent(string typeName, string eventName)
+    {
+        DesignerAssemblies assemblies = _Assemblies.Value;
+        for (TypeDefinition? type = RequireType(typeName); type is not null; type = assemblies.FindBaseType(type))
+        {
+            EventDefinition? definition = type.Events.FirstOrDefault(candidate => candidate.Name == eventName);
+            if (definition is not null)
+            {
+                return definition;
+            }
+        }
+
+        Assert.Fail($"Event {typeName}.{eventName} was not found in the designer assemblies of {assemblies.InstallRoot}.");
+        return null!;
     }
 
     private static TypeDefinition RequireType(string fullName)
@@ -397,7 +494,8 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.Fail(
             $"{typeName}.{methodName}({string.Join(", ", parameterTypes)}) was not found in the designer assemblies of {assemblies.InstallRoot}. " +
-            $"Methods named {methodName}: {DescribeAll(candidates)}");
+            $"Methods named {methodName}: {DescribeAll(candidates)}"
+        );
         return null!;
     }
 
@@ -503,7 +601,8 @@ public sealed class VsDesignerApiShapeTests
             {
                 throw new FileNotFoundException(
                     $"No designer assemblies (Microsoft.VisualStudio.DesignTools.*.dll) were found under '{installRoot}'. " +
-                    $"Set {_InstallRootVariable} to the root of a Visual Studio installation.");
+                    $"Set {_InstallRootVariable} to the root of a Visual Studio installation."
+                );
             }
 
             return assemblies;
@@ -560,7 +659,8 @@ public sealed class VsDesignerApiShapeTests
 
             throw new DirectoryNotFoundException(
                 $"The Visual Studio installation is unknown: the tests were built without VsInstallRoot. " +
-                $"Build them with Visual Studio's MSBuild or set {_InstallRootVariable}.");
+                $"Build them with Visual Studio's MSBuild or set {_InstallRootVariable}."
+            );
         }
     }
 }

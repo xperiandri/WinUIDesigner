@@ -10,7 +10,6 @@ using WinUIDesigner.Markup;
 [TestClass]
 public sealed class XamlConditionServiceTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
 
     [TestMethod]
@@ -25,8 +24,9 @@ public sealed class XamlConditionServiceTests
 
         CollectionAssert.AreEqual(
             new[] { $"contract {_Contract} 7", $"contract {_Contract} 99", $"contract {_Contract} 7.2" },
-            probes.Calls);
-        Assert.AreEqual(0, probes.Reports.Count);
+            probes.Calls
+        );
+        Assert.IsEmpty(probes.Reports);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(true, conditions.Evaluate($"IsApiContractPresent( {_Contract} , 7 )", NoNamespaces));
         Assert.AreEqual(false, conditions.Evaluate($"IsApiContractNotPresent({_Contract}, 007)", NoNamespaces));
 
-        Assert.AreEqual(1, probes.Calls.Count);
+        Assert.HasCount(1, probes.Calls);
     }
 
     [TestMethod]
@@ -95,8 +95,9 @@ public sealed class XamlConditionServiceTests
 
         CollectionAssert.AreEqual(
             new[] { "custom My.App.FeatureFlagCondition[ NewExperience, 2 ]", "custom My.App.FeatureFlagCondition[NewExperience, 2]" },
-            probes.Calls);
-        Assert.AreEqual(0, probes.Reports.Count);
+            probes.Calls
+        );
+        Assert.IsEmpty(probes.Reports);
     }
 
     [TestMethod]
@@ -109,14 +110,15 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(true, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App"))));
         Assert.AreEqual(true, conditions.Evaluate("other:Flag(On)", Namespaces(("other", "using:My.App"))));
         Assert.AreEqual(true, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App?IsApiContractPresent(X,7)"))));
-        Assert.AreEqual(1, probes.Calls.Count);
+        Assert.HasCount(1, probes.Calls);
 
         // Another argument and another namespace are other questions.
         conditions.Evaluate("cond:Flag(Off)", Namespaces(("cond", "using:My.App")));
         conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:Other.App")));
         CollectionAssert.AreEqual(
             new[] { "custom My.App.Flag[On]", "custom My.App.Flag[Off]", "custom Other.App.Flag[On]" },
-            probes.Calls);
+            probes.Calls
+        );
     }
 
     [TestMethod]
@@ -150,10 +152,10 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate("cond:NoSuchCondition(X)", Namespaces(("cond", "using:My.App"))));
         Assert.AreEqual(false, conditions.Evaluate("cond:NoSuchCondition(X)", Namespaces(("cond", "using:My.App"))));
 
-        Assert.AreEqual(1, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "My.App.NoSuchCondition");
-        StringAssert.Contains(probes.Reports[0], "not satisfied");
+        Assert.HasCount(1, probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("My.App.NoSuchCondition", probes.Reports[0]);
+        Assert.Contains("not satisfied", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -165,10 +167,10 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App"))));
         Assert.AreEqual(false, conditions.Evaluate("cond:Flag(On)", Namespaces(("cond", "using:My.App"))));
 
-        Assert.AreEqual(1, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "cond:Flag(On)");
-        StringAssert.Contains(probes.Reports[0], "InvalidOperationException: flags are not loaded");
+        Assert.HasCount(1, probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("cond:Flag(On)", probes.Reports[0]);
+        Assert.Contains("InvalidOperationException: flags are not loaded", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -180,8 +182,8 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate("IsApiContractPresent(X,7)", NoNamespaces));
         Assert.AreEqual(true, conditions.Evaluate("IsApiContractNotPresent(X,7)", NoNamespaces));
 
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "no metadata");
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("no metadata", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -192,14 +194,14 @@ public sealed class XamlConditionServiceTests
     {
         var probes = new RecordingProbes();
         XamlConditionService conditions = probes.CreateService();
-        Func<string, string?> namespaces = Namespaces(("", _Presentation), ("uri", "http://example.org/conditions"));
+        Func<string, string?> namespaces = Namespaces(("", XamlNamespaces.Presentation), ("uri", "http://example.org/conditions"));
 
         Assert.AreEqual(false, conditions.Evaluate(condition, namespaces));
         Assert.AreEqual(false, conditions.Evaluate(condition, namespaces));
 
-        Assert.AreEqual(0, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], expectedReport);
+        Assert.IsEmpty(probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains(expectedReport, probes.Reports[0]);
     }
 
     [TestMethod]
@@ -210,8 +212,8 @@ public sealed class XamlConditionServiceTests
 
         Assert.AreEqual(false, conditions.Evaluate("IsFooPresent(X)", NoNamespaces));
 
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], "no default namespace");
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains("no default namespace", probes.Reports[0]);
     }
 
     [TestMethod]
@@ -228,9 +230,9 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(false, conditions.Evaluate(condition, NoNamespaces));
         Assert.AreEqual(false, conditions.Evaluate(condition, NoNamespaces));
 
-        Assert.AreEqual(0, probes.Calls.Count);
-        Assert.AreEqual(1, probes.Reports.Count);
-        StringAssert.Contains(probes.Reports[0], condition);
+        Assert.IsEmpty(probes.Calls);
+        Assert.HasCount(1, probes.Reports);
+        Assert.Contains(condition, probes.Reports[0]);
     }
 
     [TestMethod]
@@ -241,8 +243,8 @@ public sealed class XamlConditionServiceTests
 
         Assert.AreEqual(true, conditions.Evaluate(string.Empty, NoNamespaces));
 
-        Assert.AreEqual(0, probes.Calls.Count);
-        Assert.AreEqual(0, probes.Reports.Count);
+        Assert.IsEmpty(probes.Calls);
+        Assert.IsEmpty(probes.Reports);
     }
 
     [TestMethod]
@@ -250,7 +252,7 @@ public sealed class XamlConditionServiceTests
     {
         var probes = new RecordingProbes { ContractAnswer = (_, major, _) => major <= 10 };
         XamlConditionService conditions = probes.CreateService();
-        Func<string, string?> namespaces = Namespaces(("p", _Presentation), ("cond", "using:My.App"));
+        Func<string, string?> namespaces = Namespaces(("p", XamlNamespaces.Presentation), ("cond", "using:My.App"));
 
         Assert.AreEqual(true, conditions.Evaluate($"p:IsApiContractPresent({_Contract},7)", namespaces));
         Assert.AreEqual(false, conditions.Evaluate($"IsApiContractNotPresent({_Contract},7)", namespaces));
@@ -260,7 +262,8 @@ public sealed class XamlConditionServiceTests
 
         CollectionAssert.AreEqual(
             new[] { $"contract {_Contract} 7", $"custom My.App.IsApiContractPresent[{_Contract},7]" },
-            probes.Calls);
+            probes.Calls
+        );
     }
 
     [TestMethod]
@@ -301,7 +304,7 @@ public sealed class XamlConditionServiceTests
         Assert.IsFalse(conditions.SetOutcome(notPresent.Key, false));
         Assert.IsTrue(conditions.SetOutcome(XamlConditionQuery.Create("IsTypePresent(My.Type)", NoNamespaces).Key, true));
         Assert.AreEqual(true, conditions.Evaluate("IsTypePresent(My.Type)", NoNamespaces));
-        Assert.AreEqual(1, probes.Calls.Count);
+        Assert.HasCount(1, probes.Calls);
     }
 
     [TestMethod]
@@ -334,7 +337,7 @@ public sealed class XamlConditionServiceTests
     [DataRow("", "")]
     public void QueryKeyIdentifiesTheQuestion(string condition, string expectedKey)
     {
-        Func<string, string?> namespaces = Namespaces(("p", _Presentation), ("uri", "http://example.org/conditions"));
+        Func<string, string?> namespaces = Namespaces(("p", XamlNamespaces.Presentation), ("uri", "http://example.org/conditions"));
 
         XamlConditionQuery query = XamlConditionQuery.Create(condition, namespaces);
 
@@ -372,10 +375,53 @@ public sealed class XamlConditionServiceTests
         Assert.AreEqual(XamlConditionKind.Type, query.Condition.Kind);
     }
 
-    private static string? NoNamespaces(string prefix)
+    [TestMethod]
+    [DataRow("IsApiContractPresent(X,7)", true)]
+    [DataRow("IsTypePresent(Windows.Foundation.Uri)", true)]
+    [DataRow("IsPropertyPresent(Windows.Foundation.Uri,Host)", true)]
+    [DataRow("IsTypePresent(Microsoft.UI.Xaml.Controls.Button)", false)]
+    [DataRow("IsPropertyPresent(Microsoft.UI.Xaml.Controls.Control,CornerRadius)", false)]
+    [DataRow("cond:Flag(On)", false)]
+    public void ProcessCanDecideWhatItHasAProbeFor(string condition, bool expectedWithProbes)
     {
-        return null;
+        Func<string, string?> namespaces = Namespaces(("cond", "using:My.App"));
+        XamlConditionQuery query = XamlConditionQuery.Create(condition, namespaces);
+        XamlConditionService withOperatingSystemProbes = new(new XamlConditionProbeSet
+        {
+            IsApiContractPresent = (_, _, _) => true,
+            IsWindowsTypePresent = _ => true,
+            IsWindowsPropertyPresent = (_, _) => true,
+        });
+        XamlConditionService withoutProbes = new(new XamlConditionProbeSet());
+
+        Assert.AreEqual(expectedWithProbes, withOperatingSystemProbes.CanEvaluate(query));
+        Assert.IsFalse(withoutProbes.CanEvaluate(query));
     }
+
+    [TestMethod]
+    [DataRow("IsApiContractPresent(X)")]
+    [DataRow("IsTypePresent(")]
+    [DataRow("")]
+    [DataRow("nope:Flag(On)")]
+    [DataRow("uri:Flag(On)")]
+    public void ProcessCanDecideWhatTheSharedCodeSettlesWithoutAnyProbe(string condition)
+    {
+        // Malformed, empty, with an undeclared prefix, or with a namespace that names no CLR namespace.
+        XamlConditionQuery query = XamlConditionQuery.Create(condition, Namespaces(("uri", "http://example.org/conditions")));
+
+        Assert.IsTrue(new XamlConditionService(new XamlConditionProbeSet()).CanEvaluate(query));
+    }
+
+    [TestMethod]
+    public void CustomConditionOfALoadableTypeIsDecidedOnlyWhereItCanBeCreated()
+    {
+        XamlConditionQuery query = XamlConditionQuery.Create("cond:Flag(On)", Namespaces(("cond", "using:My.App")));
+
+        Assert.IsFalse(new XamlConditionService(new XamlConditionProbeSet()).CanEvaluate(query));
+        Assert.IsTrue(new XamlConditionService(new XamlConditionProbeSet { EvaluateCustom = (_, _) => true }).CanEvaluate(query));
+    }
+
+    private static string? NoNamespaces(string prefix) => null;
 
     private static Func<string, string?> Namespaces(params (string Prefix, string Namespace)[] declarations)
     {
@@ -416,12 +462,14 @@ public sealed class XamlConditionServiceTests
             {
                 IsApiContractPresent = (name, major, minor) =>
                 {
-                    Calls.Add($"contract {name} {major}{(minor.HasValue ? "." + minor.Value : string.Empty)}");
+                    // The calls are compared with texts in the tests: the numbers are written the same way in every culture.
+                    string minorPart = minor.HasValue ? FormattableString.Invariant($".{minor.Value}") : string.Empty;
+                    Calls.Add(FormattableString.Invariant($"contract {name} {major}{minorPart}"));
                     return ContractAnswer(name, major, minor);
                 },
                 IsWindowsTypePresent = name =>
                 {
-                    Calls.Add("windows type " + name);
+                    Calls.Add($"windows type {name}");
                     return TypeAnswer(name);
                 },
                 IsWindowsPropertyPresent = (type, property) =>
@@ -431,7 +479,7 @@ public sealed class XamlConditionServiceTests
                 },
                 IsManagedTypePresent = name =>
                 {
-                    Calls.Add("managed type " + name);
+                    Calls.Add($"managed type {name}");
                     return TypeAnswer(name);
                 },
                 IsManagedPropertyPresent = (type, property) =>

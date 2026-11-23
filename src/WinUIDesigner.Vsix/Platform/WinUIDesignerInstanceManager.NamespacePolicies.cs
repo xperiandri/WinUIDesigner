@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.DesignTools.Markup.DocumentModel;
 using Microsoft.VisualStudio.DesignTools.Markup.Metadata;
@@ -23,6 +24,10 @@ internal sealed partial class WinUIDesignerInstanceManager
     private readonly XamlMemberDispositionService _memberDispositions =
         (platform as WinUIInstanceBuilderPlatform)?.MemberDispositions ?? new XamlMemberDispositionService();
 
+    private XamlVerdictWatcher? _verdictWatcher;
+
+    private XamlVerdictWatcher VerdictWatcher => LazyInitializer.EnsureInitialized(ref _verdictWatcher, () => new XamlVerdictWatcher(_memberDispositions, () => IsEnabled))!;
+
     public override bool ShouldIgnoreProperty(IInstanceBuilderContext context, DocumentCompositeNode parentNode, DocumentNode newNode, IProperty property, out bool shouldLogError)
     {
         // A property written under a dropped prefix does not exist in the previewed document.
@@ -34,6 +39,21 @@ internal sealed partial class WinUIDesignerInstanceManager
         }
 
         return base.ShouldIgnoreProperty(context, parentNode, newNode, property, out shouldLogError);
+    }
+
+    /// <summary>
+    /// Takes the documents that are about to be built as the state the preview is in step with, and watches them
+    /// for edits that change what the policies drop without changing the document model.
+    /// </summary>
+    private void WatchVerdicts(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
+    {
+        VerdictWatcher.Watch(targetDocument.Document);
+        foreach (ISurfaceProcessDocument document in preparedDocuments)
+        {
+            VerdictWatcher.Watch(document.Document);
+        }
+
+        VerdictWatcher.Watch(MarkupProvider.AppXaml?.Document);
     }
 
     /// <summary>

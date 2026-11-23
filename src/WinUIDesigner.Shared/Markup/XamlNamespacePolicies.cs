@@ -53,11 +53,13 @@ internal static class XamlNamespacePolicies
         XamlPrefixDisposition conditional,
         bool isConditionalNamespace)
     {
+        // A member excluded from the previewed platform goes, whatever its condition says.
         if (platform == XamlPrefixDisposition.Drop)
         {
             return XamlPrefixDisposition.Drop;
         }
 
+        // A condition that was evaluated decides.
         if (conditional != XamlPrefixDisposition.Leave)
         {
             return conditional;
@@ -86,6 +88,7 @@ internal static class XamlNamespacePolicies
                 evaluate = condition => evaluateCondition(condition, scan.FindNamespace);
             }
 
+            // A policy decides about the prefix as the document lists it in mc:Ignorable.
             bool isIgnorable = scan.IsIgnorable(declaration.Prefix);
             if (Classify(declaration.Prefix, declaration.Uri, isIgnorable, targetPlatform, evaluate) != XamlPrefixDisposition.Leave)
             {

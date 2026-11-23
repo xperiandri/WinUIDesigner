@@ -81,6 +81,6 @@ internal sealed partial class SurfaceService
                 .GetAwaiter().GetResult();
         };
 
-        return new XamlConditionService(probes, message => WinUIDesignerLogger.LogWarning("Surface", "Conditional XAML: " + message));
+        return new XamlConditionService(probes, message => WinUIDesignerLogger.LogWarning("Surface", $"Conditional XAML: {message}"));
     }
 }

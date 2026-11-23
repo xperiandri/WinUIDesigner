@@ -234,7 +234,8 @@ public sealed class XamlConditionAnswersOverridesTests
                         _warnings.Add(exception is null ? message : $"{message} {exception.GetType().Name}: {exception.Message}");
                     }
                 },
-                readOverrides);
+                readOverrides: readOverrides
+            );
         }
 
         public void Release()

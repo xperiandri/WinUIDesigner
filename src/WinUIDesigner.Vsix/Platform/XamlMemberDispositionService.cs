@@ -18,9 +18,19 @@ namespace WinUIDesigner.Platform;
 /// judged by the prefix it was written with.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Construction actions carry CLR names only, so on that path the policies have to be applied here, on
 /// the document model. A document without policy namespaces is recognized from one scan of its text per
 /// text version and never has the source of its nodes read. Instances are safe to use from any thread.
+/// </para>
+/// <para>
+/// A document is judged with one set of answers to its conditions for as long as its verdicts are kept: until
+/// its text changes, the policy inputs change (<see cref="TargetPlatform"/>, <see cref="EvaluateCondition"/>),
+/// or <see cref="Refresh"/> is called for it. A question has one answer within that time, whenever it is
+/// asked and whichever node asks, so the two branches of an if/else pair always agree. New answers
+/// (<see cref="AnswersChanged"/>) do not replace the verdicts of a document that may be being built, on
+/// another thread, in the middle of its construction.
+/// </para>
 /// </remarks>
 internal sealed class XamlMemberDispositionService
 {
@@ -28,6 +38,7 @@ internal sealed class XamlMemberDispositionService
     private volatile string _targetPlatform = UnoPlatformPrefixes.DefaultTargetPlatform;
     private volatile XamlConditionEvaluator? _evaluateCondition;
     private int _generation;
+    private int _answersVersion;
 
     /// <summary>
     /// Gets or sets the platform whose members are kept. Changing it discards the cached verdicts.
@@ -64,11 +75,34 @@ internal sealed class XamlMemberDispositionService
     }
 
     /// <summary>
-    /// Discards the cached verdicts, for example after the outcome of a condition changed.
+    /// Discards the cached verdicts of every document: the next question about a document looks at its text again.
     /// </summary>
-    public void Invalidate()
+    public void Invalidate() => Interlocked.Increment(ref _generation);
+
+    /// <summary>
+    /// Notes that the answers to conditions changed. A document keeps the verdicts it has until
+    /// <see cref="Refresh"/> is called for it or its text changes.
+    /// </summary>
+    public void AnswersChanged() => Interlocked.Increment(ref _answersVersion);
+
+    /// <summary>
+    /// Makes the next question about <paramref name="document"/> look at its text again when answers changed
+    /// since it was last looked at. Call it for a document that is about to be built, not for one that is being built.
+    /// </summary>
+    public void Refresh(IDocumentRoot? document)
     {
-        Interlocked.Increment(ref _generation);
+        // A document that was never asked about has nothing to discard.
+        if (document is null || !_documents.TryGetValue(document, out DocumentCache? cache))
+        {
+            return;
+        }
+
+        // A state that was made with the answers of now stays.
+        DocumentState? state = Volatile.Read(ref cache.State);
+        if (state is not null && state.AnswersVersion != Volatile.Read(ref _answersVersion))
+        {
+            Interlocked.CompareExchange(ref cache.State, null, state);
+        }
     }
 
     /// <summary>
@@ -94,6 +128,7 @@ internal sealed class XamlMemberDispositionService
     /// </summary>
     public XamlPrefixDisposition GetNodeDisposition(DocumentNode? node)
     {
+        // There is no node to judge.
         if (node is null)
         {
             return XamlPrefixDisposition.Leave;
@@ -101,16 +136,20 @@ internal sealed class XamlMemberDispositionService
 
         try
         {
-            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = GetState(node.DocumentRoot)?.Verdicts;
+            DocumentState? state = GetState(node.DocumentRoot);
+            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = state?.Verdicts;
             object? site = verdicts is null ? null : node.SourceContext;
-            if (verdicts is null || site is null)
+
+            // A document without policy namespaces, or a node without source, is left alone.
+            if (state is null || verdicts is null || site is null)
             {
                 return XamlPrefixDisposition.Leave;
             }
 
+            // The source of a place is read once; the verdict is kept for the next question about it.
             if (!verdicts.TryGetValue(site, out XamlPrefixDisposition verdict))
             {
-                verdict = Classify(XamlSourcePrefixReader.ReadElementPrefix(node));
+                verdict = Classify(XamlSourcePrefixReader.ReadElementPrefix(node), state);
                 verdicts[site] = verdict;
             }
 
@@ -130,6 +169,7 @@ internal sealed class XamlMemberDispositionService
     /// </summary>
     public XamlPrefixDisposition GetPropertyDisposition(DocumentCompositeNode? parentNode, IProperty? property)
     {
+        // There is no property to judge.
         if (parentNode is null || property is null)
         {
             return XamlPrefixDisposition.Leave;
@@ -138,16 +178,20 @@ internal sealed class XamlMemberDispositionService
         try
         {
             // The source reference of the attribute or property element identifies this place in the text.
-            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = GetState(parentNode.DocumentRoot)?.Verdicts;
+            DocumentState? state = GetState(parentNode.DocumentRoot);
+            ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts = state?.Verdicts;
             object? site = verdicts is null ? null : parentNode.GetContainerContext(property);
-            if (verdicts is null || site is null)
+
+            // A document without policy namespaces, or a property without source, is left alone.
+            if (state is null || verdicts is null || site is null)
             {
                 return XamlPrefixDisposition.Leave;
             }
 
+            // The source of a place is read once; the verdict is kept for the next question about it.
             if (!verdicts.TryGetValue(site, out XamlPrefixDisposition verdict))
             {
-                verdict = Classify(XamlSourcePrefixReader.ReadPropertyPrefix(parentNode, property));
+                verdict = Classify(XamlSourcePrefixReader.ReadPropertyPrefix(parentNode, property), state);
                 verdicts[site] = verdict;
             }
 
@@ -157,6 +201,64 @@ internal sealed class XamlMemberDispositionService
         {
             LogFailure(ex);
             return XamlPrefixDisposition.Leave;
+        }
+    }
+
+    /// <summary>
+    /// Returns whether the policies may drop members of <paramref name="document"/>: it declares a namespace that
+    /// one of them applies to.
+    /// </summary>
+    public bool HasPolicyNamespaces(IDocumentRoot? document)
+    {
+        try
+        {
+            return GetState(document)?.Verdicts is not null;
+        }
+        catch (Exception ex)
+        {
+            LogFailure(ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Returns, for every element of <paramref name="document"/> except its root and for every property that an
+    /// element has, whether the policies drop it.
+    /// </summary>
+    public Dictionary<XamlVerdictPlace, bool> GetDroppedPlaces(IDocumentRoot? document)
+    {
+        var places = new Dictionary<XamlVerdictPlace, bool>();
+        if (document?.RootNode is not { } root)
+        {
+            return places;
+        }
+
+        AddPlaces(root, places);
+        foreach (DocumentNode node in root.DescendantNodes)
+        {
+            AddPlaces(node, places);
+        }
+
+        return places;
+    }
+
+    private void AddPlaces(DocumentNode node, Dictionary<XamlVerdictPlace, bool> places)
+    {
+        // A value is no element, and has no properties.
+        if (node is not DocumentCompositeNode element)
+        {
+            return;
+        }
+
+        // The root is exempt: a document needs its root.
+        if (element.Parent is not null)
+        {
+            places[new XamlVerdictPlace(element, null)] = GetNodeDisposition(element) == XamlPrefixDisposition.Drop;
+        }
+
+        foreach (KeyValuePair<IProperty, DocumentNode> property in element.Properties)
+        {
+            places[new XamlVerdictPlace(element, property.Key)] = GetPropertyDisposition(element, property.Key) == XamlPrefixDisposition.Drop;
         }
     }
 
@@ -173,6 +275,7 @@ internal sealed class XamlMemberDispositionService
     /// </summary>
     private DocumentState? GetState(IDocumentRoot? root)
     {
+        // A document without a text buffer has no namespaces to scan.
         IMarkupTextBuffer? buffer = root?.TextBuffer;
         if (root is null || buffer is null)
         {
@@ -184,25 +287,64 @@ internal sealed class XamlMemberDispositionService
         int textLength = buffer.Length;
         int generation = Volatile.Read(ref _generation);
 
+        // New answers alone do not replace a state: the document may be being built with it right now.
         DocumentState? state = Volatile.Read(ref cache.State);
         if (state is null || state.TextVersion != textVersion || state.TextLength != textLength || state.Generation != generation)
         {
             // One pass over the text each time it changes: the namespaces of a document are declared in its
             // text. Not every buffer counts versions (SimpleTextBuffer always reports 0), so the length
             // takes part in telling one text from the next.
+            int answersVersion = Volatile.Read(ref _answersVersion);
+            var outcomes = new ConcurrentDictionary<string, bool?>(StringComparer.Ordinal);
             XamlNamespaceScanResult namespaces = XamlNamespaceScanner.Scan(ReadText(buffer, textLength));
-            bool hasPolicyNamespaces = XamlNamespacePolicies.MayAffect(namespaces, _targetPlatform, _evaluateCondition);
+            bool hasPolicyNamespaces = XamlNamespacePolicies.MayAffect(namespaces, _targetPlatform, Pin(_evaluateCondition, outcomes));
             state = new DocumentState(
                 textVersion,
                 textLength,
                 generation,
+                answersVersion,
                 namespaces,
-                hasPolicyNamespaces ? new ConcurrentDictionary<object, XamlPrefixDisposition>(ReferenceComparer.Instance) : null);
+                outcomes,
+                hasPolicyNamespaces ? new ConcurrentDictionary<object, XamlPrefixDisposition>(ReferenceComparer.Instance) : null
+            );
             Volatile.Write(ref cache.State, state);
         }
 
         return state;
     }
+
+    /// <summary>
+    /// Returns an evaluator that answers a question once and gives the same answer afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The answer to a condition may change while a document is being built, when the surface answers. The
+    /// element and the attributes written under one prefix are judged at different moments, and judging one
+    /// of them differently from the others builds an element without a property it needs. The two prefixes of
+    /// an if/else pair, <c>IsTypePresent(X)</c> and <c>IsTypeNotPresent(X)</c>, ask one question as well: the
+    /// answer is kept in its positive form and negated for a negated condition, so that the two branches
+    /// never come from different answers.
+    /// </remarks>
+    internal static XamlConditionEvaluator? Pin(XamlConditionEvaluator? evaluator, ConcurrentDictionary<string, bool?> outcomes)
+    {
+        if (evaluator is null)
+        {
+            return null;
+        }
+
+        return (condition, resolveNamespace) =>
+        {
+            // The same text can name another condition type where the prefix is bound differently.
+            XamlConditionQuery query = XamlConditionQuery.Create(condition, resolveNamespace);
+
+            // The first condition that asks the question gives the answer, which is kept in its positive form.
+            bool isNegated = query.Condition.IsNegated;
+            bool? positive = outcomes.GetOrAdd(query.Key, _ => ApplyNegation(evaluator(condition, resolveNamespace), isNegated));
+            return ApplyNegation(positive, isNegated);
+        };
+    }
+
+    // The answer to a negated condition is the opposite of the answer to the question, and the other way round.
+    private static bool? ApplyNegation(bool? outcome, bool isNegated) => isNegated && outcome.HasValue ? !outcome.Value : outcome;
 
     private static string? ReadText(IMarkupTextBuffer buffer, int length)
     {
@@ -223,8 +365,13 @@ internal sealed class XamlMemberDispositionService
     /// Returns the verdict for members written under <paramref name="source"/>. A prefix that is unknown
     /// or not bound to a namespace yields <see cref="XamlPrefixDisposition.Leave"/>.
     /// </summary>
-    public XamlPrefixDisposition Classify(XamlSourcePrefix source)
+    public XamlPrefixDisposition Classify(XamlSourcePrefix source) => Classify(source, _evaluateCondition);
+
+    private XamlPrefixDisposition Classify(XamlSourcePrefix source, DocumentState state) => Classify(source, Pin(_evaluateCondition, state.Outcomes));
+
+    private XamlPrefixDisposition Classify(XamlSourcePrefix source, XamlConditionEvaluator? evaluator)
     {
+        // A member whose prefix could not be read, or is not declared, is left alone.
         if (!source.IsKnown || source.Namespace is null)
         {
             return XamlPrefixDisposition.Leave;
@@ -232,7 +379,6 @@ internal sealed class XamlMemberDispositionService
 
         XamlNamespaceUri uri = source.Uri;
         Func<string, bool?>? evaluate = null;
-        XamlConditionEvaluator? evaluator = _evaluateCondition;
         if (evaluator is not null && uri.IsConditional)
         {
             evaluate = condition => evaluator(condition, source.ResolveNamespace);
@@ -256,7 +402,9 @@ internal sealed class XamlMemberDispositionService
         int textVersion,
         int textLength,
         int generation,
+        int answersVersion,
         XamlNamespaceScanResult namespaces,
+        ConcurrentDictionary<string, bool?> outcomes,
         ConcurrentDictionary<object, XamlPrefixDisposition>? verdicts)
     {
         public int TextVersion { get; } = textVersion;
@@ -265,7 +413,13 @@ internal sealed class XamlMemberDispositionService
 
         public int Generation { get; } = generation;
 
+        // The answers the verdicts of this state were reached with; see Refresh.
+        public int AnswersVersion { get; } = answersVersion;
+
         public XamlNamespaceScanResult Namespaces { get; } = namespaces;
+
+        // The answer of each question that was asked while this state was current; see Pin.
+        public ConcurrentDictionary<string, bool?> Outcomes { get; } = outcomes;
 
         // Keyed by source reference, of which there is one per element and per attribute in the text.
         // Null when no namespace of the document is subject to a policy: nothing needs to be looked up then.
@@ -276,14 +430,34 @@ internal sealed class XamlMemberDispositionService
     {
         public static ReferenceComparer Instance { get; } = new();
 
-        bool IEqualityComparer<object>.Equals(object? x, object? y)
-        {
-            return ReferenceEquals(x, y);
-        }
+        bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
 
-        int IEqualityComparer<object>.GetHashCode(object obj)
-        {
-            return RuntimeHelpers.GetHashCode(obj);
-        }
+        int IEqualityComparer<object>.GetHashCode(object obj) => RuntimeHelpers.GetHashCode(obj);
     }
+}
+
+/// <summary>
+/// A place in a document that a policy judges: an element, or a property of an element.
+/// </summary>
+internal readonly struct XamlVerdictPlace(DocumentCompositeNode node, IProperty? property) : IEquatable<XamlVerdictPlace>
+{
+    /// <summary>
+    /// Gets the element, or the element that has the property.
+    /// </summary>
+    public DocumentCompositeNode Node { get; } = node;
+
+    /// <summary>
+    /// Gets the property, or <see langword="null"/> for the element itself.
+    /// </summary>
+    public IProperty? Property { get; } = property;
+
+    /// <inheritdoc/>
+    // A node is itself, whatever Equals says about the nodes of a document.
+    public bool Equals(XamlVerdictPlace other) => ReferenceEquals(Node, other.Node) && Equals(Property, other.Property);
+
+    /// <inheritdoc/>
+    public override bool Equals(object? obj) => obj is XamlVerdictPlace other && Equals(other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => (RuntimeHelpers.GetHashCode(Node) * 397) ^ (Property?.GetHashCode() ?? 0);
 }

@@ -68,10 +68,80 @@ public sealed class XamlStartTagReaderTests
     }
 
     [TestMethod]
+    [DataRow("<c7:Border.Background>", "c7", "Border.Background")]
+    [DataRow("  <Border Tag=\"1\">", "", "Border")]
+    [DataRow("<Border/>", "", "Border")]
+    [DataRow("<c7:Border.Background><AcrylicBrush /></c7:Border.Background>", "c7", "Border.Background")]
+    public void ElementNameIsReadFromTheStartTag(string startTag, string prefix, string localName)
+    {
+        Assert.IsTrue(XamlStartTagReader.TryReadElementName(startTag, out XamlAttributeName name));
+
+        Assert.AreEqual(prefix, name.Prefix);
+        Assert.AreEqual(localName, name.LocalName);
+    }
+
+    [TestMethod]
+    [DataRow("Border")]
+    [DataRow("</Border>")]
+    [DataRow("<>")]
+    [DataRow("<:Border>")]
+    [DataRow("<a:b:c>")]
+    [DataRow("<1a>")]
+    [DataRow("   ")]
+    [DataRow("")]
+    [DataRow(null)]
+    public void TextThatDoesNotBeginWithAStartTagHasNoElementName(string? text)
+    {
+        Assert.IsFalse(XamlStartTagReader.TryReadElementName(text, out XamlAttributeName name));
+
+        Assert.AreEqual(string.Empty, name.LocalName);
+    }
+
+    [TestMethod]
+    [DataRow("\r\n  <c7:Border.Background><SolidColorBrush /></c7:Border.Background>\r\n  ", "c7:Border.Background")]
+    [DataRow("<c7:Border.Background><SolidColorBrush /></c7:Border.Background><c7n:Border.Background><AcrylicBrush /></c7n:Border.Background>", "c7:Border.Background|c7n:Border.Background")]
+    [DataRow("<Border.Child><TextBlock /></Border.Child><Border.Background />", "Border.Child|Border.Background")]
+    // A child element is no property element, and nothing inside a child is a child of the element.
+    [DataRow("<TextBlock Text=\"a\" /><Button><Button.Content>x</Button.Content></Button>", "")]
+    [DataRow("<c7:Border.Child><Grid><Grid.RowDefinitions><RowDefinition /></Grid.RowDefinitions></Grid></c7:Border.Child>", "c7:Border.Child")]
+    // Comments, CDATA sections and processing instructions are skipped, with what they contain.
+    [DataRow("<!-- <c7:Border.Background /> --><c7n:Border.Background />", "c7n:Border.Background")]
+    [DataRow("<![CDATA[ <c7:Border.Background /> ]]><?x <c7:Border.Child /> ?><c7n:Border.Background />", "c7n:Border.Background")]
+    // The value of an attribute may contain the characters of a tag.
+    [DataRow("<TextBlock Text=\"a > <b\" Tag='/>' /><c7:Border.Background />", "c7:Border.Background")]
+    public void PropertyElementsAreReadFromTheContentOfAnElement(string content, string expected)
+    {
+        IReadOnlyList<XamlAttributeName> names = XamlStartTagReader.ReadPropertyElementNames(content);
+
+        Assert.AreEqual(expected, string.Join("|", names.Select(name => name.ToString())));
+    }
+
+    [TestMethod]
+    // What is read before the malformed text is still returned.
+    [DataRow("<c7:Border.Background /><c7n:Border.Background", "c7:Border.Background")]
+    [DataRow("<c7:Border.Background /><!-- unterminated <c7n:Border.Background />", "c7:Border.Background")]
+    [DataRow("<c7:Border.Background /><TextBlock Text=\"unterminated", "c7:Border.Background")]
+    // The end tag of the element itself ends its content.
+    [DataRow("<c7:Border.Background /></Border><c7n:Border.Background />", "c7:Border.Background")]
+    [DataRow("</Border>", "")]
+    [DataRow("just text", "")]
+    [DataRow("", "")]
+    [DataRow(null, "")]
+    public void MalformedContentDoesNotThrow(string? content, string expected)
+    {
+        IReadOnlyList<XamlAttributeName> names = XamlStartTagReader.ReadPropertyElementNames(content);
+
+        Assert.AreEqual(expected, string.Join("|", names.Select(name => name.ToString())));
+    }
+
+    [TestMethod]
     [DataRow("=\"4\"")]
     [DataRow(":CornerRadius=\"4\"")]
     [DataRow("c7:=\"4\"")]
     [DataRow("a:b:c=\"4\"")]
+    [DataRow("\"w\"")]
+    [DataRow("1abc=\"4\"")]
+    [DataRow("a:1b=\"4\"")]
     [DataRow("   ")]
     [DataRow("")]
     [DataRow(null)]

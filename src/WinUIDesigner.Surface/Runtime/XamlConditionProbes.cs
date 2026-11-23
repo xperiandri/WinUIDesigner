@@ -23,6 +23,7 @@ namespace WinUIDesigner.Surface.Runtime;
 /// rules of the metadata, measured against the reader in an application with Windows App SDK 2.5.1: a type is
 /// present when it is a Windows Runtime type, and a property is present on the type that declares it, not on
 /// derived types. A type that is only managed code, such as a class of the previewed project, is not present.
+/// Where the projection differs from the metadata, <see cref="ProjectionMetadataRules"/> closes the gap.
 /// </para>
 /// <para>
 /// The methods are safe to call from any thread, except <see cref="EvaluateCustom"/>.
@@ -64,7 +65,9 @@ internal static class XamlConditionProbes
     public static bool IsManagedTypePresent(string typeName)
     {
         // Metadata that can be read is the authority, as it is for the XAML reader.
-        return ApiInformation.IsTypePresent(typeName) || FindProjectedType(typeName) is not null;
+        return ApiInformation.IsTypePresent(typeName)
+            || ProjectionMetadataRules.IsTypeWithoutProjection(typeName)
+            || FindProjectedType(typeName) is not null;
     }
 
     /// <summary>
@@ -77,21 +80,30 @@ internal static class XamlConditionProbes
             return true;
         }
 
+        // The projection has no type for some types of the metadata.
+        if (ProjectionMetadataRules.IsTypeWithoutProjection(typeName))
+        {
+            return ProjectionMetadataRules.DeclaresPropertyWithoutProjection(typeName, propertyName);
+        }
+
         Type? type = FindProjectedType(typeName);
-        return type is not null && DeclaresProperty(type, propertyName);
+        return type is not null && ProjectionMetadataRules.DeclaresProperty(type, propertyName, IsWindowsRuntimeType);
     }
 
     /// <summary>
     /// Creates a custom condition and evaluates it. Conditions are objects of the previewed application and
-    /// usually derive from <c>DependencyObject</c>, so this has to run on the UI thread.
+    /// usually derive from <see cref="Microsoft.UI.Xaml.DependencyObject"/>, so this has to run on the UI thread.
     /// </summary>
     /// <param name="typeName">The full name of a type that implements <see cref="IXamlCondition"/>.</param>
     /// <param name="argument">The text between the parentheses of the condition, exactly as written.</param>
     /// <exception cref="Exception">The type cannot be found, is not a condition, or fails.</exception>
     public static bool? EvaluateCustom(string typeName, string argument)
     {
+        // No assembly that can be loaded here defines the type.
         Type type = FindType(typeName, loadProjections: false)
             ?? throw new TypeLoadException($"The type '{typeName}' was not found. Build the project so that the designer can load its assembly.");
+
+        // The type exists and is no condition.
         if (!typeof(IXamlCondition).IsAssignableFrom(type))
         {
             throw new InvalidCastException($"The type '{typeName}' does not implement {typeof(IXamlCondition).FullName}.");
@@ -117,48 +129,29 @@ internal static class XamlConditionProbes
     internal static Type? FindProjectedType(string typeName)
     {
         Type? type = FindType(typeName, loadProjections: true);
-        return type is not null && type.IsDefined(typeof(WinRT.WindowsRuntimeTypeAttribute), inherit: false) ? type : null;
+        return type is not null && IsWindowsRuntimeType(type) ? type : null;
     }
 
-    /// <summary>
-    /// Returns whether <paramref name="type"/> itself declares a property, the way Windows Runtime metadata
-    /// records it: inherited properties belong to the base type, events are no properties, and the members
-    /// of a structure are fields.
-    /// </summary>
-    internal static bool DeclaresProperty(Type type, string propertyName)
-    {
-        if (type.IsValueType)
-        {
-            return false;
-        }
-
-        try
-        {
-            const BindingFlags declared = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-            return type.GetProperty(propertyName, declared) is not null;
-        }
-        catch (AmbiguousMatchException)
-        {
-            return true;
-        }
-    }
+    private static bool IsWindowsRuntimeType(Type type) => type.IsDefined(typeof(WinRT.WindowsRuntimeTypeAttribute), inherit: false);
 
     /// <summary>
     /// Finds a type by its full name: among the loaded assemblies, in the staged project, and optionally in
     /// projection assemblies of the Windows App SDK that are not loaded yet.
     /// </summary>
     /// <remarks>
-    /// The name is taken as written. <c>XamlRuntimeUtilities.ResolveType</c> is of no use here: it turns
+    /// The name is taken as written. <see cref="WinUIDesigner.Surface.Common.XamlRuntimeUtilities.ResolveType(string)"/> is of no use here: it turns
     /// <c>Windows.UI.Xaml</c> names into <c>Microsoft.UI.Xaml</c> names, which are different types to a condition.
     /// </remarks>
     private static Type? FindType(string typeName, bool loadProjections)
     {
+        // A name the runtime resolves by itself.
         Type? type = Type.GetType(typeName, throwOnError: false);
         if (type is not null)
         {
             return type;
         }
 
+        // A type of an assembly that is loaded already.
         foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             type = assembly.GetType(typeName, throwOnError: false, ignoreCase: false);
@@ -168,6 +161,7 @@ internal static class XamlConditionProbes
             }
         }
 
+        // A type of the staged project.
         try
         {
             type = ProjectRuntimeResolver.ResolveType(typeName);
@@ -181,6 +175,7 @@ internal static class XamlConditionProbes
             // The staged assembly that defines the type cannot be loaded: the type is not available here.
         }
 
+        // Only a Windows Runtime type is looked for in projection assemblies that are not loaded yet.
         if (!loadProjections)
         {
             return null;
@@ -227,7 +222,7 @@ internal static class XamlConditionProbes
                 yield break;
             }
 
-            yield return namespaceName + _ProjectionAssemblySuffix;
+            yield return $"{namespaceName}{_ProjectionAssemblySuffix}";
         }
     }
 }

@@ -23,8 +23,5 @@ public sealed partial class FeatureFlagCondition : DependencyObject, IXamlCondit
     /// <summary>
     /// Returns whether the flag named by <paramref name="argument"/>, the text between the parentheses, is on.
     /// </summary>
-    public bool Evaluate(string argument)
-    {
-        return FeatureFlags.TryGetValue(argument, out bool enabled) && enabled;
-    }
+    public bool Evaluate(string argument) => FeatureFlags.TryGetValue(argument, out bool enabled) && enabled;
 }
