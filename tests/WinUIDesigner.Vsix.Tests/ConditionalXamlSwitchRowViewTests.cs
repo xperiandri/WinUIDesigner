@@ -13,7 +13,7 @@ using WinUIDesigner.Platform;
 
 /// <summary>
 /// Covers the controls of a row of the Conditions list: only the user's switching forces an answer, also when it comes
-/// through UI Automation.
+/// through UI Automation, and an answer that is not known yet is not drawn as one that does not hold.
 /// </summary>
 [TestClass]
 public sealed class ConditionalXamlSwitchRowViewTests
@@ -39,6 +39,8 @@ public sealed class ConditionalXamlSwitchRowViewTests
         Assert.AreEqual(true, view.CheckBox.IsChecked);
         view.Update(Row(XamlConditionOverrides.Empty, DoesNotHold, 0), canSwitch: true);
         Assert.AreEqual(false, view.CheckBox.IsChecked);
+        view.Update(Row(XamlConditionOverrides.Empty, null, 0), canSwitch: true);
+        Assert.IsNull(view.CheckBox.IsChecked);
         view.Update(Row(XamlConditionOverrides.Empty, Holds, 0), canSwitch: true);
         Assert.AreEqual(true, view.CheckBox.IsChecked);
 
@@ -69,6 +71,28 @@ public sealed class ConditionalXamlSwitchRowViewTests
         Assert.HasCount(2, changes);
         Assert.AreEqual($"{row.Key} holds=True", changes[1]);
         Assert.AreEqual(row.Title, view.Title);
+    }
+
+    [STATestMethod]
+    public void AnAnswerThatIsNotKnownYetIsShownAsUndetermined()
+    {
+        var changes = new List<string>();
+        ConditionalXamlSwitchRow row = Row(XamlConditionOverrides.Empty, null, 0);
+        ConditionalXamlSwitchRowView view = CreateView(row.Key, changes);
+
+        view.Update(row, canSwitch: true);
+
+        // A cleared box would say that the condition does not hold, which the preview may contradict.
+        Assert.IsNull(view.CheckBox.IsChecked);
+        Assert.AreEqual("Not evaluated yet", AutomationProperties.GetItemStatus(view.CheckBox));
+        Assert.Contains("Not evaluated yet.", AutomationProperties.GetHelpText(view.CheckBox));
+        Assert.IsEmpty(changes);
+
+        // The first click on an undetermined box clears it: the user wants the condition not to hold.
+        Toggle(view.CheckBox);
+
+        Assert.HasCount(1, changes);
+        Assert.AreEqual($"{row.Key} holds=False", changes[0]);
     }
 
     [STATestMethod]

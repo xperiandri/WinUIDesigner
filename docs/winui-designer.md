@@ -262,7 +262,7 @@ The **Conditions** drop-down in the designer's device toolbar, after the effecti
 
 | Part of the list | Meaning |
 | --- | --- |
-| A check box per question | Checked: the question holds. One entry stands for both forms of a question: `IsApiContractPresent(X,7)` and `IsApiContractNotPresent(X,7)` share it, and it is shown in the positive form. A custom condition is shown as written, for example `cond:FeatureFlagCondition(NewExperience)`. |
+| A check box per question | Checked: the question holds. Cleared: it does not. Undetermined: its answer is not known yet, which the status line says as well; the first click on it clears it. One entry stands for both forms of a question: `IsApiContractPresent(X,7)` and `IsApiContractNotPresent(X,7)` share it, and it is shown in the positive form. A custom condition is shown as written, for example `cond:FeatureFlagCondition(NewExperience)`. |
 | The line under the check box | The prefixes that ask the question and whether their members are shown, for example `contract7Present: shown, contract7NotPresent: hidden`. |
 | The status line | Where the answer comes from: `Evaluated: holds.`, or for a question you switched `Overridden: does not hold. Evaluated: holds.` A question that only the surface can answer, and that it has not answered yet, shows `Not evaluated yet.`, or, when you switched it, `Overridden: holds. Evaluated: not known yet.` A malformed predicate is listed as `Cannot be switched` with the reason; its members are skipped whatever you choose. |
 | Reset | The question follows its evaluation again. |

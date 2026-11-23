@@ -93,7 +93,7 @@ internal sealed class ConditionalXamlSwitchRowView
     public FrameworkElement Root { get; }
 
     /// <summary>
-    /// Gets the check box: checked when the question holds.
+    /// Gets the check box: checked when the question holds, cleared when it does not, undetermined while it is not known.
     /// </summary>
     public CheckBox CheckBox { get; }
 
@@ -114,7 +114,8 @@ internal sealed class ConditionalXamlSwitchRowView
         _updating = true;
         try
         {
-            CheckBox.IsChecked = row.Value == true;
+            // An answer that is not known yet is shown as undetermined: a cleared box would say that it does not hold.
+            CheckBox.IsChecked = row.Value;
         }
         finally
         {
@@ -125,7 +126,7 @@ internal sealed class ConditionalXamlSwitchRowView
         _title.Opacity = CheckBox.IsEnabled ? 1.0 : 0.6;
         AutomationProperties.SetName(CheckBox, row.Title);
         AutomationProperties.SetHelpText(CheckBox, row.Branches.Length == 0 ? row.Status : $"{row.Branches}. {row.Status}");
-        AutomationProperties.SetItemStatus(CheckBox, row.IsOverridden ? "Overridden" : "Evaluated");
+        AutomationProperties.SetItemStatus(CheckBox, GetItemStatus(row));
 
         _branches.Text = row.Branches;
         _branches.Visibility = row.Branches.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -136,6 +137,16 @@ internal sealed class ConditionalXamlSwitchRowView
         ResetButton.IsEnabled = canSwitch;
         AutomationProperties.SetName(ResetButton, $"Reset {row.Title}");
         AutomationProperties.SetHelpText(ResetButton, "Lets this condition follow its evaluation again.");
+    }
+
+    private static string GetItemStatus(ConditionalXamlSwitchRow row)
+    {
+        if (row.IsOverridden)
+        {
+            return "Overridden";
+        }
+
+        return row.EvaluatedValue.HasValue ? "Evaluated" : "Not evaluated yet";
     }
 
     private void OnSwitched()
