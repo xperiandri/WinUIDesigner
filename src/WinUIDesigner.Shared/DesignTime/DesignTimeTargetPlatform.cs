@@ -13,10 +13,11 @@ namespace WinUIDesigner.DesignTime;
 /// <remarks>
 /// <see cref="Id"/> is the stable name of the target. It is what gets stored, sent to the surface process and
 /// compared by code. It is the name Uno Platform's platform-specific XAML prefixes give the target: Uno 7 names them
-/// after the target frameworks (<c>android</c>, <c>ios</c>, <c>tvos</c>, <c>wasm</c>, <c>desktop</c>, and <c>win</c>
-/// for Windows), and Uno 6 also has one for the Skia renderer of a mobile or web target (<c>androidskia</c>,
-/// <c>iosskia</c>, <c>wasmskia</c>). A prefix that includes several targets is not an identifier: <c>skia</c>, the
-/// Uno 6 prefix of every Skia target, is only accepted as another name for <see cref="SkiaDesktop"/>.
+/// after the platform of the target framework (<c>android</c>, <c>ios</c>, <c>tvos</c>, <c>desktop</c>, and <c>win</c>
+/// for Windows; <c>wasm</c> for <c>browserwasm</c>), and Uno 6 also has one for the Skia renderer of a mobile or web
+/// target (<c>androidskia</c>, <c>iosskia</c>, <c>wasmskia</c>, and <c>tvosskia</c>, which is not offered). A prefix
+/// that includes several targets is not an identifier: <c>skia</c>, the Uno 6 prefix of every Skia target, is only
+/// accepted as another name for <see cref="SkiaDesktop"/>.
 /// <see cref="DisplayName"/> is meant for user interface only.
 /// </remarks>
 internal sealed class DesignTimeTargetPlatform
