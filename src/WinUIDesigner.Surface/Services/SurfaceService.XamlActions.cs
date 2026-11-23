@@ -397,6 +397,7 @@ internal sealed partial class SurfaceService
                 object? newValue = ResolveActionValue(setProperty.PropertyValueHandle, propertyOwner);
                 if (newValue is DroppedElement)
                 {
+                    // The value stands in for a dropped element and is nothing to set.
                     break;
                 }
 
@@ -411,6 +412,7 @@ internal sealed partial class SurfaceService
                 object clearedOwner = (ResolveObject(clearProperty.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearProperty.ParentHandle}."));
                 if (clearedOwner is DroppedElement)
                 {
+                    // Nothing lives in place of a dropped element, so there is nothing to clear.
                     break;
                 }
 
@@ -424,6 +426,7 @@ internal sealed partial class SurfaceService
                 object collectionOwner = (ResolveObject(clearCollection.ParentHandle) ?? throw new KeyNotFoundException($"No live object is registered for handle {clearCollection.ParentHandle}."));
                 if (collectionOwner is DroppedElement)
                 {
+                    // Nothing lives in place of a dropped element, so it has no collection to clear.
                     break;
                 }
 

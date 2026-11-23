@@ -681,7 +681,10 @@ public sealed class XamlDroppedChildrenTests
         return $"{collection.Owner.Name.LocalName}{PropertyName(collection.Property)}={string.Join(",", collection.Holes)}";
     }
 
-    private static string[] DescribeCollections(List<DroppedChildCollection> collections) => collections.Select(DescribeCollection).ToArray();
+    private static string[] DescribeCollections(List<DroppedChildCollection> collections)
+    {
+        return collections.Select(DescribeCollection).ToArray();
+    }
 
     private static string[] Describe(XamlNamespaceRewriteResult result)
     {
