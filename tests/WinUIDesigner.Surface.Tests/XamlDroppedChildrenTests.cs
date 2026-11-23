@@ -348,6 +348,101 @@ public sealed class XamlDroppedChildrenTests
     }
 
     [TestMethod]
+    public void AnExplicitCollectionElementIsMarkedThroughThePropertyElementItIsWrittenIn()
+    {
+        // WinUI's collections are no DependencyObject: the reader cannot set the mark on <TransitionCollection>.
+        string xaml = $"""
+            <StackPanel {_Namespaces}>
+              <Grid>
+                <Grid.ChildrenTransitions>
+                  <TransitionCollection>
+                    <c99:EntranceThemeTransition />
+                    <AddDeleteThemeTransition />
+                    <c99:ReorderThemeTransition />
+                  </TransitionCollection>
+                </Grid.ChildrenTransitions>
+              </Grid>
+              <c99:TextBlock />
+            </StackPanel>
+            """;
+
+        XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
+        List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren, owner => owner.Name.LocalName != "TransitionCollection");
+
+        CollectionAssert.AreEqual(new[] { "Grid/Grid.ChildrenTransitions=0,2", "StackPanel=1" }, DescribeCollections(collections));
+        Assert.IsFalse(
+            document.Descendants().Any(element => element.Name.LocalName == "TransitionCollection" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null),
+            "The collection element itself is not marked.");
+        Assert.IsNotNull(document.Descendants().Single(element => element.Name.LocalName == "Grid").Attribute(DroppedChildOwnerMarks.MarkName));
+    }
+
+    [TestMethod]
+    public void TheCollectionThatIsTheValueOfASetterIsMarkedThroughTheSetter()
+    {
+        string xaml = $"""
+            <Style {_Namespaces} TargetType="Grid">
+              <Setter Property="ChildrenTransitions">
+                <Setter.Value>
+                  <TransitionCollection>
+                    <c99:EntranceThemeTransition />
+                  </TransitionCollection>
+                </Setter.Value>
+              </Setter>
+            </Style>
+            """;
+
+        XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
+        List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren, owner => owner.Name.LocalName != "TransitionCollection");
+
+        CollectionAssert.AreEqual(new[] { "Setter/Setter.Value=0" }, DescribeCollections(collections));
+    }
+
+    [TestMethod]
+    public void AnOwnerThatCannotCarryTheMarkLeavesOnlyItsOwnCollectionWithoutHoles()
+    {
+        // A plain class of the project holds a collection. Its parent is a value of Grid.Tag, not an element that has
+        // the collection as a property, so there is nothing to mark for it; the Grid next to it is marked as usual.
+        string xaml = $"""
+            <Grid {_Namespaces} xmlns:local="using:My.App">
+              <Grid.Tag>
+                <local:Model>
+                  <local:Model.Items>
+                    <c99:Item />
+                  </local:Model.Items>
+                </local:Model>
+              </Grid.Tag>
+              <c99:TextBlock />
+            </Grid>
+            """;
+
+        XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
+        List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren, owner => owner.Name.LocalName != "Model");
+
+        CollectionAssert.AreEqual(new[] { "Grid=0" }, DescribeCollections(collections));
+        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "Model" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null));
+    }
+
+    [TestMethod]
+    public void NothingIsMarkedWhenNoElementAroundACollectionCanCarryTheMark()
+    {
+        string xaml = $"""
+            <Grid {_Namespaces}>
+              <Grid.ChildrenTransitions>
+                <TransitionCollection>
+                  <c99:EntranceThemeTransition />
+                </TransitionCollection>
+              </Grid.ChildrenTransitions>
+            </Grid>
+            """;
+
+        XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
+        List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren, _ => false);
+
+        Assert.IsEmpty(collections);
+        Assert.IsFalse(document.Descendants().Any(element => element.Attribute(DroppedChildOwnerMarks.MarkName) is not null));
+    }
+
+    [TestMethod]
     public void UnmarkingRestoresTheDocumentAsItWasPrepared()
     {
         string xaml = $"""
@@ -395,6 +490,13 @@ public sealed class XamlDroppedChildrenTests
                     ? XamlPrefixDisposition.Keep
                     : XamlPrefixDisposition.Drop,
         });
+    }
+
+    private static string[] DescribeCollections(List<DroppedChildCollection> collections)
+    {
+        return collections
+            .Select(collection => $"{collection.Owner.Name.LocalName}{(collection.Property is null ? string.Empty : $"/{collection.Property.LocalName}")}={string.Join(",", collection.Holes)}")
+            .ToArray();
     }
 
     private static string[] Describe(XamlNamespaceRewriteResult result)

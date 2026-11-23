@@ -573,7 +573,7 @@ internal sealed partial class SurfaceService
                     // objects the reader creates for them can be found and given the positions of what is missing.
                     List<DroppedChildCollection> droppedChildCollections = runtimeRoot is null
                         ? []
-                        : DroppedChildOwnerMarks.Mark(runtimeRoot, droppedChildren);
+                        : DroppedChildOwnerMarks.Mark(runtimeRoot, droppedChildren, DroppedChildren.CanCarryMark);
 
                     // App.xaml contributes only its resource dictionary; every other document is loaded whole.
                     string Serialize() => runtimeRoot is null

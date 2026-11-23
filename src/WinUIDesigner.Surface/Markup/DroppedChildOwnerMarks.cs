@@ -38,12 +38,25 @@ internal static class DroppedChildOwnerMarks
     /// </summary>
     /// <param name="runtimeRoot">The element that is loaded.</param>
     /// <param name="droppedChildren">What the rewrite removed, from <see cref="XamlNamespaceRewriteResult.DroppedChildren"/>.</param>
+    /// <param name="canCarryMark">
+    /// Tells whether the object the reader creates for an element can carry the mark: whether it is a
+    /// <c>DependencyObject</c>. <see langword="null"/> when every element can.
+    /// </param>
     /// <returns>The collections with their holes, in document order.</returns>
     /// <remarks>
+    /// <para>
     /// Elements outside the loaded element are left alone, and so is template content: the reader does not create it
     /// while it loads the document.
+    /// </para>
+    /// <para>
+    /// The reader fails the whole document when it is asked to mark an object that is no <c>DependencyObject</c>, so
+    /// such an element is not marked. An explicit collection element, such as <c>&lt;TransitionCollection&gt;</c> in
+    /// <c>&lt;Grid.ChildrenTransitions&gt;</c>, is the value of a property of the element around it, and that element
+    /// carries the mark for the collection. Any other element that cannot carry the mark goes without holes, and only
+    /// its collection does.
+    /// </para>
     /// </remarks>
-    public static List<DroppedChildCollection> Mark(XElement runtimeRoot, IReadOnlyList<XamlDroppedChild> droppedChildren)
+    public static List<DroppedChildCollection> Mark(XElement runtimeRoot, IReadOnlyList<XamlDroppedChild> droppedChildren, Func<XElement, bool>? canCarryMark = null)
     {
         ArgumentNullException.ThrowIfNull(runtimeRoot);
         ArgumentNullException.ThrowIfNull(droppedChildren);
@@ -52,22 +65,22 @@ internal static class DroppedChildOwnerMarks
         var marks = new Dictionary<XElement, string>();
         foreach (XamlDroppedChild dropped in droppedChildren)
         {
-            if (!IsLoadedWith(dropped.Owner, runtimeRoot))
+            if (!TryGetCarrier(dropped, canCarryMark, out XElement owner, out XName? property) || !IsLoadedWith(owner, runtimeRoot))
             {
                 continue;
             }
 
-            if (!marks.TryGetValue(dropped.Owner, out string? mark))
+            if (!marks.TryGetValue(owner, out string? mark))
             {
                 mark = marks.Count.ToString(CultureInfo.InvariantCulture);
-                marks.Add(dropped.Owner, mark);
-                dropped.Owner.SetAttributeValue(MarkName, mark);
+                marks.Add(owner, mark);
+                owner.SetAttributeValue(MarkName, mark);
             }
 
-            DroppedChildCollection? collection = collections.Find(candidate => ReferenceEquals(candidate.Owner, dropped.Owner) && candidate.Property == dropped.Property);
+            DroppedChildCollection? collection = collections.Find(candidate => ReferenceEquals(candidate.Owner, owner) && candidate.Property == property);
             if (collection is null)
             {
-                collections.Add(collection = new DroppedChildCollection(mark, dropped.Owner, dropped.Property, []));
+                collections.Add(collection = new DroppedChildCollection(mark, owner, property, []));
             }
 
             collection.Holes.Add(dropped.Index);
@@ -81,7 +94,8 @@ internal static class DroppedChildOwnerMarks
     /// </summary>
     /// <remarks>
     /// The XAML reader can only set the mark on a <c>DependencyObject</c>; on any other object it fails the whole
-    /// document. Loading it again without marks gives the document as it was before marks existed.
+    /// document. <see cref="Mark"/> leaves out the elements it knows to be none; one whose type it could not tell
+    /// is still marked, and loading the document again without marks gives it as it was before marks existed.
     /// </remarks>
     public static void Unmark(IEnumerable<DroppedChildCollection> collections)
     {
@@ -92,6 +106,40 @@ internal static class DroppedChildOwnerMarks
             collection.Owner.Attribute(MarkName)?.Remove();
         }
     }
+
+    /// <summary>
+    /// Finds the element that carries the mark for the collection <paramref name="dropped"/> was removed from, and the
+    /// property element of the collection on it.
+    /// </summary>
+    /// <returns><see langword="false"/> when no element can carry the mark for the collection.</returns>
+    private static bool TryGetCarrier(XamlDroppedChild dropped, Func<XElement, bool>? canCarryMark, out XElement owner, out XName? property)
+    {
+        owner = dropped.Owner;
+        property = dropped.Property;
+        if (canCarryMark is null || canCarryMark(owner))
+        {
+            return true;
+        }
+
+        // The owner is no DependencyObject. It can still be the explicit collection of a property of one:
+        // <Grid.ChildrenTransitions><TransitionCollection>...</TransitionCollection></Grid.ChildrenTransitions>.
+        if (property is not null || owner.Parent is not { } propertyElement || !IsPropertyElement(propertyElement))
+        {
+            return false;
+        }
+
+        // The object that holds the property carries the mark, and the collection is the value of the property.
+        if (propertyElement.Parent is not { } holder || !canCarryMark(holder))
+        {
+            return false;
+        }
+
+        owner = holder;
+        property = propertyElement.Name;
+        return true;
+    }
+
+    private static bool IsPropertyElement(XElement element) => element.Name.LocalName.IndexOf('.') >= 0;
 
     /// <summary>
     /// Returns whether the XAML reader creates <paramref name="owner"/> when it loads <paramref name="runtimeRoot"/>:

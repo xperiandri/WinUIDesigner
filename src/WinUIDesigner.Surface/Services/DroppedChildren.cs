@@ -27,6 +27,12 @@ namespace WinUIDesigner.Surface.Services;
 /// </remarks>
 internal sealed class DroppedChildren : IChildCollectionAccess
 {
+    // The presentation namespace stands for several CLR namespaces of the WinUI assembly.
+    private static readonly Lazy<ILookup<string, Type>> _PresentationTypes = new(() => typeof(FrameworkElement).Assembly
+        .GetExportedTypes()
+        .Where(candidate => candidate.Namespace?.StartsWith("Microsoft.UI.Xaml", StringComparison.Ordinal) == true)
+        .ToLookup(candidate => candidate.Name, StringComparer.Ordinal));
+
     private readonly Func<object, int, bool> _removeAt;
 
     /// <param name="track">Makes an object part of the document that is being built or edited, so that it is released with it.</param>
@@ -262,22 +268,42 @@ internal sealed class DroppedChildren : IChildCollectionAccess
         return XamlRuntimeUtilities.GetChild(owner, liveIndex);
     }
 
-    private static object? GetAttachedValue(DependencyObject owner, string typeName, string member, string namespaceName)
+    /// <summary>
+    /// Returns whether the XAML reader can set <c>DT.DroppedChildOwner</c> on the object it creates for the element
+    /// <paramref name="owner"/>: whether that object is a <see cref="DependencyObject"/>.
+    /// </summary>
+    /// <remarks>
+    /// The reader fails the whole document for another type, such as WinUI's explicit collections
+    /// (<c>TransitionCollection</c>, <c>GradientStopCollection</c>). An element whose type cannot be found counts as
+    /// one that can: the load without marks is the safety net for it.
+    /// </remarks>
+    internal static bool CanCarryMark(XElement owner)
     {
-        Type? declaringType = null;
+        Type[] types = [.. ResolveElementTypes(owner.Name.LocalName, owner.Name.NamespaceName)];
+        return types.Length == 0 || types.Any(typeof(DependencyObject).IsAssignableFrom);
+    }
+
+    /// <summary>
+    /// Returns the types an element of the prepared document can stand for: the type of a <c>using:</c> namespace, or
+    /// the WinUI types of that name; none when the namespace is neither or the type is not found.
+    /// </summary>
+    private static IEnumerable<Type> ResolveElementTypes(string typeName, string namespaceName)
+    {
         string baseUri = XamlNamespaceUri.Parse(namespaceName).BaseUri;
         if (baseUri.StartsWith(XamlNamespaceUri.UsingScheme, StringComparison.Ordinal))
         {
-            declaringType = XamlRuntimeUtilities.ResolveType(baseUri[XamlNamespaceUri.UsingScheme.Length..] + "." + typeName);
-        }
-        else if (baseUri == XamlNamespaces.Presentation)
-        {
-            declaringType = typeof(FrameworkElement).Assembly.GetExportedTypes().FirstOrDefault(candidate =>
-                candidate.Name == typeName && candidate.Namespace?.StartsWith("Microsoft.UI.Xaml", StringComparison.Ordinal) == true);
+            Type? type = XamlRuntimeUtilities.ResolveType($"{baseUri[XamlNamespaceUri.UsingScheme.Length..]}.{typeName}");
+            return type is null ? [] : [type];
         }
 
+        return baseUri == XamlNamespaces.Presentation ? _PresentationTypes.Value[typeName] : [];
+    }
+
+    private static object? GetAttachedValue(DependencyObject owner, string typeName, string member, string namespaceName)
+    {
+        Type? declaringType = ResolveElementTypes(typeName, namespaceName).FirstOrDefault();
         MethodInfo? getter = declaringType?.GetMethods(BindingFlags.Public | BindingFlags.Static).FirstOrDefault(method =>
-            method.Name == "Get" + member
+            method.Name == $"Get{member}"
             && method.GetParameters() is { Length: 1 } parameters
             && parameters[0].ParameterType.IsInstanceOfType(owner));
         return getter?.Invoke(null, [owner]);
