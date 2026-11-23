@@ -64,7 +64,7 @@ public sealed class XamlMemberDispositionServiceTests
     }
 
     [TestMethod]
-    public void NewAnswersDoNotReplaceTheVerdictsOfADocumentThatMayBeBeingBuilt()
+    public void NewAnswersDoNotReplaceTheVerdictsOfADocumentThatIsBeingBuilt()
     {
         IDocumentRoot document = TextOnlyDocumentRoot.Create(new SimpleTextBuffer(_Xaml));
         var service = new XamlMemberDispositionService();

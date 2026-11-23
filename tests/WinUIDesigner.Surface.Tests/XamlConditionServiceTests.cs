@@ -10,7 +10,6 @@ using WinUIDesigner.Markup;
 [TestClass]
 public sealed class XamlConditionServiceTests
 {
-
     private const string _Contract = "Windows.Foundation.UniversalApiContract";
 
     [TestMethod]

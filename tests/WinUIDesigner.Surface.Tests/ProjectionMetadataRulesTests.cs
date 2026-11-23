@@ -326,6 +326,7 @@ public sealed class ProjectionMetadataRulesTests
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
+
     private sealed class VectorView : IReadOnlyList<string>
     {
         public int Count => 0;
