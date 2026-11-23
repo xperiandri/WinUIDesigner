@@ -20,7 +20,7 @@ public sealed class ConditionalXamlSurfaceWiringTests
     [TestMethod]
     public void EveryRewriteOfPreparedXamlIsConfiguredWithTheConditionPolicy()
     {
-        using AssemblyDefinition surface = AssemblyDefinition.ReadAssembly(GetSurfaceAssemblyPath());
+        using AssemblyDefinition surface = AssemblyDefinition.ReadAssembly(SurfaceBuild.GetAssemblyPath());
 
         Assert.Contains("ConfigureConditionalNamespacePolicy", GetCalls(FindMethod(surface, "CreateNamespaceRewriteOptions")));
     }
@@ -28,7 +28,7 @@ public sealed class ConditionalXamlSurfaceWiringTests
     [TestMethod]
     public void TheConditionPolicyAsksTheOverridesOfTheRequestBeforeItEvaluatesAnything()
     {
-        using AssemblyDefinition surface = AssemblyDefinition.ReadAssembly(GetSurfaceAssemblyPath());
+        using AssemblyDefinition surface = AssemblyDefinition.ReadAssembly(SurfaceBuild.GetAssemblyPath());
 
         List<string> calls = GetCalls(FindMethod(surface, "ConfigureConditionalNamespacePolicy"));
 
@@ -40,7 +40,7 @@ public sealed class ConditionalXamlSurfaceWiringTests
     [TestMethod]
     public void TheOverridesOfTheLatestRequestAreTheOnesTheRewriteAsks()
     {
-        using AssemblyDefinition surface = AssemblyDefinition.ReadAssembly(GetSurfaceAssemblyPath());
+        using AssemblyDefinition surface = AssemblyDefinition.ReadAssembly(SurfaceBuild.GetAssemblyPath());
 
         // The request stores its options in the field that the overrides are read from.
         MethodDefinition store = FindMethod(surface, "StoreDesignTimeOptions");
@@ -72,25 +72,5 @@ public sealed class ConditionalXamlSurfaceWiringTests
             .Where(instruction => instruction.OpCode.Code is Code.Call or Code.Callvirt)
             .Select(instruction => ((MethodReference)instruction.Operand).Name)
             .ToList();
-    }
-
-    // The surface built next to these tests. The newest build wins when several configurations or platforms were built.
-    private static string GetSurfaceAssemblyPath()
-    {
-        for (DirectoryInfo? directory = new(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (!File.Exists(Path.Combine(directory.FullName, "WinUIDesigner.slnx")))
-            {
-                continue;
-            }
-
-            string output = Path.Combine(directory.FullName, "src", "WinUIDesigner.Surface", "bin");
-            string? path = Directory.Exists(output)
-                ? Directory.EnumerateFiles(output, "WinUISurface.dll", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
-                : null;
-            return path ?? throw new FileNotFoundException($"Could not locate WinUISurface.dll under '{output}'. Build WinUIDesigner.Surface first.");
-        }
-
-        throw new FileNotFoundException("Could not locate WinUIDesigner.slnx from the test output directory.");
     }
 }
