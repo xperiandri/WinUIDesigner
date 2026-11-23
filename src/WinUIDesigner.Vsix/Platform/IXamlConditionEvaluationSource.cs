@@ -17,8 +17,8 @@ internal interface IXamlConditionEvaluationSource
 {
     /// <summary>
     /// Returns whether <paramref name="query"/> holds as written, or <see langword="null"/> when that is not known
-    /// yet: before a document of the current surface process was prepared, or before the surface answered.
-    /// Never blocks.
+    /// yet: before a document of the current surface process was prepared or, for a question that only the surface
+    /// can decide, before the surface answered. Never blocks.
     /// </summary>
     bool? EvaluateIgnoringOverrides(XamlConditionQuery query);
 }

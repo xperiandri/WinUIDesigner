@@ -241,7 +241,7 @@ sequenceDiagram
     Manager->>Manager: ShouldIgnoreProperty and GetInstanceBuilder<br/>drop what the answers exclude
 ```
 
-Visual Studio waits only for the predicates that it cannot decide itself: a custom condition, and a type or property of the application. A malformed or empty predicate is settled by code that both processes share, and a contract or a `Windows.*` type or property asks the same Windows the surface runs on, so these are decided from the first document on, even while the surface is still starting. The surface is asked all the same, and its answer replaces the local one.
+Visual Studio waits only for the predicates that it cannot decide itself and that you do not force in the Conditions drop-down: a custom condition, and a type or property of the application. A malformed or empty predicate is settled by code that both processes share, and a contract or a `Windows.*` type or property asks the same Windows the surface runs on, so these are decided from the first document on, even while the surface is still starting. The surface is asked all the same, and its answer replaces the local one.
 
 The first answer of a surface process that has just started took about six seconds in a running designer, and about a minute while the machine was busy scanning for malware. The wait for it is therefore capped at two minutes, and a trace says after twenty seconds that the surface is still starting. It is one stretch of time for every document that waits for it, so a second document that loads meanwhile waits for the same answer; it is used up only when it ran out or an answer arrived, and a surface that never answers costs it once.
 

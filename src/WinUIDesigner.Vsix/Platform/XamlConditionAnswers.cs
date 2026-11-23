@@ -201,8 +201,8 @@ internal sealed class XamlConditionAnswers
     /// <see cref="TimeSpan.Zero"/> for no trace.
     /// </param>
     /// <remarks>
-    /// Only conditions that need the surface are waited for: a custom condition, or a type or a property of
-    /// the application. What this process decides itself is sent and confirmed in the background.
+    /// Only conditions that need the surface are waited for: a custom condition, or a type or a property of the
+    /// application, that the user does not force. The others are sent and confirmed in the background.
     /// </remarks>
     public async Task AskAsync(
         IReadOnlyCollection<XamlConditionQuery> queries,

@@ -47,8 +47,8 @@ internal sealed partial class WinUIDesignerInstanceManager
     /// <remarks>
     /// The surface evaluates the conditions of prepared XAML itself. Its answers are needed here for the
     /// other path: when the surface asks for construction actions, and for every edit afterwards, the
-    /// document model decides which members exist. Only conditions that this process cannot decide are waited
-    /// for: those about a custom condition or a type of the application.
+    /// document model decides which members exist. Only conditions that this process cannot decide and that the
+    /// user does not force are waited for: those about a custom condition or a type of the application.
     /// </remarks>
     private async Task PrepareConditionalNamespacesAsync(ISurfaceProcessDocument targetDocument, IReadOnlyList<ISurfaceProcessDocument> preparedDocuments)
     {
