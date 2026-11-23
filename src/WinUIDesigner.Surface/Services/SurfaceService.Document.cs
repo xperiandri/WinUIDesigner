@@ -18,6 +18,8 @@ namespace WinUIDesigner.Surface.Services;
 internal sealed partial class SurfaceService
 {
     private const int _FreezeCompositionTimeoutMilliseconds = 200;
+    // The freeze only saves rendering work: a busy UI thread is waited for this long before the freeze is just queued.
+    private static readonly TimeSpan _FreezeStateTimeout = TimeSpan.FromSeconds(2);
     private static readonly Size _DefaultSurfaceSize = new(800, 600);
     private const string _XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
     private const string _BlendDesignNamespace = "http://schemas.microsoft.com/expression/blend/2008";
@@ -40,10 +42,11 @@ internal sealed partial class SurfaceService
     {
         try
         {
-            if (!await _constructionGate.WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false))
-            {
-                throw new TimeoutException("Another document construction did not finish within 30 seconds.");
-            }
+            // No time limit: Visual Studio waits for this document as long as the construction before it takes.
+            await DispatcherOperation.WaitWithoutLimitAsync(
+                $"CreateSurface {requestInfo.Document?.DocumentId}: construction gate",
+                _constructionGate.WaitAsync(Timeout.InfiniteTimeSpan, _protocolHandler.CancellationToken)
+            ).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -64,7 +67,7 @@ internal sealed partial class SurfaceService
                 throw new ArgumentException("A nonzero document ID is required.");
             }
 
-            await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            await DispatcherOperation.RunAsync(_dispatcherQueue, $"CreateSurface {document.DocumentId}: close the previous surface", () =>
             {
                 CloseSurfaceDocument(document.DocumentId);
                 return true;
@@ -82,7 +85,7 @@ internal sealed partial class SurfaceService
                 resourceDocumentsToBuild.Add(resourceDocument);
             }
 
-            await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            await DispatcherOperation.RunAsync(_dispatcherQueue, $"CreateSurface {document.DocumentId}: application resources", () =>
             {
                 foreach (CreateDocumentInfo resourceDocument in resourceDocumentsToBuild)
                 {
@@ -125,7 +128,7 @@ internal sealed partial class SurfaceService
             foreach (CreateDocumentInfo resourceDocument in resourceDocumentsToBuild)
             {
                 var resources = await BuildDocumentAsync(resourceDocument, resources: true).ConfigureAwait(false);
-                await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+                await DispatcherOperation.RunAsync(_dispatcherQueue, $"CreateSurface {document.DocumentId}: merge resource document {resourceDocument.DocumentId}", () =>
                 {
                     ResourceDictionary dictionary = resources.Root switch
                     {
@@ -168,7 +171,7 @@ internal sealed partial class SurfaceService
 
             var result = await BuildDocumentAsync(document, resources: false).ConfigureAwait(false);
 
-            return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            return await DispatcherOperation.RunAsync(_dispatcherQueue, $"CreateSurface {document.DocumentId}: create the surface", () =>
             {
                 try
                 {
@@ -247,7 +250,7 @@ internal sealed partial class SurfaceService
             }
             try
             {
-                await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+                await DispatcherOperation.RunAsync(_dispatcherQueue, $"CreateSurface {document?.DocumentId}: clean up after the failure", () =>
                 {
                     if (document is not null)
                     {
@@ -274,12 +277,25 @@ internal sealed partial class SurfaceService
         }
     }
 
+    // A step that gave up because the protocol or the dispatcher queue shut down did not fail: the surface is ending, and
+    // the report of the give-up is in the log already.
+    private static void LogOperationFailure(Exception exception)
+    {
+        if (!DispatcherOperation.IsUnanswered(exception))
+        {
+            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+        }
+    }
+
     private async Task<ResponseWithError> HandleCloseDocumentAsync(CloseDocumentRequestInfo request)
     {
         try
         {
-            if (!await _constructionGate.WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false))
-                throw new TimeoutException("The document construction did not finish before close.");
+            // No time limit: Visual Studio only posts this message, so a close that gave up would never be done.
+            await DispatcherOperation.WaitWithoutLimitAsync(
+                $"CloseDocument {request.DocumentId}: construction gate",
+                _constructionGate.WaitAsync(Timeout.InfiniteTimeSpan, _protocolHandler.CancellationToken)
+            ).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -291,7 +307,7 @@ internal sealed partial class SurfaceService
         }
         try
         {
-            return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            return await DispatcherOperation.RunAsync(_dispatcherQueue, $"CloseDocument {request.DocumentId}", () =>
             {
                 CloseSurfaceDocument(request.DocumentId);
                 return new ResponseWithError() { HResult = 0 };
@@ -299,7 +315,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -313,7 +329,7 @@ internal sealed partial class SurfaceService
     {
         try
         {
-            return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            return await DispatcherOperation.RunAsync(_dispatcherQueue, $"SetPanZoomTransform {request.DocumentId}", () =>
             {
                 if (!_surfaces.TryGetValue(request.DocumentId, out DesignerSurface? surface))
                 {
@@ -326,7 +342,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -361,7 +377,7 @@ internal sealed partial class SurfaceService
 
         try
         {
-            return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            return await DispatcherOperation.RunAsync(_dispatcherQueue, $"SetArtboardColors {request.DocumentId}", () =>
             {
                 if (!_surfaces.TryGetValue(request.DocumentId, out DesignerSurface? surface))
                 {
@@ -379,7 +395,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -392,7 +408,7 @@ internal sealed partial class SurfaceService
     {
         try
         {
-            return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            return await DispatcherOperation.RunAsync(_dispatcherQueue, $"SetDeviceSize {request.DocumentId}", () =>
             {
                 if (!_surfaces.TryGetValue(request.DocumentId, out DesignerSurface? surface))
                 {
@@ -406,7 +422,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -425,34 +441,59 @@ internal sealed partial class SurfaceService
 
         DesignerSurface? targetSurface = null;
         bool waitForPreviousUnfreeze = false;
-        DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+        try
         {
-            if (request.DocumentIdToFreeze != 0 &&
-                _surfaces.TryGetValue(request.DocumentIdToFreeze, out DesignerSurface? surface))
+            // Visual Studio only posts this message, and the protocol takes its next message only after this one, so a
+            // busy UI thread is waited for only briefly: then the freeze is queued without waiting for the previous
+            // unfreeze to be drawn.
+            bool inspected = DispatcherOperation.TryInvoke(_dispatcherQueue, () =>
             {
-                targetSurface = surface;
-                waitForPreviousUnfreeze = !surface.IsFrozen;
-            }
+                if (request.DocumentIdToFreeze != 0 &&
+                    _surfaces.TryGetValue(request.DocumentIdToFreeze, out DesignerSurface? surface))
+                {
+                    targetSurface = surface;
+                    waitForPreviousUnfreeze = !surface.IsFrozen;
+                }
 
-            return true;
-        }, _protocolHandler.CancellationToken).GetAwaiter().GetResult();
-        if (waitForPreviousUnfreeze && targetSurface is not null)
+                return true;
+            }, _FreezeStateTimeout, _protocolHandler.CancellationToken, out _);
+            if (inspected && waitForPreviousUnfreeze && targetSurface is not null)
+            {
+                targetSurface.WaitForUnfreezeComposition(_FreezeCompositionTimeoutMilliseconds);
+            }
+        }
+        catch (Exception exception)
         {
-            targetSurface.WaitForUnfreezeComposition(_FreezeCompositionTimeoutMilliseconds);
+            // Nothing may leave a synchronous observer: the protocol's thread, and with it the process, would end.
+            WinUIDesignerLogger.LogWarning("Surface", $"SetFreezeState {request.DocumentIdToFreeze}: the surface to freeze could not be inspected.", exception);
         }
 
-        DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+        // Queued, not waited for: it runs after the work that is already on the UI thread and in the order the messages
+        // came, so that neither a freeze nor the unfreeze after it is lost.
+        _ = ApplyFreezeStateAsync(request.DocumentIdToFreeze);
+    }
+
+    private async Task ApplyFreezeStateAsync(int documentIdToFreeze)
+    {
+        try
         {
-            ApplyFreezeState(request.DocumentIdToFreeze);
-            return true;
-        }, _protocolHandler.CancellationToken).GetAwaiter().GetResult();
+            await DispatcherOperation.RunAsync(_dispatcherQueue, $"SetFreezeState {documentIdToFreeze}", () =>
+            {
+                ApplyFreezeState(documentIdToFreeze);
+                return true;
+            }, _protocolHandler.CancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            WinUIDesignerLogger.LogWarning("Surface", $"SetFreezeState {documentIdToFreeze} was not applied.", exception);
+        }
     }
 
     private async Task<ResponseWithError> HandleSetSurfacePositionAsync(SetSurfacePositionRequestInfo request)
     {
         try
         {
-            return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            return await DispatcherOperation.RunAsync(_dispatcherQueue, $"SetSurfacePosition {request.DocumentId}", () =>
             {
                 if (!_surfaces.TryGetValue(request.DocumentId, out DesignerSurface? surface))
                 {
@@ -470,7 +511,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception exception)
         {
-            WinUIDesignerLogger.LogError("Surface", "Surface operation failed.", exception);
+            LogOperationFailure(exception);
             return new ResponseWithError
             {
                 HResult = exception.HResult != 0 ? exception.HResult : Marshal.GetHRForException(exception),
@@ -486,7 +527,7 @@ internal sealed partial class SurfaceService
         {
             try
             {
-                return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+                return await DispatcherOperation.RunAsync(_dispatcherQueue, $"Build document {document.DocumentId}: prepared XAML", () =>
                 {
                     using var scope = _objectIdentity.EnterDocument(document.DocumentId);
                     string xaml = TryReadPreparedXaml(document) ?? document.InitialXamlContent;
@@ -571,8 +612,10 @@ internal sealed partial class SurfaceService
                     return (root, (string?)xaml);
                 }, _protocolHandler.CancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!DispatcherOperation.IsUnanswered(ex))
             {
+                // Only a load that failed is retried with construction actions. A load that was cancelled or gave up is
+                // no parse failure, and Visual Studio marks a document whose actions it handed out as built from them.
                 parseFailure = ex;
                 WinUIDesignerLogger.LogTrace("Surface", $"Prepared XAML parsing failed for document {document.DocumentId}; requesting construction actions: {ex}");
             }
@@ -581,9 +624,13 @@ internal sealed partial class SurfaceService
         CreateDocumentInfo actionsDocument = document;
         if (!document.HasActions)
         {
-            actionsDocument = await _protocolHandler.SendMessageAsync<CreateDocumentInfo>((int)DesignerMessageId.GetDocumentBuildingActions,
-                new GetDocumentBuildingActionsRequest { DocumentId = document.DocumentId })
-                .WaitAsync(TimeSpan.FromSeconds(30), _protocolHandler.CancellationToken).ConfigureAwait(false);
+            // No time limit: Visual Studio builds the actions on its UI thread, as long as that takes.
+            actionsDocument = await DispatcherOperation.WaitWithoutLimitAsync(
+                $"GetDocumentBuildingActions {document.DocumentId}",
+                _protocolHandler.SendMessageAsync<CreateDocumentInfo>((int)DesignerMessageId.GetDocumentBuildingActions,
+                    new GetDocumentBuildingActionsRequest { DocumentId = document.DocumentId })
+                    .WaitAsync(_protocolHandler.CancellationToken)
+            ).ConfigureAwait(false);
         }
 
         if (actionsDocument is null || actionsDocument.DocumentId != document.DocumentId || !actionsDocument.HasActions)
@@ -591,7 +638,7 @@ internal sealed partial class SurfaceService
             throw new InvalidOperationException($"No construction actions were returned for document {document.DocumentId}.", parseFailure);
         }
 
-        return await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+        return await DispatcherOperation.RunAsync(_dispatcherQueue, $"Build document {document.DocumentId}: construction actions", () =>
         {
             if (!resources)
             {

@@ -36,10 +36,10 @@ internal sealed partial class SurfaceService
 
     private LiveObjectState HandleGetProperties(PropertiesRequestInfo request)
     {
-        LiveObjectState state;
+        LiveObjectState? state;
         try
         {
-            state = DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            if (!DispatcherOperation.TryInvoke<LiveObjectState>(_dispatcherQueue, () =>
             {
                 var response = new LiveObjectState
                 {
@@ -140,7 +140,15 @@ internal sealed partial class SurfaceService
                 }
 
                 return response;
-            }, _protocolHandler.CancellationToken).GetAwaiter().GetResult();
+            }, _protocolHandler.CancellationToken, out state))
+            {
+                // The UI thread did not answer in time. The document did not fail: answer without properties.
+                state = new LiveObjectState
+                {
+                    Properties = [],
+                    Items = [],
+                };
+            }
         }
         catch (Exception ex)
         {
@@ -399,7 +407,7 @@ internal sealed partial class SurfaceService
     {
         try
         {
-            var value = DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            if (!DispatcherOperation.TryInvoke(_dispatcherQueue, () =>
             {
                 const string DesignTimeTypeName = "XSurfUwp.DT";
                 int separator = request.FullPropertyName.IndexOf(':');
@@ -416,8 +424,11 @@ internal sealed partial class SurfaceService
 
                 return _serializer.Serialize(XamlRuntimeUtilities.GetDefaultValue(request.FullPropertyName, request.TargetTypeName));
             },
-            _protocolHandler.CancellationToken)
-                .GetAwaiter().GetResult();
+            _protocolHandler.CancellationToken, out var value))
+            {
+                // The UI thread did not answer in time. The document did not fail: answer without a value.
+                value = new LiveValue();
+            }
 
             return new LiveValueResponse()
             {
@@ -442,7 +453,7 @@ internal sealed partial class SurfaceService
 
         try
         {
-            var value = DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
+            if (!DispatcherOperation.TryInvoke(_dispatcherQueue, () =>
             {
                 if (!_objectIdentity.TryGetObject(request.Object, out object? target) || target is null)
                 {
@@ -450,7 +461,12 @@ internal sealed partial class SurfaceService
                 }
 
                 return _serializer.Serialize(XamlRuntimeUtilities.GetUnderlyingValue(target, request.Property));
-            }, _protocolHandler.CancellationToken).GetAwaiter().GetResult();
+            }, _protocolHandler.CancellationToken, out var value))
+            {
+                // The UI thread did not answer in time. The document did not fail: answer without a value.
+                value = new LiveValue();
+            }
+
             return new UnderlyingValueSourceInformation
             {
                 UnderlyingValue = value
@@ -485,9 +501,15 @@ internal sealed partial class SurfaceService
 
         try
         {
+            if (!DispatcherOperation.TryInvoke(_dispatcherQueue, () => ExecuteLookupActions(request, _serializer), _protocolHandler.CancellationToken, out var value))
+            {
+                // The UI thread did not answer in time. The document did not fail: answer without a value.
+                value = new LiveValue();
+            }
+
             return new UnderlyingValueSourceInformation()
             {
-                UnderlyingValue = DispatcherOperation.InvokeAsync(_dispatcherQueue, () => ExecuteLookupActions(request, _serializer), _protocolHandler.CancellationToken).GetAwaiter().GetResult(),
+                UnderlyingValue = value,
             };
         }
         catch (Exception ex)
@@ -519,7 +541,10 @@ internal sealed partial class SurfaceService
 
         try
         {
-            return DispatcherOperation.InvokeAsync(_dispatcherQueue, () => _serializer.Serialize(XamlRuntimeUtilities.ResolveMember(request.MemberName)), _protocolHandler.CancellationToken).GetAwaiter().GetResult();
+            // When the UI thread does not answer in time, the document did not fail: answer without a value.
+            return DispatcherOperation.TryInvoke(_dispatcherQueue, () => _serializer.Serialize(XamlRuntimeUtilities.ResolveMember(request.MemberName)), _protocolHandler.CancellationToken, out var value)
+                ? value
+                : new LiveValue();
         }
         catch (Exception ex)
         {
