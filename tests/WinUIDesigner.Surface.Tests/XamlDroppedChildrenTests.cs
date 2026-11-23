@@ -459,6 +459,91 @@ public sealed class XamlDroppedChildrenTests
     }
 
     [TestMethod]
+    public void AnOwnerThatTheCheckFailsForIsMarkedAsIfItCouldCarryTheMark()
+    {
+        // The look-up of a project type fails when its assembly cannot be loaded. That must not fail the document: the
+        // element is marked as it is when nothing is known about it, and the load without marks is the safety net.
+        string xaml = $"""
+            <StackPanel {_Namespaces}>
+              <TextBlock />
+              <c99:TextBlock />
+            </StackPanel>
+            """;
+
+        XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
+        List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(
+            document.Root!,
+            result.DroppedChildren,
+            _ => throw new FileNotFoundException("The assembly of the type cannot be loaded.")
+        );
+
+        CollectionAssert.AreEqual(new[] { "StackPanel=1" }, DescribeCollections(collections));
+        Assert.IsTrue(HasMarks(document));
+    }
+
+    [TestMethod]
+    public void AHolderThatTheCheckFailsForCarriesTheMarkOfAnExplicitCollection()
+    {
+        // The collection element cannot carry the mark, and the check of the element that holds it fails: the holder is
+        // marked, as an element without information is.
+        string xaml = $"""
+            <Grid {_Namespaces}>
+              <Grid.ChildrenTransitions>
+                <TransitionCollection>
+                  <c99:EntranceThemeTransition />
+                </TransitionCollection>
+              </Grid.ChildrenTransitions>
+            </Grid>
+            """;
+
+        XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
+        List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(
+            document.Root!,
+            result.DroppedChildren,
+            owner => owner.Name.LocalName == "TransitionCollection" ? false : throw new InvalidOperationException("The type cannot be looked up.")
+        );
+
+        CollectionAssert.AreEqual(new[] { "Grid/Grid.ChildrenTransitions=0" }, DescribeCollections(collections));
+        Assert.IsNotNull(document.Root!.Attribute(DroppedChildOwnerMarks.MarkName));
+    }
+
+    [TestMethod]
+    public void EveryElementIsAskedAboutOnceHoweverManyDroppedElementsItHolds()
+    {
+        // The two dropped elements of the panel ask about the same owner, and the two of the explicit collection about
+        // the collection element and about the element that holds it.
+        string xaml = $"""
+            <StackPanel {_Namespaces}>
+              <c99:TextBlock />
+              <c99:TextBlock />
+              <Grid>
+                <Grid.ChildrenTransitions>
+                  <TransitionCollection>
+                    <c99:EntranceThemeTransition />
+                    <c99:EntranceThemeTransition />
+                  </TransitionCollection>
+                </Grid.ChildrenTransitions>
+              </Grid>
+            </StackPanel>
+            """;
+        var asked = new List<string>();
+
+        XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
+        List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(
+            document.Root!,
+            result.DroppedChildren,
+            owner =>
+            {
+                asked.Add(owner.Name.LocalName);
+                return owner.Name.LocalName != "TransitionCollection";
+            }
+        );
+
+        CollectionAssert.AreEqual(new[] { "StackPanel=0,1", "Grid/Grid.ChildrenTransitions=0,1" }, DescribeCollections(collections));
+        CollectionAssert.AreEqual(new[] { "StackPanel", "TransitionCollection", "Grid" }, asked);
+    }
+
+    [TestMethod]
     public void UnmarkingRestoresTheDocumentAsItWasPrepared()
     {
         string xaml = $"""

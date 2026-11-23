@@ -40,7 +40,8 @@ internal static class DroppedChildOwnerMarks
     /// <param name="droppedChildren">What the rewrite removed, from <see cref="XamlNamespaceRewriteResult.DroppedChildren"/>.</param>
     /// <param name="canCarryMark">
     /// Tells whether the object the reader creates for an element can carry the mark: whether it is a
-    /// <c>DependencyObject</c>. <see langword="null"/> when every element can.
+    /// <c>DependencyObject</c>. <see langword="null"/> when every element can. It is asked once per element, and an
+    /// element it throws for counts as one that can: the load without marks is the safety net for it.
     /// </param>
     /// <returns>The collections with their holes, in document order.</returns>
     /// <remarks>
@@ -63,10 +64,11 @@ internal static class DroppedChildOwnerMarks
 
         var collections = new List<DroppedChildCollection>();
         var marks = new Dictionary<XElement, string>();
+        Func<XElement, bool>? canCarry = canCarryMark is null ? null : AskOncePerElement(canCarryMark);
         foreach (XamlDroppedChild dropped in droppedChildren)
         {
             // No element can carry the mark for this collection, or the reader does not create the element.
-            if (!TryGetCarrier(dropped, canCarryMark, out XElement owner, out XName? property) || !IsLoadedWith(owner, runtimeRoot))
+            if (!TryGetCarrier(dropped, canCarry, out XElement owner, out XName? property) || !IsLoadedWith(owner, runtimeRoot))
             {
                 continue;
             }
@@ -185,6 +187,43 @@ internal static class DroppedChildOwnerMarks
         owner = holder;
         property = propertyElement.Name;
         return true;
+    }
+
+    /// <summary>
+    /// Wraps <paramref name="canCarryMark"/> so that it is asked once per element, and so that an element it throws
+    /// for counts as one that can carry the mark.
+    /// </summary>
+    /// <remarks>
+    /// Every dropped element of a collection asks about the same owner, and for an element of a project type the
+    /// answer takes a look-up of the type. A look-up that fails, such as one for a type whose assembly cannot be
+    /// loaded, is no reason to fail the document: the element is marked as it is when nothing is known about it, and
+    /// <see cref="Load{T}"/> is the safety net.
+    /// </remarks>
+    private static Func<XElement, bool> AskOncePerElement(Func<XElement, bool> canCarryMark)
+    {
+        var answers = new Dictionary<XElement, bool>();
+        return element =>
+        {
+            // An earlier dropped element of the same owner asked already.
+            if (answers.TryGetValue(element, out bool answer))
+            {
+                return answer;
+            }
+
+            try
+            {
+                answer = canCarryMark(element);
+            }
+            catch (Exception ex)
+            {
+                // Nothing is known about the element, so it is marked.
+                WinUIDesignerLogger.LogTrace("Surface", $"Child indices: whether <{element.Name.LocalName}> can carry the mark could not be told, so it is marked: {ex.Message}");
+                answer = true;
+            }
+
+            answers.Add(element, answer);
+            return answer;
+        };
     }
 
     private static bool IsPropertyElement(XElement element) => element.Name.LocalName.IndexOf('.') >= 0;
