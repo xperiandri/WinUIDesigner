@@ -334,6 +334,34 @@ public sealed class ResourceEntryQuarantineTests
     }
 
     [TestMethod]
+    public void StyleWithoutAKeyIsLeftOutOfTheCopiesWhosePrefixesWereRenamed()
+    {
+        // The page binds "local" to its own namespace, so the copies of the dictionary get the prefix renamed
+        // (local_1, local_2) and spell the target type of the same style differently. A key as written would take
+        // them for two styles, leave one out per read and spend the limit on one resource.
+        var cache = new ShadowCache();
+        cache.Add(_ErrorStyles, $"""
+            <ResourceDictionary xmlns:_0="using:XSurfUwp" xmlns="{XamlNamespaces.Presentation}" xmlns:x="{XamlNamespaces.XamlLanguage}" xmlns:local="using:Library.Controls">
+              <Style TargetType="local:Card" BasedOn="{Reference("MissingStyle")}" />
+              <Style x:Key="Kept" TargetType="local:Card" />
+            </ResourceDictionary>
+            """);
+        XElement page = Page($"<ResourceDictionary.MergedDictionaries>{Merge(_ErrorStyles)}{Merge(_ErrorStyles)}</ResourceDictionary.MergedDictionaries>");
+        page.SetAttributeValue(XNamespace.Xmlns + "local", "using:My.App");
+        cache.Expander.Expand(page, _PageUri, "document 10");
+        string?[] targets = [.. page.Descendants(_P + "Style").Where(style => KeyOf(style) is null).Select(style => (string?)style.Attribute("TargetType"))];
+        CollectionAssert.AreEqual(new[] { "local_1:Card", "local_2:Card" }, targets, "The copies must spell the target type differently for this test to mean anything.");
+
+        Outcome outcome = LoadUntilItReads(page, CreateQuarantine(cache));
+
+        Assert.HasCount(1, outcome.Removed);
+        Assert.AreEqual(2, outcome.Reads);
+        Assert.AreEqual(2, outcome.Removed[0].Copies);
+        Assert.AreEqual("TargetType=local_1:Card", outcome.Removed[0].Key);
+        CollectionAssert.AreEqual(new[] { "Kept", "Kept" }, AllKeysOf(page, null).ToArray());
+    }
+
+    [TestMethod]
     public void ExpansionRemembersWhereEachCopyCameFromAlsoWhenItIsServedFromTheCache()
     {
         // Annotations do not survive the duplication of a template; the side table does.

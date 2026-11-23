@@ -149,6 +149,7 @@ internal sealed class ResourceEntryQuarantine(
         // The same resource in every copy of that dictionary in the text, found by its place in the copy.
         int[] path = GetPath(entry, copy);
         string? key = GetKey(entry);
+        string? identity = GetIdentity(entry);
         var doomed = new List<XElement> { entry };
         foreach (KeyValuePair<XElement, ResourceCopyOrigin> other in origins.FindCopies(root))
         {
@@ -157,7 +158,7 @@ internal sealed class ResourceEntryQuarantine(
                 && string.Equals(other.Value.Path, origin.Path, StringComparison.OrdinalIgnoreCase)
                 && Follow(other.Key, path) is { } sibling
                 && sibling.Name == entry.Name
-                && string.Equals(GetKey(sibling), key, StringComparison.Ordinal))
+                && string.Equals(GetIdentity(sibling), identity, StringComparison.Ordinal))
             {
                 doomed.Add(sibling);
             }
@@ -269,10 +270,34 @@ internal sealed class ResourceEntryQuarantine(
 
     private bool IsDictionaryElement(XName name) => name.LocalName == "ResourceDictionary" || isDictionary(name);
 
+    // How a message names the resource: a style without a key is the style of its target type, as written in that copy.
     private static string? GetKey(XElement entry)
     {
-        // A style without a key is the style of its target type.
         return (string?)entry.Attribute(_Key) ?? (entry.Attribute(_TargetType) is { } target ? $"TargetType={target.Value}" : null);
+    }
+
+    // What tells the resource apart from the others of its dictionary, in every copy of it: the key, or the target type
+    // with its prefix resolved, because a copy whose prefixes were renamed to fit the document (local becomes local_1)
+    // writes the same target type with another prefix.
+    private static string? GetIdentity(XElement entry)
+    {
+        if ((string?)entry.Attribute(_Key) is { } key)
+        {
+            return key;
+        }
+
+        return entry.Attribute(_TargetType) is { } target ? $"TargetType={ResolveTypeName(entry, target.Value)}" : null;
+    }
+
+    // The type name of an attribute value, with its prefix replaced by the namespace it stands for at the element:
+    // "{using:Library}Card". A name without a prefix is in the default namespace, and a prefix that nothing declares
+    // stays as written.
+    private static string ResolveTypeName(XElement scope, string typeName)
+    {
+        string name = typeName.Trim();
+        int colon = name.IndexOf(':');
+        XNamespace? resolved = colon <= 0 ? scope.GetDefaultNamespace() : scope.GetNamespaceOfPrefix(name[..colon]);
+        return resolved is null ? name : $"{{{resolved.NamespaceName}}}{(colon <= 0 ? name : name[(colon + 1)..])}";
     }
 
     private static int[] GetPath(XElement entry, XElement copy)
