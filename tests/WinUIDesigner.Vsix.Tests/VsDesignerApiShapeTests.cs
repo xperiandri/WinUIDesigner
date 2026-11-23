@@ -57,6 +57,7 @@ public sealed class VsDesignerApiShapeTests
     private const string _ResolveItemDetails = "Microsoft.VisualStudio.DesignTools.Utility.ResolveItemDetails";
     private const string _DesignerInstanceBuilder = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.DesignerInstanceBuilder";
     private const string _DesignTimePropertiesHelper = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Metadata.DesignTimePropertiesHelper";
+    private const string _TargetTypeCleanerHandler = "Microsoft.VisualStudio.DesignTools.XamlSurfaceDesigner.Documents.XamlModify.TargetTypeCleanerHandler";
 
     private static readonly Lazy<DesignerAssemblies> _Assemblies = new(DesignerAssemblies.Load);
 
@@ -657,6 +658,28 @@ public sealed class VsDesignerApiShapeTests
     }
 
     [TestMethod]
+    public void MarkupProviderPreparesADocumentOnlyOnce()
+    {
+        // The reason a library is registered only when its project knows its types: a document that has been prepared
+        // keeps its copy, and a second request to prepare it returns at once.
+        MethodDefinition method = RequireMethod(_SurfaceProcessMarkupProvider, "PrepareForLoading", "SurfaceProcessDocument");
+
+        Assert.IsTrue(Calls(method, "get_ConstructionState"), $"{Describe(method)} no longer looks at the construction state of the document.");
+        Assert.IsTrue(Calls(method, "set_ConstructionState"), $"{Describe(method)} no longer marks the document as being prepared.");
+    }
+
+    [TestMethod]
+    public void CleanerRemovesAStyleWhoseTargetTypeItCannotResolve()
+    {
+        // The reason a copy that is prepared before the types of the project are known lacks the styles of those types,
+        // which the surface compares with the copy of the file that the build laid out.
+        MethodDefinition method = RequireMethod(_TargetTypeCleanerHandler, "HandleTargetsUnknownType", "IXmlCleaner");
+
+        Assert.IsTrue(Calls(method, "ParseTypeValue"), $"{Describe(method)} no longer reads the target type.");
+        Assert.IsTrue(UsesMember(method, "Remove"), $"{Describe(method)} no longer removes the tag of a style whose target type is unknown.");
+    }
+
+    [TestMethod]
     public void HostProjectFindsTheApplicationAndTheItemsOfAProject()
     {
         MethodDefinition application = RequireMethod(_HostProject, "FindApplicationProject");
@@ -675,6 +698,17 @@ public sealed class VsDesignerApiShapeTests
     private static bool Calls(MethodDefinition method, string methodName)
     {
         return method.HasBody && method.Body.Instructions.Any(instruction => instruction.Operand is MethodReference called && called.Name == methodName);
+    }
+
+    private static bool UsesMember(MethodDefinition method, string memberName)
+    {
+        // A static member that is a property is read through its getter, and one that is a field is loaded.
+        return method.HasBody && method.Body.Instructions.Any(instruction => instruction.Operand switch
+        {
+            MethodReference called => called.Name == $"get_{memberName}",
+            FieldReference field => field.Name == memberName,
+            _ => false,
+        });
     }
 
     private static bool CallsOn(MethodDefinition method, string typeName, string methodName)
