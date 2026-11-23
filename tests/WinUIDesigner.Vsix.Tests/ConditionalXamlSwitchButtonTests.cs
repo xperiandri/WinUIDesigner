@@ -13,6 +13,12 @@ using WinUIDesigner.Platform;
 [TestClass]
 public sealed class ConditionalXamlSwitchButtonTests
 {
+    // The rows name the key action by the name of its member: a public test method cannot take the internal
+    // enumeration itself, and nameof turns a renamed member into a compile error instead of a failing row.
+    private const string _Open = nameof(ConditionalXamlSwitchButton.KeyAction.Open);
+    private const string _Close = nameof(ConditionalXamlSwitchButton.KeyAction.Close);
+    private const string _None = nameof(ConditionalXamlSwitchButton.KeyAction.None);
+
     [STATestMethod]
     public void TheButtonTakesTheColumnAfterTheLastOccupiedOneOfTheDeviceToolbar()
     {
@@ -71,15 +77,15 @@ public sealed class ConditionalXamlSwitchButtonTests
     }
 
     [TestMethod]
-    [DataRow(Key.Down, false, "Open")]
-    [DataRow(Key.F4, false, "Open")]
-    [DataRow(Key.Down, true, "None")]
-    [DataRow(Key.F4, true, "None")]
-    [DataRow(Key.Escape, true, "Close")]
-    [DataRow(Key.Escape, false, "None")]
-    [DataRow(Key.Up, false, "None")]
-    [DataRow(Key.Tab, true, "None")]
-    [DataRow(Key.Space, false, "None")]
+    [DataRow(Key.Down, false, _Open)]
+    [DataRow(Key.F4, false, _Open)]
+    [DataRow(Key.Down, true, _None)]
+    [DataRow(Key.F4, true, _None)]
+    [DataRow(Key.Escape, true, _Close)]
+    [DataRow(Key.Escape, false, _None)]
+    [DataRow(Key.Up, false, _None)]
+    [DataRow(Key.Tab, true, _None)]
+    [DataRow(Key.Space, false, _None)]
     public void KeysOpenAndCloseTheListFromTheButton(Key key, bool isOpen, string expected)
     {
         // Escape has to close an open list from the button as well: when no control of the list can take the focus,
