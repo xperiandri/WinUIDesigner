@@ -43,6 +43,18 @@ public sealed class VsDesignerApiShapeTests
     private const string _DocumentNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentNode";
     private const string _DocumentCompositeNode = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.DocumentCompositeNode";
     private const string _MarkupUtility = "Microsoft.VisualStudio.DesignTools.Markup.MarkupUtility";
+    private const string _UwpUriResolver = "Microsoft.VisualStudio.DesignTools.Xaml.LanguageService.UwpUriResolver";
+    private const string _ProjectContextBase = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.Project.ProjectContextBase";
+    private const string _ProjectContextManager = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.Project.ProjectContextManager";
+    private const string _DesignerContext = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.IDesignerContext";
+    private const string _ModernDocumentRootResolver = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.IModernDocumentRootResolver";
+    private const string _DocumentContext = "Microsoft.VisualStudio.DesignTools.Markup.DocumentModel.IDocumentContext";
+    private const string _HostProject = "Microsoft.VisualStudio.DesignTools.DesignerContract.IHostProject";
+    private const string _HostProjectInfo = "Microsoft.VisualStudio.DesignTools.DesignerContract.IHostProjectInfo";
+    private const string _HostProjectBaseExtensions = "Microsoft.VisualStudio.DesignTools.DesignerContract.HostProjectBaseExtensions";
+    private const string _ProjectMetadata = "Microsoft.VisualStudio.DesignTools.Markup.Metadata.IProjectMetadata";
+    private const string _MetadataAssembly = "Microsoft.VisualStudio.DesignTools.Markup.Metadata.IAssembly";
+    private const string _ResolveItemDetails = "Microsoft.VisualStudio.DesignTools.Utility.ResolveItemDetails";
     private const string _DesignerInstanceBuilder = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Documents.SurfaceIsolation.DesignerInstanceBuilder";
     private const string _DesignTimePropertiesHelper = "Microsoft.VisualStudio.DesignTools.SurfaceDesigner.Metadata.DesignTimePropertiesHelper";
 
@@ -521,6 +533,130 @@ public sealed class VsDesignerApiShapeTests
         Assert.IsFalse(Calls(initializer, "get_ResourceDictionarySourceProperty"), $"{_DesignTimePropertiesHelper} maps the dictionary source to a runtime property now.");
     }
 
+    // The extension prepares the dictionary of a project that the application references only through another
+    // project, which Visual Studio does not find. The tests below pin what that relies on: where Visual Studio looks
+    // and what it answers when it finds nothing, how a related document is opened and registered, and the members
+    // that the extension uses to look further.
+
+    [TestMethod]
+    public void MarkupProviderLetsDerivedClassesResolveRelatedDocuments()
+    {
+        // Looked up from the class the extension derives from: the declaration nearest to it is the one it overrides.
+        MethodDefinition method = RequireMethod(_UwpSurfaceProcessMarkupProvider, "RegisterRelatedDocument", "String", "IDocumentContext", "Boolean");
+
+        AssertOverridable(method);
+        Assert.AreEqual("SurfaceProcessDocumentResult", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+    }
+
+    [TestMethod]
+    public void MarkupProviderLetsDerivedClassesRegisterADocument()
+    {
+        MethodDefinition method = RequireMethod(_UwpSurfaceProcessMarkupProvider, "RegisterDocumentInternal", "IMarkupDocument", "Boolean");
+
+        Assert.IsFalse(method.IsStatic, $"Expected an instance method: {Describe(method)}");
+        Assert.IsTrue(IsVisibleToDerivedClasses(method), $"Expected a public or protected method: {Describe(method)}");
+        Assert.AreEqual("SurfaceProcessDocument", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+    }
+
+    [TestMethod]
+    public void UwpUriResolverLooksOnlyAmongTheApplicationsReferencedProjects()
+    {
+        // The reason a library that the application reaches through another library is not found.
+        MethodDefinition method = RequireMethod(_UwpUriResolver, "FindTargetProject", "IHostProject", "String");
+
+        Assert.IsTrue(Calls(method, "get_ReferencedProjects"), $"{Describe(method)} no longer looks at the referenced projects.");
+        Assert.IsTrue(Calls(method, "FindApplicationProject"), $"{Describe(method)} no longer starts from the application of a library.");
+    }
+
+    [TestMethod]
+    public void UnknownAssemblyIsAnsweredAsAReferencedAssembly()
+    {
+        // What the extension acts on: the answer for a source whose assembly is no project that the application references.
+        MethodDefinition method = RequireMethod(_UwpUriResolver, "FindTargetProject", "IHostProject", "String");
+        TypeDefinition details = RequireType(_ResolveItemDetails);
+        FieldDefinition referencedAssembly = details.Fields.Single(field => field.Name == "ReferencedAssembly");
+
+        Assert.IsTrue(LoadsInteger(method, Convert.ToInt32(referencedAssembly.Constant)), $"{Describe(method)} no longer answers ResolveItemDetails.ReferencedAssembly.");
+    }
+
+    [TestMethod]
+    public void ConstructionActionsPassASourceOfAnUnreferencedAssemblyAsWritten()
+    {
+        // With no document and the reason ReferencedAssembly, the source goes on as the user wrote it.
+        MethodDefinition method = RequireMethod(_DesignerInstanceBuilderUtility, "TryGetAndValidateResourceDictionaryForSource", "DesignerInstanceBuilderContext", "DocumentNode", "ISurfaceProcessDocument&");
+        TypeDefinition details = RequireType(_ResolveItemDetails);
+        FieldDefinition referencedAssembly = details.Fields.Single(field => field.Name == "ReferencedAssembly");
+
+        Assert.IsTrue(Calls(method, "get_MissingReason"), $"{Describe(method)} no longer looks at why the dictionary was not found.");
+        Assert.IsTrue(LoadsInteger(method, Convert.ToInt32(referencedAssembly.Constant)), $"{Describe(method)} no longer compares the reason with ResolveItemDetails.ReferencedAssembly.");
+    }
+
+    [TestMethod]
+    public void DocumentContextOpensADocumentOfAnyProject()
+    {
+        // ownerDocument.GetDocumentRoot(item): the way Visual Studio opens the related documents it found.
+        MethodDefinition method = RequireMethod(_ModernDocumentRootResolver, "GetDocumentRoot", "IDocumentLocator");
+
+        Assert.AreEqual("IDocumentRoot", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+        Assert.Contains(
+            implemented => implemented.InterfaceType.Name == "IModernDocumentRootResolver",
+            RequireType(_DocumentContext).Interfaces,
+            $"{_DocumentContext} must be a resolver of document roots."
+        );
+    }
+
+    [TestMethod]
+    public void ProjectContextOpensADocumentOfAnotherProjectThroughTheContextOfThatProject()
+    {
+        MethodDefinition open = RequireMethod(_ProjectContextBase, "OpenDocument", "IDocumentLocator", "Boolean");
+        MethodDefinition root = RequireMethod(_ProjectContextBase, "GetDocumentRoot", "IDocumentLocator");
+
+        Assert.IsTrue(Calls(open, "TryGetExternalProjectContext"), $"{Describe(open)} no longer hands the document to the context of its own project.");
+        Assert.IsTrue(Calls(root, "OpenDocument"), $"{Describe(root)} no longer opens the document.");
+    }
+
+    [TestMethod]
+    public void ProjectContextManagerFindsAnExistingContextByTheGuidOfItsProject()
+    {
+        // create: false, so that asking whether a project knows its types creates nothing.
+        MethodDefinition method = RequireMethod(_ProjectContextManager, "GetProjectContext", "Guid", "Boolean");
+
+        Assert.AreEqual("IProjectContext", method.ReturnType.Name, $"Unexpected return type: {Describe(method)}");
+        Assert.IsTrue(method.IsPublic && !method.IsStatic, $"Expected a public instance method: {Describe(method)}");
+    }
+
+    [TestMethod]
+    [DataRow(_ProjectContextBase, "HostProject", "IHostDesignerProject")]
+    [DataRow(_ProjectContextBase, "DesignerContext", "IDesignerContext")]
+    [DataRow(_DesignerContext, "ProjectContextManager", "ProjectContextManager")]
+    [DataRow(_DocumentContext, "Project", "IProject")]
+    [DataRow(_HostProject, "ReferencedProjects", "IEnumerable`1")]
+    [DataRow(_HostProjectInfo, "TargetAssemblyName", "String")]
+    [DataRow(_HostProjectInfo, "ProjectName", "String")]
+    [DataRow(_HostProjectInfo, "ProjectGuid", "Guid")]
+    [DataRow(_HostProjectInfo, "IsExecutable", "Boolean")]
+    [DataRow(_ProjectMetadata, "IsReady", "Boolean")]
+    [DataRow(_ProjectMetadata, "ProjectAssembly", "IAssembly")]
+    [DataRow(_MetadataAssembly, "IsLoaded", "Boolean")]
+    public void ProjectsCanBeWalkedAndAskedWhetherTheyKnowTheirTypes(string typeName, string propertyName, string propertyType)
+    {
+        PropertyDefinition property = RequireProperty(typeName, propertyName);
+
+        Assert.AreEqual(propertyType, property.PropertyType.Name, $"Unexpected type of {typeName}.{propertyName}.");
+        Assert.IsNotNull(property.GetMethod, $"{typeName}.{propertyName} needs a getter.");
+    }
+
+    [TestMethod]
+    public void HostProjectFindsTheApplicationAndTheItemsOfAProject()
+    {
+        MethodDefinition application = RequireMethod(_HostProject, "FindApplicationProject");
+        MethodDefinition item = RequireMethod(_HostProjectBaseExtensions, "FindItemByProjectRelativePath", "IHostProject", "String");
+
+        Assert.AreEqual("IHostProject", application.ReturnType.Name, $"Unexpected return type: {Describe(application)}");
+        Assert.AreEqual("IHostSourceItem", item.ReturnType.Name, $"Unexpected return type: {Describe(item)}");
+        Assert.IsTrue(item.IsStatic, $"Expected an extension method: {Describe(item)}");
+    }
+
     private static bool LoadsString(MethodDefinition method, string value)
     {
         return method.HasBody && method.Body.Instructions.Any(instruction => instruction.OpCode == OpCodes.Ldstr && (string)instruction.Operand == value);
@@ -534,6 +670,25 @@ public sealed class VsDesignerApiShapeTests
     private static bool CallsOn(MethodDefinition method, string typeName, string methodName)
     {
         return method.HasBody && method.Body.Instructions.Any(instruction => instruction.Operand is MethodReference called && called.Name == methodName && called.DeclaringType.FullName == typeName);
+    }
+
+    private static bool LoadsInteger(MethodDefinition method, int value)
+    {
+        return method.HasBody && method.Body.Instructions.Any(instruction => instruction.OpCode.Code switch
+        {
+            Code.Ldc_I4_0 => value == 0,
+            Code.Ldc_I4_1 => value == 1,
+            Code.Ldc_I4_2 => value == 2,
+            Code.Ldc_I4_3 => value == 3,
+            Code.Ldc_I4_4 => value == 4,
+            Code.Ldc_I4_5 => value == 5,
+            Code.Ldc_I4_6 => value == 6,
+            Code.Ldc_I4_7 => value == 7,
+            Code.Ldc_I4_8 => value == 8,
+            Code.Ldc_I4_S => Convert.ToInt32(instruction.Operand) == value,
+            Code.Ldc_I4 => Convert.ToInt32(instruction.Operand) == value,
+            _ => false,
+        });
     }
 
     private static TypeDefinition RequireType(string fullName)
