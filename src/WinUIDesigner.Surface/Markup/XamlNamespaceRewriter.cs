@@ -535,7 +535,8 @@ internal static class XamlNamespaceRewriter
         /// <para>
         /// The position counts the items that precede the element in the document as written, dropped ones included,
         /// which is how the model counts them. Text content would be counted as items of some collections as well,
-        /// so a parent with text is left out: its positions could not be told reliably.
+        /// so a parent with text other than white space is left out: its positions could not be told reliably. White
+        /// space between elements is no text: every indented document has it between the children of a panel.
         /// </para>
         /// </remarks>
         private void RecordDroppedChild(Frame parent, XElement element, Binding? binding)

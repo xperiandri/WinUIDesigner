@@ -267,6 +267,22 @@ public sealed class XamlDroppedChildrenTests
     }
 
     [TestMethod]
+    public void WhiteSpaceBetweenElementsIsNoText()
+    {
+        // The inlines of a TextBlock written on separate lines: the white space between them does not leave the
+        // collection out, the elements are counted as they are.
+        string xaml = $"""
+            <TextBlock {_Namespaces}>
+              <Run Text="a" />
+              <c99:Run Text="b" />
+              <Run Text="c" />
+            </TextBlock>
+            """;
+
+        CollectionAssert.AreEqual(new[] { "TextBlock#1" }, Describe(Rewrite(xaml, out _)));
+    }
+
+    [TestMethod]
     public void APrefixDeclaredOnTheDroppedElementItselfIsUsed()
     {
         string xaml = $"""
