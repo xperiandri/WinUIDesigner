@@ -206,6 +206,13 @@ internal static class XamlRuntimeUtilities
             return;
         }
 
+        // The name of an object that has no writable Name (VisualStateGroup, VisualState): the XAML parser registers it in
+        // the name scope, and a static preview has no use for it.
+        if (fullPropertyName.StartsWith("Name:", StringComparison.Ordinal))
+        {
+            return;
+        }
+
         int propertySeparator = fullPropertyName.IndexOf(':');
         throw new MissingMemberException(target.GetType().FullName, propertySeparator < 0 ? fullPropertyName : fullPropertyName[..propertySeparator]);
     }
