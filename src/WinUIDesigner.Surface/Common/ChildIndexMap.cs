@@ -128,11 +128,6 @@ internal sealed class ChildIndexMap
     }
 
     /// <summary>
-    /// Gets the number of holes.
-    /// </summary>
-    public int HoleCount => _holes.Count;
-
-    /// <summary>
     /// Gets the model positions of the holes in ascending order.
     /// </summary>
     public IReadOnlyList<int> Holes => _holes;
