@@ -717,10 +717,19 @@ internal sealed class ConditionalXamlSwitches : IDisposable
     private void OnButtonPreviewKeyDown(object sender, KeyEventArgs e)
     {
         Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (ConditionalXamlSwitchButton.GetKeyAction(key, isOpen: _button.IsChecked == true) == ConditionalXamlSwitchButton.KeyAction.Open)
+        switch (ConditionalXamlSwitchButton.GetKeyAction(key, isOpen: _button.IsChecked == true))
         {
-            e.Handled = true;
-            Guard("opening the conditions", () => _button.IsChecked = true);
+            case ConditionalXamlSwitchButton.KeyAction.Open:
+                e.Handled = true;
+                Guard("opening the conditions", () => _button.IsChecked = true);
+                break;
+
+            // No control of the list could take the focus, so Escape came to the button; Visual Studio's toolbar
+            // would take the focus away and leave the list open.
+            case ConditionalXamlSwitchButton.KeyAction.Close:
+                e.Handled = true;
+                Guard("closing the conditions", ClosePopup);
+                break;
         }
     }
 

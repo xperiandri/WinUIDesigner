@@ -28,6 +28,11 @@ internal static class ConditionalXamlSwitchButton
         /// The key opens the list.
         /// </summary>
         Open,
+
+        /// <summary>
+        /// The key closes the list.
+        /// </summary>
+        Close,
     }
 
     /// <summary>
@@ -59,9 +64,13 @@ internal static class ConditionalXamlSwitchButton
     /// </summary>
     /// <param name="key">The key; the key of an Alt combination, such as Alt+Down, not <see cref="Key.System"/>.</param>
     /// <param name="isOpen">Whether the list is open.</param>
-    public static KeyAction GetKeyAction(Key key, bool isOpen)
+    public static KeyAction GetKeyAction(Key key, bool isOpen) => (key, isOpen) switch
     {
         // Down and F4 open the list, as they open the list of a combo box.
-        return key is Key.Down or Key.F4 && !isOpen ? KeyAction.Open : KeyAction.None;
-    }
+        (Key.Down or Key.F4, false) => KeyAction.Open,
+
+        // The focus stays on the button when no control of the list can take it, so Escape reaches the button, not the list.
+        (Key.Escape, true) => KeyAction.Close,
+        _ => KeyAction.None,
+    };
 }

@@ -75,12 +75,15 @@ public sealed class ConditionalXamlSwitchButtonTests
     [DataRow(Key.F4, false, "Open")]
     [DataRow(Key.Down, true, "None")]
     [DataRow(Key.F4, true, "None")]
+    [DataRow(Key.Escape, true, "Close")]
     [DataRow(Key.Escape, false, "None")]
     [DataRow(Key.Up, false, "None")]
     [DataRow(Key.Tab, true, "None")]
     [DataRow(Key.Space, false, "None")]
-    public void KeysOpenTheListFromTheButton(Key key, bool isOpen, string expected)
+    public void KeysOpenAndCloseTheListFromTheButton(Key key, bool isOpen, string expected)
     {
+        // Escape has to close an open list from the button as well: when no control of the list can take the focus,
+        // the key reaches the button, and Visual Studio's toolbar would move the focus away and leave the list open.
         Assert.AreEqual(expected, ConditionalXamlSwitchButton.GetKeyAction(key, isOpen).ToString());
     }
 
