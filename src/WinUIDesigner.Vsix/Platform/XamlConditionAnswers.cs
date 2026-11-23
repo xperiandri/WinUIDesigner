@@ -231,7 +231,13 @@ internal sealed class XamlConditionAnswers
                 bool noticeFirst = untilNotice > TimeSpan.Zero && untilNotice < remaining;
 
                 // The wait goes on at the context of the caller, which is where the document is built next.
-                if (remaining > TimeSpan.Zero && await Task.WhenAny(request, Task.Delay(noticeFirst ? untilNotice : remaining)) == request)
+                using var timer = new CancellationTokenSource();
+                bool requestFinished = remaining > TimeSpan.Zero
+                    && await Task.WhenAny(request, Task.Delay(noticeFirst ? untilNotice : remaining, timer.Token)) == request;
+
+                // The timer of a wait that the request ended would otherwise run for up to the whole wait.
+                timer.Cancel();
+                if (requestFinished)
                 {
                     continue;
                 }
