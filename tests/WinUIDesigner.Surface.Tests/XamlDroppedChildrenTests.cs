@@ -14,16 +14,12 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class XamlDroppedChildrenTests
 {
-    private const string _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private const string _XamlLanguage = "http://schemas.microsoft.com/winfx/2006/xaml";
-    private const string _MarkupCompatibility = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-    private const string _Contract = "Windows.Foundation.UniversalApiContract";
     private const string _Namespaces =
-        $"xmlns=\"{_Presentation}\" xmlns:x=\"{_XamlLanguage}\" xmlns:mc=\"{_MarkupCompatibility}\" " +
-        $"xmlns:c7=\"{_Presentation}?IsApiContractPresent({_Contract},7)\" " +
-        $"xmlns:c7n=\"{_Presentation}?IsApiContractNotPresent({_Contract},7)\" " +
-        $"xmlns:c99=\"{_Presentation}?IsApiContractPresent({_Contract},99)\" " +
-        $"xmlns:c99n=\"{_Presentation}?IsApiContractNotPresent({_Contract},99)\"";
+        $"xmlns=\"{XamlNamespaces.Presentation}\" xmlns:x=\"{XamlNamespaces.XamlLanguage}\" xmlns:mc=\"{XamlNamespaces.MarkupCompatibility}\" " +
+        $"xmlns:c7=\"{TestXamlNamespaces.Conditional}\" " +
+        $"xmlns:c7n=\"{TestXamlNamespaces.ConditionalNotPresent}\" " +
+        $"xmlns:c99=\"{TestXamlNamespaces.ConditionalFuture}\" " +
+        $"xmlns:c99n=\"{TestXamlNamespaces.ConditionalFutureNotPresent}\"";
 
     [TestMethod]
     public void EveryCollectionOfTheSamplePageReportsItsDroppedElements()
@@ -84,7 +80,8 @@ public sealed class XamlDroppedChildrenTests
                 "Grid/Grid.ColumnDefinitions#1",
                 "ListView#1",
             },
-            Describe(result));
+            Describe(result)
+        );
         Assert.AreEqual(7, result.DroppedElements);
     }
 
@@ -200,7 +197,7 @@ public sealed class XamlDroppedChildrenTests
     {
         // Visual Studio's document model has no node for an element under an ignorable Uno namespace.
         string xaml = $"""
-            <StackPanel {_Namespaces} xmlns:not_win="http://uno.ui/not_win" xmlns:skia="http://uno.ui/skia" mc:Ignorable="not_win skia">
+            <StackPanel {_Namespaces} xmlns:not_win="{TestXamlNamespaces.NotWin}" xmlns:skia="{TestXamlNamespaces.Skia}" mc:Ignorable="not_win skia">
               <not_win:Border><TextBlock /></not_win:Border>
               <c99:TextBlock />
               <TextBlock />
@@ -225,7 +222,7 @@ public sealed class XamlDroppedChildrenTests
     {
         // Without mc:Ignorable the document model keeps the element as a node of an unknown type.
         string xaml = $"""
-            <Grid {_Namespaces} xmlns:skia="http://uno.ui/skia">
+            <Grid {_Namespaces} xmlns:skia="{TestXamlNamespaces.Skia}">
               <Grid.ColumnDefinitions>
                 <skia:ColumnDefinition />
                 <ColumnDefinition />
@@ -241,7 +238,7 @@ public sealed class XamlDroppedChildrenTests
     {
         // The XAML reader skips them, and the document model has no node for a namespace it does not understand.
         string xaml = $"""
-            <StackPanel {_Namespaces} xmlns:d="http://schemas.microsoft.com/expression/blend/2008" mc:Ignorable="d">
+            <StackPanel {_Namespaces} xmlns:d="{XamlNamespaces.BlendDesign}" mc:Ignorable="d">
               <d:DesignOnly />
               <c99:TextBlock />
             </StackPanel>
@@ -286,9 +283,9 @@ public sealed class XamlDroppedChildrenTests
     public void APrefixDeclaredOnTheDroppedElementItselfIsUsed()
     {
         string xaml = $"""
-            <StackPanel xmlns="{_Presentation}">
+            <StackPanel xmlns="{XamlNamespaces.Presentation}">
               <TextBlock />
-              <c:TextBlock xmlns:c="{_Presentation}?IsApiContractPresent({_Contract},99)" />
+              <c:TextBlock xmlns:c="{TestXamlNamespaces.ConditionalFuture}" />
               <TextBlock />
             </StackPanel>
             """;
@@ -321,16 +318,17 @@ public sealed class XamlDroppedChildrenTests
         XElement grid = document.Root!.Elements().Single(element => element.Name.LocalName == "Grid");
         CollectionAssert.AreEqual(
             new[] { "Grid/Grid.ColumnDefinitions=0,2 mark 0", "Grid=0 mark 0", "StackPanel=1 mark 1" },
-            collections.Select(collection => $"{collection.Owner.Name.LocalName}{(collection.Property is null ? string.Empty : "/" + collection.Property.LocalName)}={string.Join(",", collection.Holes)} mark {collection.Mark}")
+            collections.Select(collection => $"{DescribeCollection(collection)} mark {collection.Mark}")
                 .OrderBy(text => text, StringComparer.Ordinal)
-                .ToArray());
+                .ToArray()
+        );
         Assert.AreEqual("0", (string?)grid.Attribute(DroppedChildOwnerMarks.MarkName));
         Assert.AreEqual("1", (string?)document.Root!.Attribute(DroppedChildOwnerMarks.MarkName));
 
         // The reader sees the mark as the attached property DT.DroppedChildOwner of the surface types.
         string marked = document.ToString(SaveOptions.DisableFormatting);
-        StringAssert.Contains(marked, "=\"using:XSurfUwp\"");
-        StringAssert.Contains(marked, ":DT.DroppedChildOwner=\"1\"");
+        Assert.Contains("=\"using:XSurfUwp\"", marked);
+        Assert.Contains(":DT.DroppedChildOwner=\"1\"", marked);
     }
 
     [TestMethod]
@@ -358,9 +356,9 @@ public sealed class XamlDroppedChildrenTests
         List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(dictionary, result.DroppedChildren);
 
         CollectionAssert.AreEqual(new[] { "StackPanel#0", "ResourceDictionary/ResourceDictionary.MergedDictionaries#0" }, Describe(result), "The rewrite reports template content too.");
-        Assert.AreEqual(1, collections.Count, "Only the merged dictionaries are created when the dictionary is loaded.");
+        Assert.HasCount(1, collections, "Only the merged dictionaries are created when the dictionary is loaded.");
         Assert.AreSame(dictionary, collections[0].Owner);
-        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "StackPanel" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null));
+        Assert.DoesNotContain(element => element.Name.LocalName == "StackPanel" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null, document.Descendants());
     }
 
     [TestMethod]
@@ -386,9 +384,11 @@ public sealed class XamlDroppedChildrenTests
         List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren, owner => owner.Name.LocalName != "TransitionCollection");
 
         CollectionAssert.AreEqual(new[] { "Grid/Grid.ChildrenTransitions=0,2", "StackPanel=1" }, DescribeCollections(collections));
-        Assert.IsFalse(
-            document.Descendants().Any(element => element.Name.LocalName == "TransitionCollection" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null),
-            "The collection element itself is not marked.");
+        Assert.DoesNotContain(
+            element => element.Name.LocalName == "TransitionCollection" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null,
+            document.Descendants(),
+            "The collection element itself is not marked."
+        );
         Assert.IsNotNull(document.Descendants().Single(element => element.Name.LocalName == "Grid").Attribute(DroppedChildOwnerMarks.MarkName));
     }
 
@@ -435,7 +435,7 @@ public sealed class XamlDroppedChildrenTests
         List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren, owner => owner.Name.LocalName != "Model");
 
         CollectionAssert.AreEqual(new[] { "Grid=0" }, DescribeCollections(collections));
-        Assert.IsFalse(document.Descendants().Any(element => element.Name.LocalName == "Model" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null));
+        Assert.DoesNotContain(element => element.Name.LocalName == "Model" && element.Attribute(DroppedChildOwnerMarks.MarkName) is not null, document.Descendants());
     }
 
     [TestMethod]
@@ -455,7 +455,7 @@ public sealed class XamlDroppedChildrenTests
         List<DroppedChildCollection> collections = DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren, _ => false);
 
         Assert.IsEmpty(collections);
-        Assert.IsFalse(document.Descendants().Any(element => element.Attribute(DroppedChildOwnerMarks.MarkName) is not null));
+        Assert.IsFalse(HasMarks(document));
     }
 
     [TestMethod]
@@ -475,7 +475,7 @@ public sealed class XamlDroppedChildrenTests
 
         DroppedChildOwnerMarks.Unmark(collections);
 
-        Assert.IsFalse(document.Descendants().Any(element => element.Attribute(DroppedChildOwnerMarks.MarkName) is not null));
+        Assert.IsFalse(HasMarks(document));
         Assert.AreEqual(unmarked, document.ToString(SaveOptions.DisableFormatting));
     }
 
@@ -502,7 +502,8 @@ public sealed class XamlDroppedChildrenTests
         string loaded = DroppedChildOwnerMarks.Load(
             collections,
             () => Load(document, ref loads, failOnMarks: true),
-            out Exception? marksFailure);
+            out Exception? marksFailure
+        );
 
         Assert.AreEqual(2, loads);
         Assert.AreEqual("The reader cannot set the mark.", marksFailure?.Message);
@@ -540,12 +541,12 @@ public sealed class XamlDroppedChildrenTests
     [TestMethod]
     public void ADocumentWithoutPolicyNamespacesReportsNothing()
     {
-        string xaml = $"""<StackPanel xmlns="{_Presentation}"><TextBlock /><TextBlock /></StackPanel>""";
+        string xaml = $"""<StackPanel xmlns="{XamlNamespaces.Presentation}"><TextBlock /><TextBlock /></StackPanel>""";
 
         XamlNamespaceRewriteResult result = Rewrite(xaml, out XDocument document);
 
-        Assert.AreEqual(0, result.DroppedChildren.Count);
-        Assert.AreEqual(0, DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren).Count);
+        Assert.IsEmpty(result.DroppedChildren);
+        Assert.IsEmpty(DroppedChildOwnerMarks.Mark(document.Root!, result.DroppedChildren));
     }
 
     /// <summary>
@@ -590,17 +591,20 @@ public sealed class XamlDroppedChildrenTests
         return document.Descendants().Any(element => element.Attribute(DroppedChildOwnerMarks.MarkName) is not null);
     }
 
-    private static string[] DescribeCollections(List<DroppedChildCollection> collections)
+    private static string DescribeCollection(DroppedChildCollection collection)
     {
-        return collections
-            .Select(collection => $"{collection.Owner.Name.LocalName}{(collection.Property is null ? string.Empty : $"/{collection.Property.LocalName}")}={string.Join(",", collection.Holes)}")
-            .ToArray();
+        return $"{collection.Owner.Name.LocalName}{PropertyName(collection.Property)}={string.Join(",", collection.Holes)}";
     }
+
+    private static string[] DescribeCollections(List<DroppedChildCollection> collections) => collections.Select(DescribeCollection).ToArray();
 
     private static string[] Describe(XamlNamespaceRewriteResult result)
     {
         return result.DroppedChildren
-            .Select(dropped => $"{dropped.Owner.Name.LocalName}{(dropped.Property is null ? string.Empty : "/" + dropped.Property.LocalName)}#{dropped.Index}")
+            .Select(dropped => FormattableString.Invariant($"{dropped.Owner.Name.LocalName}{PropertyName(dropped.Property)}#{dropped.Index}"))
             .ToArray();
     }
+
+    // The property element of a collection, as "/Type.Member", or nothing for the content of its owner.
+    private static string PropertyName(XName? property) => property is null ? string.Empty : $"/{property.LocalName}";
 }

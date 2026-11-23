@@ -28,19 +28,20 @@ public sealed class DroppedChildActionTests
 
         // What Visual Studio's BuildChildren sends for A, a dropped element, B, a dropped element, C.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            .. Item(-5, "A", 0),
-            .. StandIn(-7, 1),
-            .. Item(-9, "B", 2),
-            .. StandIn(-11, 3),
-            .. Item(-13, "C", 4),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. Item(-5, "A", 0),
+                .. StandIn(-7, 1),
+                .. Item(-9, "B", 2),
+                .. StandIn(-11, 3),
+                .. Item(-13, "C", 4),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "A", "B", "C" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 1, 3 }, replay.Holes(panel.Children));
-        Assert.IsTrue(replay.Tracked.Contains(panel.Children), "The collection becomes part of the document.");
+        Assert.Contains(panel.Children, replay.Tracked, "The collection becomes part of the document.");
     }
 
     [TestMethod]
@@ -54,12 +55,13 @@ public sealed class DroppedChildActionTests
 
         // The two elements typed after "Contract 99 is not present.": a dropped one at 5, a kept one at 6.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            .. StandIn(-5, 5),
-            .. Item(-7, "inserted", 6),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. StandIn(-5, 5),
+                .. Item(-7, "inserted", 6),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "heading", "c7", "c99n", "inserted", "border1", "border2", "newExperience", "button" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 2, 3, 5, 10 }, replay.Holes(panel.Children));
@@ -75,14 +77,15 @@ public sealed class DroppedChildActionTests
 
         // Model: a, dropped, b, dropped, c. The first dropped element is deleted, then b and c are looked up.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new RemoveChildAction(-3, 1),
-            new GetChildAction(-3, 1, -5),
-            new GetChildAction(-3, 2, -7),
-            new GetChildAction(-3, 3, -9),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new RemoveChildAction(-3, 1),
+                new GetChildAction(-3, 1, -5),
+                new GetChildAction(-3, 2, -7),
+                new GetChildAction(-3, 3, -9),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "a", "b", "c" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 2 }, replay.Holes(panel.Children));
@@ -100,11 +103,12 @@ public sealed class DroppedChildActionTests
         replay.Translator.Register(panel, [0, 1]);
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new RemoveChildAction(-3, 3),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new RemoveChildAction(-3, 3),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "a", "c" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 0, 1 }, replay.Holes(panel.Children));
@@ -120,23 +124,25 @@ public sealed class DroppedChildActionTests
 
         // The dropped element gets a prefix that holds: Visual Studio removes it and adds the new node at its index.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new RemoveChildAction(-3, 1),
-            .. Item(-5, "kept", 1),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new RemoveChildAction(-3, 1),
+                .. Item(-5, "kept", 1),
+            ]
+        );
         CollectionAssert.AreEqual(new[] { "a", "kept", "b" }, Names(panel.Children));
         CollectionAssert.AreEqual(Array.Empty<int>(), replay.Holes(panel.Children));
 
         // And back: the kept element gets a prefix that does not hold.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new RemoveChildAction(-3, 1),
-            .. StandIn(-5, 1),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new RemoveChildAction(-3, 1),
+                .. StandIn(-5, 1),
+            ]
+        );
         CollectionAssert.AreEqual(new[] { "a", "b" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 1 }, replay.Holes(panel.Children));
     }
@@ -153,13 +159,14 @@ public sealed class DroppedChildActionTests
 
         // Model: a, dropped, b, dropped, c. c moves to the front.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new RemoveChildAction(-3, 4),
-            new ConnectToLiveTreeAction(_PanelHandle + 1, -5, 0),
-            new AddChildAction(-3, 0, -5),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new RemoveChildAction(-3, 4),
+                new ConnectToLiveTreeAction(_PanelHandle + 1, -5, 0),
+                new AddChildAction(-3, 0, -5),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "c", "a", "b" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 2, 4 }, replay.Holes(panel.Children));
@@ -204,18 +211,20 @@ public sealed class DroppedChildActionTests
         replay.Translator.Register(panel, [1]);
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new RemoveChildAction(-3, 1),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new RemoveChildAction(-3, 1),
+            ]
+        );
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            .. StandIn(-5, 1),
-            .. Item(-7, "after", 3),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. StandIn(-5, 1),
+                .. Item(-7, "after", 3),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "a", "b", "after" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 1 }, replay.Holes(panel.Children));
@@ -231,14 +240,15 @@ public sealed class DroppedChildActionTests
 
         // Visual Studio rebuilds a collection property: it clears the collection and adds every child again.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new ClearCollectionPropertyAction(-1, _Children, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            .. Item(-5, "x", 0),
-            .. StandIn(-7, 1),
-            .. Item(-9, "y", 2),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new ClearCollectionPropertyAction(-1, _Children, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. Item(-5, "x", 0),
+                .. StandIn(-7, 1),
+                .. Item(-9, "y", 2),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "x", "y" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 1 }, replay.Holes(panel.Children));
@@ -254,23 +264,25 @@ public sealed class DroppedChildActionTests
         replay.Live[_PanelHandle] = setters;
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
-            .. Item(-5, "FontSize", 0),
-            .. StandIn(-7, 1),
-            .. Item(-9, "FontStyle", 2),
-            .. Item(-11, "Margin", 3),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
+                .. Item(-5, "FontSize", 0),
+                .. StandIn(-7, 1),
+                .. Item(-9, "FontStyle", 2),
+                .. Item(-11, "Margin", 3),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "FontSize", "FontStyle", "Margin" }, Names(setters));
         CollectionAssert.AreEqual(new[] { 1 }, replay.Holes(setters));
 
         // A setter typed between the dropped one and FontStyle.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
-            .. Item(-5, "Foreground", 2),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
+                .. Item(-5, "Foreground", 2),
+            ]
+        );
         CollectionAssert.AreEqual(new[] { "FontSize", "Foreground", "FontStyle", "Margin" }, Names(setters));
     }
 
@@ -284,11 +296,12 @@ public sealed class DroppedChildActionTests
         replay.Live[_PanelHandle] = setters;
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
-            .. Item(-5, "X", 1),
-            new RemoveChildAction(-3, 3),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
+                .. Item(-5, "X", 1),
+                new RemoveChildAction(-3, 3),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "A", "X", "B" }, Names(setters));
         Assert.IsEmpty(replay.Warnings);
@@ -304,12 +317,13 @@ public sealed class DroppedChildActionTests
         replay.Translator.Register(setters, [1]);
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
-            .. Item(-5, "X", 3),
-            new GetChildAction(-3, 3, -7),
-            new RemoveChildAction(-3, 3),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -3, 0),
+                .. Item(-5, "X", 3),
+                new GetChildAction(-3, 3, -7),
+                new RemoveChildAction(-3, 3),
+            ]
+        );
 
         Assert.AreEqual("X", (replay.Get(-7) as LiveItem)?.Name, "The lookup finds the setter that was waiting.");
         CollectionAssert.AreEqual(new[] { "A", "B" }, Names(setters));
@@ -325,17 +339,18 @@ public sealed class DroppedChildActionTests
         replay.Live[_PanelHandle] = panel;
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            .. StandIn(-5, 1),
-            new GetChildAction(-3, 1, -7),
-            new GetPropertyAction(-7, _Children, -9, 0),
-            new GetChildAction(-9, 0, -11),
-            new CreateInstanceAction(-13, "Item:late"),
-            new AddChildAction(-9, 0, -13),
-            new RemoveChildAction(-9, 0),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. StandIn(-5, 1),
+                new GetChildAction(-3, 1, -7),
+                new GetPropertyAction(-7, _Children, -9, 0),
+                new GetChildAction(-9, 0, -11),
+                new CreateInstanceAction(-13, "Item:late"),
+                new AddChildAction(-9, 0, -13),
+                new RemoveChildAction(-9, 0),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "a" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 1 }, replay.Holes(panel.Children));
@@ -362,15 +377,16 @@ public sealed class DroppedChildActionTests
 
         // The Color of the brush in the dropped dictionary changes.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new GetChildAction(-3, 0, -5),
-            new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
-            new GetDictionaryEntryAction(-5, -7, -9),
-            new CreateInstanceAction(-11, "Item:red"),
-            new SetPropertyAction(-9, "Color", -11, 0),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new GetChildAction(-3, 0, -5),
+                new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
+                new GetDictionaryEntryAction(-5, -7, -9),
+                new CreateInstanceAction(-11, "Item:red"),
+                new SetPropertyAction(-9, "Color", -11, 0),
+            ]
+        );
 
         Assert.IsInstanceOfType<DroppedElement>(replay.Get(-5), "The dropped dictionary is a stand-in.");
         Assert.IsInstanceOfType<DroppedElement>(replay.Get(-9), "An entry of a stand-in is the stand-in again.");
@@ -393,15 +409,16 @@ public sealed class DroppedChildActionTests
         // Renaming the key of the entry removes it and adds it again; replacing the brush updates the value. The value
         // handle -99 has no object: nothing may resolve the value of an entry of a stand-in.
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new GetChildAction(-3, 0, -5),
-            new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
-            new RemoveDictionaryEntryAction(-5, -7),
-            new AddDictionaryEntryAction(-5, -7, -99),
-            new UpdateDictionaryValueAction(-5, -7, -99),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new GetChildAction(-3, 0, -5),
+                new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
+                new RemoveDictionaryEntryAction(-5, -7),
+                new AddDictionaryEntryAction(-5, -7, -99),
+                new UpdateDictionaryValueAction(-5, -7, -99),
+            ]
+        );
 
         Assert.HasCount(1, kept.Entries);
         Assert.AreSame(keptBrush, kept.Entries["Accent"]);
@@ -419,17 +436,18 @@ public sealed class DroppedChildActionTests
         replay.Live[_PanelHandle + 2] = "Other";
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new ConnectToLiveTreeAction(_PanelHandle + 1, -3, 0),
-            new ConnectToLiveTreeAction(_PanelHandle + 2, -5, 0),
-            new GetDictionaryEntryAction(-1, -3, -7),
-            new CreateInstanceAction(-9, "Item:red"),
-            new SetPropertyAction(-7, "Color", -9, 0),
-            new AddDictionaryEntryAction(-1, -5, -9),
-            new NullReferenceAction(-11),
-            new UpdateDictionaryValueAction(-1, -3, -11),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new ConnectToLiveTreeAction(_PanelHandle + 1, -3, 0),
+                new ConnectToLiveTreeAction(_PanelHandle + 2, -5, 0),
+                new GetDictionaryEntryAction(-1, -3, -7),
+                new CreateInstanceAction(-9, "Item:red"),
+                new SetPropertyAction(-7, "Color", -9, 0),
+                new AddDictionaryEntryAction(-1, -5, -9),
+                new NullReferenceAction(-11),
+                new UpdateDictionaryValueAction(-1, -3, -11),
+            ]
+        );
 
         Assert.AreSame(brush, replay.Get(-7), "A lookup in a live dictionary finds the entry.");
         Assert.AreEqual("red", (brush.Properties["Color"] as LiveItem)?.Name);
@@ -437,11 +455,12 @@ public sealed class DroppedChildActionTests
         Assert.IsNull(dictionary.Entries["Accent"], "A replaced value can be null.");
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new ConnectToLiveTreeAction(_PanelHandle + 2, -3, 0),
-            new RemoveDictionaryEntryAction(-1, -3),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new ConnectToLiveTreeAction(_PanelHandle + 2, -3, 0),
+                new RemoveDictionaryEntryAction(-1, -3),
+            ]
+        );
 
         Assert.IsFalse(dictionary.Entries.ContainsKey("Other"), "A removed entry is gone.");
     }
@@ -458,14 +477,15 @@ public sealed class DroppedChildActionTests
         replay.Live[_PanelHandle + 2] = "Other";
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new ConnectToLiveTreeAction(_PanelHandle + 1, -3, 0),
-            new ConnectToLiveTreeAction(_PanelHandle + 2, -5, 0),
-            new CreateInstanceAction(-7, DroppedElementStandIn.TypeName),
-            new AddDictionaryEntryAction(-1, -5, -7),
-            new UpdateDictionaryValueAction(-1, -3, -7),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new ConnectToLiveTreeAction(_PanelHandle + 1, -3, 0),
+                new ConnectToLiveTreeAction(_PanelHandle + 2, -5, 0),
+                new CreateInstanceAction(-7, DroppedElementStandIn.TypeName),
+                new AddDictionaryEntryAction(-1, -5, -7),
+                new UpdateDictionaryValueAction(-1, -3, -7),
+            ]
+        );
 
         Assert.HasCount(1, dictionary.Entries);
         Assert.AreSame(brush, dictionary.Entries["Accent"]);
@@ -479,13 +499,14 @@ public sealed class DroppedChildActionTests
         replay.Live[_PanelHandle] = panel;
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            .. Item(-5, "x", 1),
-            new RemoveChildAction(-3, 3),
-            new GetChildAction(-3, 0, -7),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. Item(-5, "x", 1),
+                new RemoveChildAction(-3, 3),
+                new GetChildAction(-3, 0, -7),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "a", "x", "b" }, Names(panel.Children));
         Assert.AreEqual("a", (replay.Get(-7) as LiveItem)?.Name);
@@ -503,23 +524,24 @@ public sealed class DroppedChildActionTests
         replay.Translator.Register(panel, [1]);
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            new RemoveChildAction(-3, 7),
-            new RemoveChildAction(-3, -1),
-            new GetChildAction(-3, 7, -5),
-            new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
-            new GetPropertyAction(-7, _Children, -9, 0),
-            new RemoveChildAction(-9, 4),
-            new GetChildAction(-9, 4, -11),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                new RemoveChildAction(-3, 7),
+                new RemoveChildAction(-3, -1),
+                new GetChildAction(-3, 7, -5),
+                new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
+                new GetPropertyAction(-7, _Children, -9, 0),
+                new RemoveChildAction(-9, 4),
+                new GetChildAction(-9, 4, -11),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "a" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { "p" }, Names(plain.Children));
         Assert.IsNull(replay.Get(-5));
         Assert.IsNull(replay.Get(-11));
-        Assert.AreEqual(3, replay.Warnings.Count, string.Join(Environment.NewLine, replay.Warnings));
+        Assert.HasCount(3, replay.Warnings, string.Join(Environment.NewLine, replay.Warnings));
         Assert.IsTrue(replay.Warnings.All(message => message.Contains("points past its end", StringComparison.Ordinal)));
     }
 
@@ -532,12 +554,13 @@ public sealed class DroppedChildActionTests
         replay.Translator.Register(panel, [1]);
 
         replay.Run(
-        [
-            new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
-            new GetPropertyAction(-1, _Children, -3, 0),
-            .. Item(-5, "last", 42),
-            .. Item(-7, "first", 0),
-        ]);
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. Item(-5, "last", 42),
+                .. Item(-7, "first", 0),
+            ]
+        );
 
         CollectionAssert.AreEqual(new[] { "first", "a", "last" }, Names(panel.Children));
         CollectionAssert.AreEqual(new[] { 2 }, replay.Holes(panel.Children));
@@ -564,7 +587,7 @@ public sealed class DroppedChildActionTests
     {
         return
         [
-            new CreateInstanceAction(handle, "Item:" + name),
+            new CreateInstanceAction(handle, $"Item:{name}"),
             new AddChildAction(-3, index, handle),
         ];
     }
@@ -578,10 +601,7 @@ public sealed class DroppedChildActionTests
         ];
     }
 
-    private static string[] Names(IEnumerable<object> items)
-    {
-        return items.Cast<LiveItem>().Select(item => item.Name).ToArray();
-    }
+    private static string[] Names(IEnumerable<object> items) => items.Cast<LiveItem>().Select(item => item.Name).ToArray();
 
     /// <summary>
     /// A live object created by an action.
@@ -592,10 +612,7 @@ public sealed class DroppedChildActionTests
 
         public Dictionary<string, object?> Properties { get; } = [];
 
-        public override string ToString()
-        {
-            return Name;
-        }
+        public override string ToString() => Name;
     }
 
     /// <summary>
@@ -617,20 +634,11 @@ public sealed class DroppedChildActionTests
             return dictionary is FakeDictionary live ? live.Entries.GetValueOrDefault(key!) : null;
         }
 
-        public void AddEntry(object dictionary, object? key, object? value)
-        {
-            Require(dictionary).Entries.Add(key!, value);
-        }
+        public void AddEntry(object dictionary, object? key, object? value) => Require(dictionary).Entries.Add(key!, value);
 
-        public void ReplaceEntry(object dictionary, object? key, object? value)
-        {
-            Require(dictionary).Entries[key!] = value;
-        }
+        public void ReplaceEntry(object dictionary, object? key, object? value) => Require(dictionary).Entries[key!] = value;
 
-        public void RemoveEntry(object dictionary, object? key)
-        {
-            Require(dictionary).Entries.Remove(key!);
-        }
+        public void RemoveEntry(object dictionary, object? key) => Require(dictionary).Entries.Remove(key!);
 
         private static FakeDictionary Require(object dictionary)
         {
@@ -673,15 +681,9 @@ public sealed class DroppedChildActionTests
     /// </summary>
     private sealed class ListAccess : IChildCollectionAccess
     {
-        public object GetCollection(object owner)
-        {
-            return owner is FakePanel panel ? panel.Children : owner;
-        }
+        public object GetCollection(object owner) => owner is FakePanel panel ? panel.Children : owner;
 
-        public int? GetCount(object collection)
-        {
-            return (collection as IList)?.Count;
-        }
+        public int? GetCount(object collection) => (collection as IList)?.Count;
 
         public bool RemoveAt(object owner, int liveIndex)
         {
@@ -724,20 +726,14 @@ public sealed class DroppedChildActionTests
 
         public List<string> Warnings { get; } = [];
 
-        public object? Get(long handle)
-        {
-            return _objects.TryGetValue(handle, out object? value) ? value : null;
-        }
+        public object? Get(long handle) => _objects.TryGetValue(handle, out object? value) ? value : null;
 
-        public int[] Holes(object collection)
-        {
-            return Translator.Maps.TryGet(collection, out ChildIndexMap? map) ? map.Holes.ToArray() : [];
-        }
+        public int[] Holes(object collection) => Translator.Maps.TryGet(collection, out ChildIndexMap? map) ? map.Holes.ToArray() : [];
 
         public void Run(XamlAction[] actions)
         {
             IList<XamlAction> received = XamlActionJsonSerializer.Deserialize(XamlActionJsonSerializer.Serialize(actions));
-            Assert.AreEqual(actions.Length, received.Count, "Every action survives Visual Studio's serializer.");
+            Assert.HasCount(actions.Length, received, "Every action survives Visual Studio's serializer.");
 
             var pending = new DeferredInsertionQueue<PendingSetter>(entry => entry.Collection);
             foreach (XamlAction action in received)

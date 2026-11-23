@@ -398,8 +398,9 @@ public sealed class VsDesignerApiShapeTests
 
         Assert.IsNotNull(
             constructor,
-            $"{type.FullName} needs a public constructor (Int64 liveHandle, String typeName, ...defaults). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}");
-        Assert.IsTrue(type.Fields.Any(field => field.Name == "TypeName" && field.IsPublic && field.FieldType.Name == "String"), $"{type.FullName} needs a public TypeName field.");
+            $"{type.FullName} needs a public constructor (Int64 liveHandle, String typeName, ...defaults). Constructors found: {DescribeAll(type.Methods.Where(method => method.IsConstructor && !method.IsStatic))}"
+        );
+        Assert.Contains(field => field.Name == "TypeName" && field.IsPublic && field.FieldType.Name == "String", type.Fields, $"{type.FullName} needs a public TypeName field.");
     }
 
     [TestMethod]
@@ -420,7 +421,7 @@ public sealed class VsDesignerApiShapeTests
         AssertOverridable(updateChild);
 
         TypeDefinition childAction = RequireType(_ChildAction);
-        Assert.IsTrue(childAction.Fields.Any(field => field.Name == "Index" && field.IsPublic && field.FieldType.Name == "Int32"), $"{childAction.FullName} needs a public Index field.");
+        Assert.Contains(field => field.Name == "Index" && field.IsPublic && field.FieldType.Name == "Int32", childAction.Fields, $"{childAction.FullName} needs a public Index field.");
     }
 
     [TestMethod]

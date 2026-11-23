@@ -17,10 +17,7 @@ public sealed class DroppedElementStandInTests
     [DataRow("XSurfUwp.DroppedElement")]
     [DataRow("XSurfUwp.DroppedElement, WinUISurface")]
     [DataRow(" XSurfUwp.DroppedElement , WinUISurface, Version=1.0.0.0")]
-    public void TheNameIsRecognizedWithOrWithoutAnAssembly(string typeName)
-    {
-        Assert.IsTrue(DroppedElementStandIn.IsTypeName(typeName));
-    }
+    public void TheNameIsRecognizedWithOrWithoutAnAssembly(string typeName) => Assert.IsTrue(DroppedElementStandIn.IsTypeName(typeName));
 
     [TestMethod]
     [DataRow(null)]
@@ -29,10 +26,7 @@ public sealed class DroppedElementStandInTests
     [DataRow("XSurfUwp.DroppedElementX")]
     [DataRow("xsurfuwp.droppedelement")]
     [DataRow("Microsoft.UI.Xaml.Controls.TextBlock, Microsoft.WinUI")]
-    public void OtherNamesAreNotTheStandIn(string? typeName)
-    {
-        Assert.IsFalse(DroppedElementStandIn.IsTypeName(typeName));
-    }
+    public void OtherNamesAreNotTheStandIn(string? typeName) => Assert.IsFalse(DroppedElementStandIn.IsTypeName(typeName));
 
     [TestMethod]
     public void TheStandInSurvivesVisualStudiosSerializer()
@@ -41,7 +35,7 @@ public sealed class DroppedElementStandInTests
 
         IList<XamlAction> received = XamlActionJsonSerializer.Deserialize(XamlActionJsonSerializer.Serialize(actions));
 
-        Assert.AreEqual(2, received.Count);
+        Assert.HasCount(2, received);
         var create = (CreateInstanceAction)received[0];
         Assert.AreEqual(-5L, create.LiveHandle);
         Assert.IsTrue(DroppedElementStandIn.IsTypeName(create.TypeName), create.TypeName);

@@ -19,7 +19,7 @@ public sealed class ChildIndexMapTests
         Assert.AreEqual(ChildSlot.Live(2), map.Find(2, liveCount: 3));
         Assert.AreEqual(2, map.InsertItem(2, liveCount: 3));
         Assert.AreEqual(ChildSlot.Live(1), map.RemoveAt(1, liveCount: 4));
-        Assert.AreEqual(0, map.HoleCount);
+        Assert.IsEmpty(map.Holes);
     }
 
     [TestMethod]
@@ -248,7 +248,7 @@ public sealed class ChildIndexMapTests
         live.Insert(map.InsertItem(1, live.Count), "kept");
 
         CollectionAssert.AreEqual(new[] { "a", "kept", "b" }, live);
-        Assert.AreEqual(0, map.HoleCount);
+        Assert.IsEmpty(map.Holes);
     }
 
     [TestMethod]
@@ -369,11 +369,13 @@ public sealed class ChildIndexMapTests
                 CollectionAssert.AreEqual(
                     model.Where(entry => !entry.IsHole).Select(entry => entry.Id).ToArray(),
                     live.ToArray(),
-                    $"run {run} step {step}: live objects");
+                    $"run {run} step {step}: live objects"
+                );
                 CollectionAssert.AreEqual(
                     model.Select((entry, position) => (entry.IsHole, position)).Where(entry => entry.IsHole).Select(entry => entry.position).ToArray(),
                     Holes(map),
-                    $"run {run} step {step}: holes");
+                    $"run {run} step {step}: holes"
+                );
             }
         }
     }
@@ -417,8 +419,5 @@ public sealed class ChildIndexMapTests
         Assert.AreEqual(0, maps.Count);
     }
 
-    private static int[] Holes(ChildIndexMap map)
-    {
-        return map.Holes.ToArray();
-    }
+    private static int[] Holes(ChildIndexMap map) => map.Holes.ToArray();
 }
