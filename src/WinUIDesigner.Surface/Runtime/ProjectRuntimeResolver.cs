@@ -26,6 +26,12 @@ internal static class ProjectRuntimeResolver
     private static readonly Dictionary<string, string> _NativeLibraries = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<string> _PriFiles = [];
 
+    // The folder of the staged project files; the surface itself runs from a folder below it.
+    private static string? _contentDirectory;
+
+    // The folder of the files that the surface writes for itself, shared by all surface processes.
+    private static readonly string _PlaceholderDirectory = Path.Combine(Path.GetTempPath(), "WinUIDesigner", "Surface");
+
     private static readonly List<string> _ProviderTypes = [];
 
     private static readonly List<IXamlMetadataProvider> _Providers = [];
@@ -36,7 +42,8 @@ internal static class ProjectRuntimeResolver
 
     public static void Initialize(string directory)
     {
-        _PriFiles.AddRange(Directory.EnumerateFiles(directory, "*.pri", SearchOption.AllDirectories));
+        _contentDirectory = directory;
+        _PriFiles.AddRange(StagedResourceLookup.OrderPriFiles(directory, Directory.EnumerateFiles(directory, "*.pri", SearchOption.AllDirectories)));
 
         foreach (string file in Directory.EnumerateFiles(directory, "*.dll", SearchOption.AllDirectories)
             .OrderBy(file => Path.GetRelativePath(directory, file).Count(character => character == Path.DirectorySeparatorChar))
@@ -124,13 +131,13 @@ internal static class ProjectRuntimeResolver
     public static IResourceManager CreateResourceManager()
     {
         var primary = new ResourceManager();
-        var projects = new List<ResourceManager>();
+        var projects = new List<StagedPri>();
 
         foreach (string file in _PriFiles)
         {
             try
             {
-                projects.Add(new ResourceManager(file));
+                projects.Add(new StagedPri(file, new ResourceManager(file)));
 
             }
             catch (Exception ex)
@@ -139,23 +146,113 @@ internal static class ProjectRuntimeResolver
             }
         }
 
-        primary.ResourceNotFound += (_, args) =>
-        {
-            foreach (ResourceManager manager in projects)
-            {
-                var candidate = manager.MainResourceMap.TryGetValue(args.Name, args.Context);
-                if (candidate is null)
-                {
-                    continue;
-                }
-
-                args.SetResolvedCandidate(candidate);
-
-                return;
-            }
-        };
+        // Each resource manager has a resolver of its own, with its own memory of what it has answered and reported.
+        var resolver = new StagedResourceResolver<ResourceCandidate>(_contentDirectory, new StagedResourceHost(projects));
+        primary.ResourceNotFound += (_, args) => ResolveStagedResource(args, resolver);
 
         return primary;
+    }
+
+    /// <summary>
+    /// Answers a resource that the surface's own resource manager does not know: a file of the project, such as
+    /// <c>ms-appx:///Assets/Images/logo.svg</c>, which MRT asks for as <c>Files/Assets/Images/logo.svg</c> and which a
+    /// packaged application would find in its package.
+    /// </summary>
+    private static void ResolveStagedResource(ResourceNotFoundEventArgs args, StagedResourceResolver<ResourceCandidate> resolver)
+    {
+        string name = string.Empty;
+
+        // MRT raises the event from native code, inside a lookup of WinUI: no exception may leave it.
+        try
+        {
+            name = args.Name;
+            KeyValuePair<string, string>[] qualifiers = args.Context is { } context
+                ? [.. context.QualifierValues.Where(qualifier => !string.IsNullOrEmpty(qualifier.Value))]
+                : [];
+
+            if (resolver.Resolve(name, qualifiers) is { } candidate)
+            {
+                args.SetResolvedCandidate(candidate);
+            }
+        }
+        catch (Exception ex)
+        {
+            resolver.ReportFailure(name, ex);
+        }
+    }
+
+    // A staged PRI file and the resource manager that reads it.
+    private sealed record StagedPri(string File, ResourceManager Manager);
+
+    // The staged PRI files of the project through MRT Core, its staged files and the log of the surface.
+    private sealed class StagedResourceHost(List<StagedPri> projects) : IStagedResourceHost<ResourceCandidate>
+    {
+        public IReadOnlyList<string> PriFiles { get; } = [.. projects.Select(project => project.File)];
+
+        // The context of the request belongs to the surface's own resource manager and must not be passed to another
+        // one: MRT Core then misses a resource with qualified candidates, such as back.png with its scale variants, and
+        // fails with an access violation on one that has only theme variants. A context of the file's own manager with
+        // the same values finds both.
+        public ResourceCandidate? LookUp(int priFile, string name, IReadOnlyList<KeyValuePair<string, string>>? qualifiers)
+        {
+            ResourceManager manager = projects[priFile].Manager;
+
+            // The defaults of the PRI file.
+            if (qualifiers is null)
+            {
+                return manager.MainResourceMap.TryGetValue(name);
+            }
+
+            // The qualifier values of the request, such as scale and theme.
+            ResourceContext context = manager.CreateResourceContext();
+            foreach (KeyValuePair<string, string> qualifier in qualifiers)
+            {
+                context.QualifierValues[qualifier.Key] = qualifier.Value;
+            }
+
+            return manager.MainResourceMap.TryGetValue(name, context);
+        }
+
+        public string? GetFilePath(ResourceCandidate candidate)
+        {
+            return candidate.Kind == ResourceCandidateKind.FilePath ? candidate.ValueAsString : null;
+        }
+
+        public ResourceCandidate CreateFileCandidate(string path) => new(ResourceCandidateKind.FilePath, path);
+
+        // "the file 'C:\...\back.scale-150.png' [Scale=150]" or "EmbeddedData []".
+        public string Describe(ResourceCandidate candidate)
+        {
+            string value = candidate.Kind == ResourceCandidateKind.FilePath ? $"the file '{candidate.ValueAsString}'" : candidate.Kind.ToString();
+            return $"{value} [{StagedResourceLookup.DescribeQualifiers(candidate.QualifierValues)}]";
+        }
+
+        public bool FileExists(string path) => File.Exists(path);
+
+        public DateTime GetLastWriteTime(string path) => File.GetLastWriteTime(path);
+
+        public string WritePlaceholder(string name) => MissingImagePlaceholder.Write(_PlaceholderDirectory, name);
+
+        public void Log(StagedResourceLogLevel level, string message, Exception? exception)
+        {
+            switch (level)
+            {
+                // Only with verbose logging.
+                case StagedResourceLogLevel.Trace:
+                    WinUIDesignerLogger.LogTrace("Surface", message, exception);
+                    break;
+
+                // Always, such as XAML that comes from the build output.
+                case StagedResourceLogLevel.Information:
+                    WinUIDesignerLogger.LogInformation("Surface", message, exception);
+                    break;
+
+                // Always, such as a missing image.
+                default:
+                    WinUIDesignerLogger.LogWarning("Surface", message, exception);
+                    break;
+            }
+        }
     }
 
     public static Type? ResolveType(string fullName)
