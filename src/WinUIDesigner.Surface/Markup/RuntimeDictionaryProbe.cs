@@ -15,8 +15,11 @@ namespace WinUIDesigner.Surface.Markup;
 /// different question: it loads on its own, while the reader loads the source in the middle of a parse, with the
 /// application's resources and the dictionaries read before it in scope. Only the second answer says whether the
 /// document gets what it merges, and a dictionary that loads without providing a single resource gets the document
-/// nothing, so the count of resources is part of the answer. This type holds the two WinUI-free halves of the probe,
-/// the markup that is read and the judgement of what the reader returned; the reading itself is done by the surface.
+/// nothing, so the count of resources is part of the answer. The probe is read before the document is, so only the
+/// application's resources are in scope while it runs: a dictionary that needs one that the document merges before
+/// it fails the probe and is left out, although it would load inside the document. This type holds the two WinUI-free
+/// halves of the probe, the markup that is read and the judgement of what the reader returned; the reading itself is
+/// done by the surface.
 /// </remarks>
 internal static class RuntimeDictionaryProbe
 {
