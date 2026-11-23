@@ -198,6 +198,59 @@ public sealed class ConstructionFallbacksTests
     }
 
     [TestMethod]
+    public void ActionThatSetsOrClearsAPropertyOrAddsAChildCanBeLeftOut()
+    {
+        Assert.IsTrue(ConstructionFallbacks.CanGoOnWithout(new SetPropertyAction(-3, "Foreground:Microsoft.UI.Xaml.Controls.Control", -5, 17064790)));
+        Assert.IsTrue(ConstructionFallbacks.CanGoOnWithout(new ClearPropertyAction(-3, "Foreground:Microsoft.UI.Xaml.Controls.Control", 17064790)));
+        Assert.IsTrue(ConstructionFallbacks.CanGoOnWithout(new AddChildAction(-3, 0, -5)));
+    }
+
+    [TestMethod]
+    public void ActionThatBuildsAnObjectOrNamesTheContentCannotBeLeftOut()
+    {
+        // The actions after these work on the object that they were to make, or on the content that they were to name.
+        Assert.IsFalse(ConstructionFallbacks.CanGoOnWithout(CreateTitleBar()));
+        Assert.IsFalse(ConstructionFallbacks.CanGoOnWithout(new SetSurfaceContentAction(42, 123)));
+        Assert.IsFalse(ConstructionFallbacks.CanGoOnWithout(new GetPropertyAction(-3, "Children:Microsoft.UI.Xaml.Controls.Panel", -5, 17064790)));
+    }
+
+    [TestMethod]
+    public void ActionThatWasLeftOutIsReportedForItsElementWithoutTheWrapperOfReflection()
+    {
+        var fallbacks = new ConstructionFallbacks();
+        var action = new SetPropertyAction(-219, "Foreground:Microsoft.UI.Xaml.Controls.Control", -225, 17064790);
+
+        fallbacks.RecordFailure(action, new System.Reflection.TargetInvocationException(new InvalidOperationException("The framework refused the value.")));
+
+        string? errors = fallbacks.TakeErrors();
+        Assert.IsNotNull(errors);
+        IList<ActionError> decoded = ActionErrorJsonSerializer.Deserialize(errors);
+        Assert.HasCount(1, decoded);
+        SetPropertyAction reported = Assert.IsInstanceOfType<SetPropertyAction>(decoded[0].XamlAction);
+        Assert.AreEqual(-219, reported.ParentHandle);
+        Assert.Contains("The framework refused the value.", decoded[0].Error);
+        Assert.DoesNotContain(nameof(System.Reflection.TargetInvocationException), decoded[0].Error);
+    }
+
+    [TestMethod]
+    public void ActionsThatWereLeftOutAreReportedInTheirOrderAfterTheReplacedElements()
+    {
+        var fallbacks = new ConstructionFallbacks();
+        fallbacks.Construct<object?>(CreateTitleBar(), () => throw new InvalidOperationException("constructor failure"), () => new object());
+        fallbacks.RecordFailure(new AddChildAction(-3, 0, -5), new InvalidOperationException("no collection"));
+        fallbacks.RecordFailure(new SetPropertyAction(-3, "Style:Microsoft.UI.Xaml.FrameworkElement", -7, 17118908), new KeyNotFoundException("missing style"));
+
+        IList<ActionError> failures = fallbacks.TakeFailures();
+
+        Assert.HasCount(3, failures);
+        Assert.IsInstanceOfType<CreateInstanceAction>(failures[0].XamlAction);
+        Assert.IsInstanceOfType<AddChildAction>(failures[1].XamlAction);
+        Assert.Contains("no collection", failures[1].Error);
+        Assert.IsInstanceOfType<SetPropertyAction>(failures[2].XamlAction);
+        Assert.Contains("missing style", failures[2].Error);
+    }
+
+    [TestMethod]
     public void ClearForgetsTheFailuresOfAnEarlierBatch()
     {
         var fallbacks = new ConstructionFallbacks();
