@@ -27,13 +27,16 @@ internal static class DroppedElementStandIn
     /// </summary>
     public static bool IsTypeName(string? serializedTypeName)
     {
+        // Nothing to compare.
         if (serializedTypeName is null)
         {
             return false;
         }
 
-        int separator = serializedTypeName.IndexOf(',');
-        string typeName = (separator < 0 ? serializedTypeName : serializedTypeName.Substring(0, separator)).Trim();
-        return string.Equals(typeName, TypeName, StringComparison.Ordinal);
+        // The assembly name, when there is one, follows the first comma. The text is only compared, so it is not copied.
+        ReadOnlySpan<char> text = serializedTypeName.AsSpan();
+        int separator = text.IndexOf(',');
+        ReadOnlySpan<char> typeName = (separator < 0 ? text : text.Slice(0, separator)).Trim();
+        return typeName.SequenceEqual(TypeName.AsSpan());
     }
 }

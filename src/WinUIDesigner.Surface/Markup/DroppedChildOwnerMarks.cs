@@ -65,11 +65,13 @@ internal static class DroppedChildOwnerMarks
         var marks = new Dictionary<XElement, string>();
         foreach (XamlDroppedChild dropped in droppedChildren)
         {
+            // No element can carry the mark for this collection, or the reader does not create the element.
             if (!TryGetCarrier(dropped, canCarryMark, out XElement owner, out XName? property) || !IsLoadedWith(owner, runtimeRoot))
             {
                 continue;
             }
 
+            // The first collection of an owner marks it; its other collections share the mark.
             if (!marks.TryGetValue(owner, out string? mark))
             {
                 mark = marks.Count.ToString(CultureInfo.InvariantCulture);
@@ -77,6 +79,7 @@ internal static class DroppedChildOwnerMarks
                 owner.SetAttributeValue(MarkName, mark);
             }
 
+            // The first dropped element of a collection starts its entry.
             DroppedChildCollection? collection = collections.Find(candidate => ReferenceEquals(candidate.Owner, owner) && candidate.Property == property);
             if (collection is null)
             {
@@ -111,6 +114,8 @@ internal static class DroppedChildOwnerMarks
         ArgumentNullException.ThrowIfNull(load);
 
         marksFailure = null;
+
+        // Without marks there is nothing to blame, and nothing to retry.
         if (collections.Count == 0)
         {
             return load();
@@ -122,6 +127,7 @@ internal static class DroppedChildOwnerMarks
         }
         catch (Exception ex)
         {
+            // The marks may be the reason: load the document as it was prepared.
             Unmark(collections);
             T document = load();
             marksFailure = ex;
@@ -156,6 +162,8 @@ internal static class DroppedChildOwnerMarks
     {
         owner = dropped.Owner;
         property = dropped.Property;
+
+        // The owner carries its own mark.
         if (canCarryMark is null || canCarryMark(owner))
         {
             return true;
@@ -189,17 +197,20 @@ internal static class DroppedChildOwnerMarks
     {
         for (XElement? current = owner; current is not null; current = current.Parent)
         {
+            // Template content is not created while the document loads.
             if (current.Name.LocalName is "ControlTemplate" or "DataTemplate" or "ItemsPanelTemplate")
             {
                 return false;
             }
 
+            // The loaded element is reached: the owner is part of it.
             if (ReferenceEquals(current, runtimeRoot))
             {
                 return true;
             }
         }
 
+        // The owner is outside the loaded element.
         return false;
     }
 }

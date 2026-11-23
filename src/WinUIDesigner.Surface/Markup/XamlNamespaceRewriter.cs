@@ -513,11 +513,13 @@ internal static class XamlNamespaceRewriter
         /// </remarks>
         private bool IsCollectionItem(XElement element, XamlPrefixDisposition disposition, Binding? binding)
         {
+            // A property element sets a property and is no item.
             if (IsPropertyElement(element))
             {
                 return false;
             }
 
+            // An object element counts, unless it is under an ignorable prefix that no policy decided about.
             return disposition != XamlPrefixDisposition.Leave || binding is null || !_ignorable.Contains(binding);
         }
 
@@ -541,17 +543,20 @@ internal static class XamlNamespaceRewriter
         /// </remarks>
         private void RecordDroppedChild(Frame parent, XElement element, Binding? binding)
         {
+            // A property element sets a property and is no item.
             if (IsPropertyElement(element))
             {
                 return;
             }
 
+            // The document model has no node for the element: it is neither recorded nor counted.
             bool hasModelNode = binding is null || binding.Uri.IsConditional || !_ignorable.Contains(binding);
             if (!hasModelNode)
             {
                 return;
             }
 
+            // Text among the items makes their positions unreliable: the element is counted but not recorded.
             int index = parent.ItemCount++;
             if (HasSignificantText(parent.Element))
             {
@@ -569,14 +574,12 @@ internal static class XamlNamespaceRewriter
             }
             else
             {
+                // An object element holds its items as content.
                 _droppedChildren.Add(new XamlDroppedChild(holder, property: null, index, element));
             }
         }
 
-        private static bool IsPropertyElement(XElement element)
-        {
-            return element.Name.LocalName.IndexOf('.') >= 0;
-        }
+        private static bool IsPropertyElement(XElement element) => element.Name.LocalName.IndexOf('.') >= 0;
 
         private static bool HasSignificantText(XElement element)
         {

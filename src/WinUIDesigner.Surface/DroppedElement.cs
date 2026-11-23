@@ -18,8 +18,5 @@ namespace XSurfUwp;
 /// </remarks>
 internal sealed class DroppedElement
 {
-    public override string ToString()
-    {
-        return "Dropped element";
-    }
+    public override string ToString() => "Dropped element";
 }

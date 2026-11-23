@@ -64,18 +64,16 @@ public static class DT
     /// a style or a resource dictionary. The value identifies the element within one load; the surface clears it again.
     /// </remarks>
     public static readonly DependencyProperty DroppedChildOwnerProperty = DependencyProperty.RegisterAttached(
-        "DroppedChildOwner", typeof(string), typeof(DT), new PropertyMetadata(null, static (owner, args) =>
-            WinUIDesigner.Surface.Services.DroppedChildOwners.OnMarked(owner, args.NewValue as string)));
+        "DroppedChildOwner",
+        typeof(string),
+        typeof(DT),
+        new PropertyMetadata(null, static (owner, args) =>
+            WinUIDesigner.Surface.Services.DroppedChildOwners.OnMarked(owner, args.NewValue as string))
+    );
 
-    public static void SetDroppedChildOwner(DependencyObject owner, string value)
-    {
-        owner.SetValue(DroppedChildOwnerProperty, value);
-    }
+    public static void SetDroppedChildOwner(DependencyObject owner, string value) => owner.SetValue(DroppedChildOwnerProperty, value);
 
-    public static string GetDroppedChildOwner(DependencyObject owner)
-    {
-        return (string)owner.GetValue(DroppedChildOwnerProperty);
-    }
+    public static string GetDroppedChildOwner(DependencyObject owner) => (string)owner.GetValue(DroppedChildOwnerProperty);
 
     // Metadata callbacks run after the attached properties have been registered.
     public static readonly DependencyProperty RootWidthProperty = DependencyProperty.RegisterAttached(

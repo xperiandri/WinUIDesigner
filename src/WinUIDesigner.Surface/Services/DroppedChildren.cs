@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Xml;
@@ -101,16 +100,10 @@ internal sealed class DroppedChildren : IChildCollectionAccess
     }
 
     /// <inheritdoc cref="ChildIndexTranslator.Release"/>
-    public void Release(IEnumerable<object> released)
-    {
-        Translator.Release(released);
-    }
+    public void Release(IEnumerable<object> released) => Translator.Release(released);
 
     /// <inheritdoc cref="ChildIndexTranslator.Clear"/>
-    public void Clear()
-    {
-        Translator.Clear();
-    }
+    public void Clear() => Translator.Clear();
 
     /// <summary>
     /// Gives the collections of a loaded document the holes of the elements the namespace policies removed from them,
@@ -129,6 +122,8 @@ internal sealed class DroppedChildren : IChildCollectionAccess
         foreach (DroppedChildCollection dropped in collections)
         {
             string description = DescribeElement(dropped.Owner, dropped.Property);
+
+            // The reader did not create an object for the marked element.
             if (!owners.TryGetValue(dropped.Mark, out DependencyObject? owner))
             {
                 WinUIDesignerLogger.LogTrace("Surface", $"Child indices: document {documentId}: no object was created for {description}; its indices are used as they are.");
@@ -142,16 +137,19 @@ internal sealed class DroppedChildren : IChildCollectionAccess
             }
             catch (Exception ex)
             {
+                // The collection cannot be read from its owner.
                 WinUIDesignerLogger.LogTrace("Surface", $"Child indices: document {documentId}: the collection of {description} was not found: {ex.Message}");
                 continue;
             }
 
+            // A single value or a dictionary has no child indices to translate.
             if (collection is null || !IsIndexedCollection(collection))
             {
                 WinUIDesignerLogger.LogTrace("Surface", $"Child indices: document {documentId}: {description} holds no indexed collection; its indices are used as they are.");
                 continue;
             }
 
+            // The collection gets the positions of its dropped elements.
             ChildIndexMap map = Translator.Register(collection, dropped.Holes);
             registered++;
             WinUIDesignerLogger.LogTrace("Surface", $"Child indices: document {documentId}: {description} ({collection.GetType().Name}) has dropped elements at {map}.");
@@ -178,12 +176,14 @@ internal sealed class DroppedChildren : IChildCollectionAccess
     /// </summary>
     /// <remarks>
     /// A single value cannot have holes: two elements under complementary conditions as the content of a
-    /// <c>Border</c> leave one child, which may itself be a panel whose children must not be mistaken for the
+    /// <see cref="Border"/> leave one child, which may itself be a panel whose children must not be mistaken for the
     /// collection that lost an element.
     /// </remarks>
     internal static object? ResolveCollection(DependencyObject owner, XName? property)
     {
         object? value;
+
+        // The content of the owner: its content property, or the collection the owner is or holds.
         if (property is null)
         {
             string? contentProperty = FindContentPropertyName(owner.GetType());
@@ -212,11 +212,13 @@ internal sealed class DroppedChildren : IChildCollectionAccess
     /// </summary>
     private static bool IsCollectionObject(object value)
     {
+        // A list.
         if (value is IList)
         {
             return true;
         }
 
+        // A projected collection, which implements the generic interfaces only.
         foreach (Type interfaceType in value.GetType().GetInterfaces())
         {
             if (interfaceType.IsGenericType
@@ -248,34 +250,22 @@ internal sealed class DroppedChildren : IChildCollectionAccess
         return null;
     }
 
-    object IChildCollectionAccess.GetCollection(object owner)
-    {
-        return XamlRuntimeUtilities.GetChildCollection(owner) ?? owner;
-    }
+    object IChildCollectionAccess.GetCollection(object owner) => XamlRuntimeUtilities.GetChildCollection(owner) ?? owner;
 
-    int? IChildCollectionAccess.GetCount(object collection)
-    {
-        return XamlRuntimeUtilities.GetChildCount(collection);
-    }
+    int? IChildCollectionAccess.GetCount(object collection) => XamlRuntimeUtilities.GetChildCount(collection);
 
-    bool IChildCollectionAccess.RemoveAt(object owner, int liveIndex)
-    {
-        return _removeAt(owner, liveIndex);
-    }
+    bool IChildCollectionAccess.RemoveAt(object owner, int liveIndex) => _removeAt(owner, liveIndex);
 
-    object? IChildCollectionAccess.GetAt(object owner, int liveIndex)
-    {
-        return XamlRuntimeUtilities.GetChild(owner, liveIndex);
-    }
+    object? IChildCollectionAccess.GetAt(object owner, int liveIndex) => XamlRuntimeUtilities.GetChild(owner, liveIndex);
 
     /// <summary>
-    /// Returns whether the XAML reader can set <c>DT.DroppedChildOwner</c> on the object it creates for the element
-    /// <paramref name="owner"/>: whether that object is a <see cref="DependencyObject"/>.
+    /// Returns whether the XAML reader can set <see cref="DT.DroppedChildOwnerProperty"/> on the object it creates for
+    /// the element <paramref name="owner"/>: whether that object is a <see cref="DependencyObject"/>.
     /// </summary>
     /// <remarks>
     /// The reader fails the whole document for another type, such as WinUI's explicit collections
-    /// (<c>TransitionCollection</c>, <c>GradientStopCollection</c>). An element whose type cannot be found counts as
-    /// one that can: the load without marks is the safety net for it.
+    /// (<see cref="Microsoft.UI.Xaml.Media.Animation.TransitionCollection"/>, <see cref="GradientStopCollection"/>). An
+    /// element whose type cannot be found counts as one that can: the load without marks is the safety net for it.
     /// </remarks>
     internal static bool CanCarryMark(XElement owner)
     {
@@ -290,12 +280,15 @@ internal sealed class DroppedChildren : IChildCollectionAccess
     private static IEnumerable<Type> ResolveElementTypes(string typeName, string namespaceName)
     {
         string baseUri = XamlNamespaceUri.Parse(namespaceName).BaseUri;
+
+        // A type of a CLR namespace, such as one of the project.
         if (baseUri.StartsWith(XamlNamespaceUri.UsingScheme, StringComparison.Ordinal))
         {
             Type? type = XamlRuntimeUtilities.ResolveType($"{baseUri[XamlNamespaceUri.UsingScheme.Length..]}.{typeName}");
             return type is null ? [] : [type];
         }
 
+        // The presentation namespace stands for the WinUI types; any other namespace stands for no type.
         return baseUri == XamlNamespaces.Presentation ? _PresentationTypes.Value[typeName] : [];
     }
 
@@ -311,11 +304,13 @@ internal sealed class DroppedChildren : IChildCollectionAccess
 
     private static bool IsIndexedCollection(object collection)
     {
+        // A dictionary is addressed by key.
         if (collection is IDictionary || collection is ResourceDictionary)
         {
             return false;
         }
 
+        // A projected dictionary implements the generic interface only.
         foreach (Type interfaceType in collection.GetType().GetInterfaces())
         {
             if (interfaceType.IsGenericType && interfaceType.GetGenericTypeDefinition() == typeof(IDictionary<,>))
@@ -324,6 +319,7 @@ internal sealed class DroppedChildren : IChildCollectionAccess
             }
         }
 
+        // A collection that counts its items has indices.
         return XamlRuntimeUtilities.GetChildCount(collection) is not null;
     }
 
@@ -332,7 +328,7 @@ internal sealed class DroppedChildren : IChildCollectionAccess
         string name = property is null ? $"<{owner.Name.LocalName}>" : $"<{owner.Name.LocalName}><{property.LocalName}>";
         IXmlLineInfo lineInfo = owner;
         return lineInfo.HasLineInfo()
-            ? $"{name} (line {lineInfo.LineNumber.ToString(CultureInfo.InvariantCulture)})"
+            ? FormattableString.Invariant($"{name} (line {lineInfo.LineNumber})")
             : name;
     }
 }

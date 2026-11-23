@@ -61,30 +61,15 @@ internal readonly struct ChildSlot : IEquatable<ChildSlot>
     /// <summary>
     /// Returns the slot of the object at <paramref name="liveIndex"/> in the live collection.
     /// </summary>
-    public static ChildSlot Live(int liveIndex)
-    {
-        return new ChildSlot(ChildSlotKind.Live, liveIndex);
-    }
+    public static ChildSlot Live(int liveIndex) => new(ChildSlotKind.Live, liveIndex);
 
-    public bool Equals(ChildSlot other)
-    {
-        return Kind == other.Kind && LiveIndex == other.LiveIndex;
-    }
+    public bool Equals(ChildSlot other) => Kind == other.Kind && LiveIndex == other.LiveIndex;
 
-    public override bool Equals(object? obj)
-    {
-        return obj is ChildSlot other && Equals(other);
-    }
+    public override bool Equals(object? obj) => obj is ChildSlot other && Equals(other);
 
-    public override int GetHashCode()
-    {
-        return ((int)Kind * 397) ^ LiveIndex;
-    }
+    public override int GetHashCode() => ((int)Kind * 397) ^ LiveIndex;
 
-    public override string ToString()
-    {
-        return Kind == ChildSlotKind.Live ? $"Live({LiveIndex})" : Kind.ToString();
-    }
+    public override string ToString() => Kind == ChildSlotKind.Live ? $"Live({LiveIndex})" : Kind.ToString();
 }
 
 /// <summary>
@@ -127,11 +112,13 @@ internal sealed class ChildIndexMap
 
         foreach (int hole in holes)
         {
+            // A position before the collection refers to nothing.
             if (hole < 0)
             {
                 continue;
             }
 
+            // A position that is there already is kept once; the others go in ascending order.
             int index = _holes.BinarySearch(hole);
             if (index < 0)
             {
@@ -196,11 +183,13 @@ internal sealed class ChildIndexMap
     {
         Normalize(liveCount);
 
+        // No such entry in the model's view of the collection.
         if (modelIndex < 0 || modelIndex >= liveCount + _holes.Count)
         {
             return ChildSlot.Outside;
         }
 
+        // A dropped element: the hole goes, and the holes after it move down.
         int index = _holes.BinarySearch(modelIndex);
         if (index >= 0)
         {
@@ -209,6 +198,7 @@ internal sealed class ChildIndexMap
             return ChildSlot.Hole;
         }
 
+        // An object: its live index is its model index minus the holes before it, and the holes after it move down.
         int holesBefore = ~index;
         Shift(holesBefore, -1);
         return ChildSlot.Live(modelIndex - holesBefore);
@@ -223,11 +213,13 @@ internal sealed class ChildIndexMap
     {
         Normalize(liveCount);
 
+        // No such entry in the model's view of the collection.
         if (modelIndex < 0 || modelIndex >= liveCount + _holes.Count)
         {
             return ChildSlot.Outside;
         }
 
+        // A dropped element, or an object at its model index minus the holes before it.
         int index = _holes.BinarySearch(modelIndex);
         return index >= 0 ? ChildSlot.Hole : ChildSlot.Live(modelIndex - ~index);
     }
@@ -235,10 +227,7 @@ internal sealed class ChildIndexMap
     /// <summary>
     /// Returns a short description of the holes for logging.
     /// </summary>
-    public override string ToString()
-    {
-        return "[" + string.Join(", ", _holes) + "]";
-    }
+    public override string ToString() => $"[{string.Join(", ", _holes)}]";
 
     /// <summary>
     /// Returns the position an insertion goes to: the index itself, or the end for an index that is negative or past it.

@@ -57,6 +57,8 @@ internal sealed class ChildIndexMaps
     public ChildIndexMap InsertHole(object collection, int modelIndex, int liveCount)
     {
         ArgumentNullException.ThrowIfNull(collection);
+
+        // The first dropped element of a collection creates its map.
         if (!_maps.TryGetValue(collection, out ChildIndexMap? map))
         {
             _maps[collection] = map = new ChildIndexMap();
@@ -90,8 +92,5 @@ internal sealed class ChildIndexMaps
     /// <summary>
     /// Forgets every map.
     /// </summary>
-    public void Clear()
-    {
-        _maps.Clear();
-    }
+    public void Clear() => _maps.Clear();
 }

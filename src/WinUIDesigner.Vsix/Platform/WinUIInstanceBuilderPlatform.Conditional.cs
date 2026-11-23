@@ -45,6 +45,7 @@ internal partial class WinUIInstanceBuilderPlatform
     {
         try
         {
+            // The root, or the value of a property: no collection of a parent holds it.
             DocumentCompositeNode? parent = node?.Parent;
             if (node is null || parent is null || !node.IsChild)
             {
@@ -91,6 +92,7 @@ internal partial class WinUIInstanceBuilderPlatform
 
         public override void Instantiate(IInstanceBuilderContext context, LiveNodeProxy liveNode)
         {
+            // An item of an indexed collection: the stand-in keeps its index.
             if (IsIndexedCollectionItem(liveNode.DocumentNode))
             {
                 context.AddAction(new CreateInstanceAction(liveNode.LiveHandle, DroppedElementStandIn.TypeName));
@@ -98,6 +100,7 @@ internal partial class WinUIInstanceBuilderPlatform
                 return;
             }
 
+            // A property value, a dictionary entry or a key: nothing to attach.
             liveNode.Invalidate();
         }
 

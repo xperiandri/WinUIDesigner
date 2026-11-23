@@ -614,26 +614,26 @@ internal static class XamlRuntimeUtilities
     /// Returns the collection the child actions of Visual Studio address through <paramref name="parent"/>: its
     /// <c>Children</c> or <c>Items</c>, or the parent itself when it is a collection; <see langword="null"/> otherwise.
     /// </summary>
-    public static object? GetChildCollection(object parent)
-    {
-        return GetChildCollectionOrSelf(parent);
-    }
+    public static object? GetChildCollection(object parent) => GetChildCollectionOrSelf(parent);
 
     /// <summary>
     /// Returns the number of items in <paramref name="collection"/>, or <see langword="null"/> when it does not tell.
     /// </summary>
     public static int? GetChildCount(object? collection)
     {
+        // There is no collection to count.
         if (collection is null)
         {
             return null;
         }
 
+        // A non-generic collection says how many items it has.
         if (collection is ICollection nonGenericCollection)
         {
             return nonGenericCollection.Count;
         }
 
+        // Any other collection with a public Count property.
         PropertyInfo? countProperty = collection.GetType().GetProperty("Count", BindingFlags.Public | BindingFlags.Instance);
         if (countProperty?.PropertyType == typeof(int) && countProperty.GetValue(collection) is int count)
         {
@@ -670,6 +670,7 @@ internal static class XamlRuntimeUtilities
             return true;
         }
 
+        // A collection that says it has no child at the index: nothing to remove.
         if (collection is not null && GetChildCount(collection) is int count && (index < 0 || index >= count))
         {
             return false;

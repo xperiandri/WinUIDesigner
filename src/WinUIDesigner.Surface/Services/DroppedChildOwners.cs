@@ -7,7 +7,7 @@ using System.Collections.Generic;
 namespace WinUIDesigner.Surface.Services;
 
 /// <summary>
-/// Collects the objects the XAML reader creates for the elements marked with <c>DT.DroppedChildOwner</c>.
+/// Collects the objects the XAML reader creates for the elements marked with <see cref="DT.DroppedChildOwnerProperty"/>.
 /// </summary>
 /// <remarks>
 /// The marks are set while the reader loads a document, on the UI thread, so the collection is per thread. A mark
@@ -32,7 +32,7 @@ internal static class DroppedChildOwners
     }
 
     /// <summary>
-    /// Called by <c>DT.DroppedChildOwner</c> when the mark of an object changes.
+    /// Called by <see cref="DT.DroppedChildOwnerProperty"/> when the mark of an object changes.
     /// </summary>
     internal static void OnMarked(DependencyObject owner, string? mark)
     {

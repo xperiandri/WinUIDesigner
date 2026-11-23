@@ -20,10 +20,7 @@ internal sealed partial class SurfaceService
     /// <remarks>
     /// A policy failure never fails the document: it is logged and the XAML is used as prepared.
     /// </remarks>
-    private XDocument LoadPreparedXaml(string xaml, int documentId)
-    {
-        return LoadPreparedXaml(xaml, documentId, out _);
-    }
+    private XDocument LoadPreparedXaml(string xaml, int documentId) => LoadPreparedXaml(xaml, documentId, out _);
 
     /// <summary>
     /// Parses prepared XAML once, with line information, and applies the namespace policies to the result.

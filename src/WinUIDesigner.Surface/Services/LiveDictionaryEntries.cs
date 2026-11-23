@@ -10,10 +10,7 @@ namespace WinUIDesigner.Surface.Services;
 /// <param name="styleEdits">Applies the edits of styles that are in use.</param>
 internal sealed class LiveDictionaryEntries(StyleEditService styleEdits) : IDictionaryEntryAccess
 {
-    public object? GetEntry(object dictionary, object? key)
-    {
-        return XamlRuntimeUtilities.GetDictionaryEntry(dictionary, key);
-    }
+    public object? GetEntry(object dictionary, object? key) => XamlRuntimeUtilities.GetDictionaryEntry(dictionary, key);
 
     public void AddEntry(object dictionary, object? key, object? value)
     {

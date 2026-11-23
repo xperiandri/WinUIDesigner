@@ -550,11 +550,13 @@ internal sealed partial class SurfaceService
     /// <returns><see langword="false"/> when the index points past the end.</returns>
     private bool RemoveChildAt(object owner, int liveIndex)
     {
+        // A sealed setter collection of a style in use.
         if (owner is SetterBaseCollection setters && _styleEdits.TryRemoveSetter(setters, liveIndex))
         {
             return true;
         }
 
+        // Any other collection.
         return XamlRuntimeUtilities.RemoveChild(owner, liveIndex);
     }
 

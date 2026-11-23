@@ -94,6 +94,8 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
         }
 
         object collection = collections.GetCollection(owner);
+
+        // A dropped element: its position becomes a hole, and nothing is added.
         if (child is DroppedElement)
         {
             ChildIndexMap map = _maps.InsertHole(collection, modelIndex, CountLiveChildren(collection, countPending));
@@ -102,11 +104,13 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
             return null;
         }
 
+        // A collection without holes uses the indices as Visual Studio sends them.
         if (!_maps.TryGet(collection, out ChildIndexMap? holes))
         {
             return modelIndex;
         }
 
+        // An object in a collection with holes goes past the holes before it.
         int liveIndex = holes.InsertItem(modelIndex, CountLiveChildren(collection, countPending));
         WinUIDesignerLogger.LogTrace("Surface", $"Child indices: AddChild at index {modelIndex} of {Describe(collection)} goes to live index {liveIndex}; dropped elements at {holes}.");
         return liveIndex;
@@ -125,6 +129,7 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
     /// </param>
     public void RemoveChild(object owner, int modelIndex, Action<object>? flushPending = null)
     {
+        // Nothing lives in place of a dropped element, so nothing is removed from it.
         if (owner is DroppedElement)
         {
             return;
@@ -139,12 +144,15 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
             switch (slot.Kind)
             {
                 case ChildSlotKind.Hole:
+                    // A dropped element goes; the live collection does not change.
                     WinUIDesignerLogger.LogTrace("Surface", $"Child indices: RemoveChild at index {modelIndex} of {Describe(collection)} removes a dropped element; dropped elements at {holes}.");
                     return;
                 case ChildSlotKind.Outside:
+                    // An index past the end changes nothing.
                     warn?.Invoke($"Child indices: RemoveChild at index {modelIndex} of {Describe(collection)} points past its end; nothing was removed.");
                     return;
                 default:
+                    // An object: its live index is its model index minus the holes before it.
                     liveIndex = slot.LiveIndex;
                     WinUIDesignerLogger.LogTrace("Surface", $"Child indices: RemoveChild at index {modelIndex} of {Describe(collection)} removes live index {liveIndex}; dropped elements at {holes}.");
                     break;
@@ -189,8 +197,10 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
                     // with the stand-in.
                     return new DroppedElement();
                 case ChildSlotKind.Outside:
+                    // An index past the end finds nothing.
                     return null;
                 default:
+                    // An object: its live index is its model index minus the holes before it.
                     liveIndex = slot.LiveIndex;
                     break;
             }
@@ -225,26 +235,17 @@ internal sealed class ChildIndexTranslator(IChildCollectionAccess collections, A
     /// <summary>
     /// Forgets the maps of the collections in <paramref name="released"/>, the objects of a released document.
     /// </summary>
-    public void Release(IEnumerable<object> released)
-    {
-        _maps.Release(released);
-    }
+    public void Release(IEnumerable<object> released) => _maps.Release(released);
 
     /// <summary>
     /// Forgets every map.
     /// </summary>
-    public void Clear()
-    {
-        _maps.Clear();
-    }
+    public void Clear() => _maps.Clear();
 
     private int CountLiveChildren(object collection, Func<object, int>? countPending)
     {
         return (collections.GetCount(collection) ?? 0) + (countPending?.Invoke(collection) ?? 0);
     }
 
-    private static string Describe(object collection)
-    {
-        return collection.GetType().Name;
-    }
+    private static string Describe(object collection) => collection.GetType().Name;
 }
