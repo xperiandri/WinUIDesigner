@@ -68,7 +68,7 @@ Two options decide which members of a document are instantiated. They belong to 
 | Option | Meaning | MSBuild property | Default |
 | --- | --- | --- | --- |
 | Windows version | The version of `Windows.Foundation.UniversalApiContract` that conditional XAML namespaces (`...?IsApiContractPresent(Windows.Foundation.UniversalApiContract,7)`) are evaluated against. | `WinUIDesignerWindowsVersion`: a contract version (`7`), a build (`17763`), a full version (`10.0.17763.0`), or a release name (`1809`, `Windows 11 22H2`). | The installed Windows. |
-| Target platform | The Uno Platform target the markup is previewed as. | `WinUIDesignerTargetPlatform`: `win`, `android`, `ios`, `wasm`, `skia`, `androidskia`, `iosskia`, or `wasmskia`. | `win`, the Windows target. |
+| Target platform | The Uno Platform target the markup is previewed as, named as in Uno's platform-specific XAML prefixes. | `WinUIDesignerTargetPlatform`: `win`, `android`, `ios`, `tvos`, `wasm`, `desktop` (Skia Desktop; `skia`, the Uno 6 prefix of every Skia target, is accepted for it too), `androidskia`, `iosskia`, or `wasmskia`. | `win`, the Windows target. |
 
 Each option is resolved on its own: the user's override, then the MSBuild property, then the default. The override is a string that Visual Studio keeps per project in the solution's user options file; like the properties, it is read from the application project. There is no user interface for these two options yet, so the MSBuild properties are the way to set them. The options reach both processes and are logged there, but no code interprets them yet: no preview changes when they change. The selection UI and the Uno Platform target are planned as the second part of [#5](https://github.com/0x5bfa/WinUIDesigner/issues/5).
 

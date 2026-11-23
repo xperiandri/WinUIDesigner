@@ -16,10 +16,10 @@ public sealed class DesignTimeOptionsTests
     public void TargetPlatformsKeepTheirIdentifiersAndOrder()
     {
         CollectionAssert.AreEqual(
-            new[] { "win", "android", "ios", "wasm", "skia", "androidskia", "iosskia", "wasmskia" },
+            new[] { "win", "android", "ios", "tvos", "wasm", "desktop", "androidskia", "iosskia", "wasmskia" },
             DesignTimeTargetPlatform.All.Select(platform => platform.Id).ToArray());
         CollectionAssert.AreEqual(
-            new[] { "Windows", "Android", "iOS", "WebAssembly", "Skia Desktop", "Android (Skia)", "iOS (Skia)", "WebAssembly (Skia)" },
+            new[] { "Windows", "Android", "iOS", "tvOS", "WebAssembly", "Skia Desktop", "Android (Skia)", "iOS (Skia)", "WebAssembly (Skia)" },
             DesignTimeTargetPlatform.All.Select(platform => platform.DisplayName).ToArray());
         Assert.AreSame(DesignTimeTargetPlatform.Windows, DesignTimeTargetPlatform.All[0]);
     }
@@ -29,14 +29,19 @@ public sealed class DesignTimeOptionsTests
     [DataRow("WIN", "win")]
     [DataRow(" Android ", "android")]
     [DataRow("iOS", "ios")]
+    [DataRow("tvos", "tvos")]
     [DataRow("wasm", "wasm")]
-    [DataRow("skia", "skia")]
+    [DataRow("desktop", "desktop")]
     [DataRow("AndroidSkia", "androidskia")]
     [DataRow("iosskia", "iosskia")]
     [DataRow("wasmskia", "wasmskia")]
     [DataRow("Windows", "win")]
+    [DataRow("tvOS", "tvos")]
     [DataRow("webassembly", "wasm")]
-    [DataRow("Skia Desktop", "skia")]
+    [DataRow("Skia Desktop", "desktop")]
+    // Uno 6 writes the members of Skia Desktop under the prefix of all its Skia targets.
+    [DataRow("skia", "desktop")]
+    [DataRow("Skia", "desktop")]
     [DataRow("android (skia)", "androidskia")]
     [DataRow("iOS (Skia)", "iosskia")]
     [DataRow("WebAssembly (Skia)", "wasmskia")]
@@ -108,7 +113,8 @@ public sealed class DesignTimeOptionsTests
     [DataRow("v=1;theme=dark;target=ios;contract=10;flag", "ios", 10)]
     [DataRow("v=2;target=wasm;scale=2", "wasm", 0)]
     [DataRow(" V = 1 ; TARGET = Android ; Contract = 7 ; ", "android", 7)]
-    [DataRow("contract=19;target=skia;v=1", "skia", 19)]
+    [DataRow("contract=19;target=skia;v=1", "desktop", 19)]
+    [DataRow("v=1;target=tvos", "tvos", 0)]
     [DataRow("v=1;target=ios;target=android", "android", 0)]
     [DataRow("v=1", "win", 0)]
     [DataRow("v=1;contract=7", "win", 7)]
@@ -379,7 +385,10 @@ public sealed class DesignTimeOptionsTests
     // The project file sets the defaults; a value that cannot be read is ignored.
     [DataRow(null, "android", null, "android", 0)]
     [DataRow(null, null, "1809", "win", 7)]
-    [DataRow(null, "Skia Desktop", "10.0.22621.0", "skia", 15)]
+    [DataRow(null, "Skia Desktop", "10.0.22621.0", "desktop", 15)]
+    [DataRow(null, "desktop", null, "desktop", 0)]
+    [DataRow(null, "skia", null, "desktop", 0)]
+    [DataRow(null, "tvos", "26100", "tvos", 19)]
     [DataRow(null, "playstation", "Windows 95", "win", 0)]
     [DataRow(null, "", "  ", "win", 0)]
     // The user's override wins, one option at a time.
