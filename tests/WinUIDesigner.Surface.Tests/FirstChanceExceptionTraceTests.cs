@@ -44,10 +44,13 @@ public sealed class FirstChanceExceptionTraceTests
     {
         using var trace = new FirstChanceExceptionTrace();
 
-        Task.Run(() =>
+        // A thread of its own: Task.Run(...).Wait() may run the task inline on this thread.
+        var other = new Thread(() =>
         {
             try { throw new InvalidOperationException("other thread"); } catch (InvalidOperationException) { }
-        }).Wait();
+        });
+        other.Start();
+        other.Join();
 
         Assert.IsEmpty(trace.Exceptions);
     }
