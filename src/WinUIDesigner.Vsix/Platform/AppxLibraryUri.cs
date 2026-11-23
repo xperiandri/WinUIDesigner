@@ -40,12 +40,13 @@ internal static class AppxLibraryUri
     {
         assemblyName = string.Empty;
         projectRelativePath = string.Empty;
-        if (value is null || value.Trim().Length == 0)
+        // An empty value names nothing.
+        if (string.IsNullOrWhiteSpace(value))
         {
             return false;
         }
 
-        string text = value.Trim();
+        string text = value!.Trim();
         string path;
         if (text.StartsWith("/", StringComparison.Ordinal) && !text.StartsWith("//", StringComparison.Ordinal))
         {
@@ -60,9 +61,11 @@ internal static class AppxLibraryUri
         }
         else
         {
+            // Relative to the document, or the URI of another package: not a path of the package.
             return false;
         }
 
+        // A copy that Visual Studio prepared is found by its id.
         path = Uri.UnescapeDataString(path).TrimStart('/');
         if (path.IndexOf(_DesignTimeMarker, StringComparison.OrdinalIgnoreCase) >= 0)
         {
@@ -70,6 +73,7 @@ internal static class AppxLibraryUri
         }
 
         // "Assembly/Folder/File.xaml": a folder of the package, and a file below it.
+        // A file in the root of the package belongs to the application, and a folder is no file.
         int slash = path.IndexOf('/');
         if (slash <= 0 || slash == path.Length - 1)
         {
@@ -77,7 +81,7 @@ internal static class AppxLibraryUri
         }
 
         assemblyName = path.Substring(0, slash);
-        projectRelativePath = "\\" + path.Substring(slash + 1).Replace('/', '\\');
+        projectRelativePath = $"\\{path.Substring(slash + 1).Replace('/', '\\')}";
         return true;
     }
 }

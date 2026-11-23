@@ -31,7 +31,7 @@ internal sealed class WinUISurfaceProcessMarkupProvider : UwpSurfaceProcessMarku
     /// </summary>
     /// <remarks>
     /// Visual Studio looks for the assembly named in such a source among the projects that the application references
-    /// directly (<c>UwpUriResolver.FindTargetProject</c>), also for the document of a library. A library that a
+    /// directly (<see cref="Microsoft.VisualStudio.DesignTools.Xaml.LanguageService.UwpUriResolver.FindTargetProject"/>), also for the document of a library. A library that a
     /// library of the application references is not among them, so the source is not found and keeps the value as
     /// written (<see cref="ResolveItemDetails.ReferencedAssembly"/>), and the surface cannot merge a dictionary that
     /// Visual Studio did not prepare. When Visual Studio finds nothing for that reason, this looks for the project
@@ -41,6 +41,7 @@ internal sealed class WinUISurfaceProcessMarkupProvider : UwpSurfaceProcessMarku
     /// </remarks>
     public override SurfaceProcessDocumentResult RegisterRelatedDocument(string documentRelativePath, IDocumentContext ownerDocument, bool prepareForLoading)
     {
+        // Visual Studio looks first, and its answer stands unless it found no project for the assembly of the source.
         SurfaceProcessDocumentResult result = base.RegisterRelatedDocument(documentRelativePath, ownerDocument, prepareForLoading);
         if (result.Document is not null || result.MissingReason != ResolveItemDetails.ReferencedAssembly)
         {

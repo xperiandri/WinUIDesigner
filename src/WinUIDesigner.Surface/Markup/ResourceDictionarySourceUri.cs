@@ -43,10 +43,7 @@ internal static class ResourceDictionarySourceUri
     /// <summary>
     /// Returns whether <paramref name="value"/> names a prepared copy that Visual Studio wrote for the designer.
     /// </summary>
-    public static bool IsDesignTimeUri(string? value)
-    {
-        return TryGetDesignTimeDocumentId(value, out _);
-    }
+    public static bool IsDesignTimeUri(string? value) => TryGetDesignTimeDocumentId(value, out _);
 
     /// <summary>
     /// Reads the id of Visual Studio's document from a design-time URI, the way Visual Studio itself does:
@@ -94,19 +91,20 @@ internal static class ResourceDictionarySourceUri
     {
         ArgumentNullException.ThrowIfNull(value);
 
-        string trimmed = value.Trim().TrimEnd('/');
-        string path = trimmed.StartsWith(_AppxRoot, StringComparison.OrdinalIgnoreCase) ? trimmed[_AppxRoot.Length..] : trimmed;
-        int slash = path.LastIndexOfAny(['/', '\\']);
-        string folder = path[..(slash + 1)];
-        string fileName = path[(slash + 1)..];
+        ReadOnlySpan<char> trimmed = value.AsSpan().Trim().TrimEnd('/');
+        ReadOnlySpan<char> path = trimmed.StartsWith(_AppxRoot, StringComparison.OrdinalIgnoreCase) ? trimmed[_AppxRoot.Length..] : trimmed;
+        int slash = path.LastIndexOfAny('/', '\\');
+        ReadOnlySpan<char> folder = path[..(slash + 1)];
+        ReadOnlySpan<char> fileName = path[(slash + 1)..];
 
         // "~vs]~{id}~{file name}" is how Visual Studio names a prepared copy.
         if (fileName.StartsWith(DesignTimeFileMarker, StringComparison.OrdinalIgnoreCase))
         {
-            int end = fileName.IndexOf('~', DesignTimeFileMarker.Length);
-            if (end >= 0 && end + 1 < fileName.Length)
+            int end = fileName[DesignTimeFileMarker.Length..].IndexOf('~');
+            int nameStart = DesignTimeFileMarker.Length + end + 1;
+            if (end >= 0 && nameStart < fileName.Length)
             {
-                fileName = fileName[(end + 1)..];
+                fileName = fileName[nameStart..];
             }
         }
 
@@ -132,17 +130,20 @@ internal static class ResourceDictionarySourceUri
     /// </remarks>
     public static string? Resolve(string? value, string? baseUri)
     {
-        string? text = value?.Trim();
-        if (string.IsNullOrEmpty(text))
+        // An empty value names no dictionary.
+        if (string.IsNullOrWhiteSpace(value))
         {
             return null;
         }
 
+        // An absolute URI is returned as written.
+        string text = value.Trim();
         if (text[0] != '/' && Uri.TryCreate(text, UriKind.Absolute, out Uri? absolute))
         {
             return absolute.OriginalString;
         }
 
+        // Anything that is neither absolute nor relative is no URI.
         if (!Uri.TryCreate(text, UriKind.Relative, out Uri? relative))
         {
             return null;
@@ -173,6 +174,7 @@ internal static class ResourceDictionarySourceUri
 
         try
         {
+            // The name of a prepared copy starts with the marker.
             string fileName = Path.GetFileName(preparedPath);
             if (!TryGetDesignTimeDocumentId(fileName, out _) || !fileName.StartsWith(DesignTimeFileMarker, StringComparison.OrdinalIgnoreCase))
             {
@@ -228,7 +230,7 @@ internal static class ResourceDictionarySourceUri
         try
         {
             string root = Path.GetFullPath(contentDirectory);
-            string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
+            string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar) ? root : $"{root}{Path.DirectorySeparatorChar}";
             string path = Path.GetFullPath(Path.Combine(root, relativePath));
             return path.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase) ? path : null;
         }

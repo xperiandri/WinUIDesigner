@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
+using WinUIDesigner.Markup;
 
 namespace WinUIDesigner.Surface.Markup;
 
@@ -52,7 +53,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     /// </summary>
     public static readonly XName SourceAttributeName = XName.Get("DT.ResourceDictionarySource", DesignTimeNamespace);
 
-    private static readonly XNamespace _Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    private static readonly XNamespace _Presentation = XamlNamespaces.Presentation;
     private static readonly XNamespace _DesignTime = DesignTimeNamespace;
     private static readonly XName _PlainSourceName = XName.Get("Source");
 
@@ -80,10 +81,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     /// <summary>
     /// Starts a request: a source that the runtime could not load is asked for again.
     /// </summary>
-    public void BeginRequest()
-    {
-        _runtimeLoadErrors.Clear();
-    }
+    public void BeginRequest() => _runtimeLoadErrors.Clear();
 
     /// <summary>
     /// Returns whether <paramref name="element"/> belongs to the content of a merged dictionary that an expansion
@@ -139,6 +137,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     {
         ArgumentNullException.ThrowIfNull(owner);
 
+        // The value is no URI.
         string? uri = ResourceDictionarySourceUri.Resolve(source, documentUri);
         if (uri is null)
         {
@@ -150,11 +149,13 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             return ResourceDictionarySourceContent.None;
         }
 
+        // Visual Studio did not prepare a copy: the runtime is to load it.
         if (!ResourceDictionarySourceUri.IsDesignTimeUri(uri))
         {
             return ResourceDictionarySourceContent.FromRuntime(uri);
         }
 
+        // A copy that Visual Studio prepared.
         PreparedResourceDictionary? prepared = LoadPrepared(uri, owner, new Session(), []);
         if (prepared is null)
         {
@@ -171,10 +172,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     /// <summary>
     /// Reports that the WinUI runtime could not load a source that Visual Studio did not find in the solution.
     /// </summary>
-    public void ReportRuntimeLoadFailure(string uri, string owner, string error)
-    {
-        Warn(DescribeRuntimeLoadFailure(uri, owner, error));
-    }
+    public void ReportRuntimeLoadFailure(string uri, string owner, string error) => Warn(DescribeRuntimeLoadFailure(uri, owner, error));
 
     private static string DescribeRuntimeLoadFailure(string uri, string owner, string error)
     {
@@ -208,6 +206,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             XElement fragment;
             if (ResourceDictionarySourceUri.IsDesignTimeUri(uri))
             {
+                // A copy that Visual Studio prepared: its content is merged.
                 PreparedResourceDictionary? prepared = LoadPrepared(uri, owner, session, dependencies);
                 if (prepared is null)
                 {
@@ -222,6 +221,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             }
             else
             {
+                // A source outside the solution: merged with its source when the runtime loads it, otherwise left out.
                 string? error = GetRuntimeLoadError(uri);
                 if (error is not null)
                 {
@@ -254,6 +254,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     private PreparedResourceDictionary? LoadPrepared(string uri, string owner, Session session, List<KeyValuePair<string, string?>> dependencies)
     {
         string name = ResourceDictionarySourceUri.GetDisplayName(uri);
+        // The URI names no file of the shadow cache.
         string? path = ResourceDictionarySourceUri.TryGetLocalPath(uri, _options.ContentDirectory);
         if (path is null)
         {
@@ -261,6 +262,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             return null;
         }
 
+        // The chain of dictionaries reaches a member of itself again.
         int cycleStart = session.Chain.FindIndex(member => string.Equals(member.Path, path, StringComparison.OrdinalIgnoreCase));
         if (cycleStart >= 0)
         {
@@ -270,6 +272,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             return null;
         }
 
+        // The chain is deeper than allowed.
         if (session.Depth >= _options.MaxDepth)
         {
             session.IsCut = true;
@@ -277,6 +280,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             return null;
         }
 
+        // The copy cannot be read.
         string? text;
         try
         {
@@ -291,12 +295,15 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
 
         // Whatever comes of it, a dictionary that merges this one is only as current as this text.
         dependencies.Add(new KeyValuePair<string, string?>(path, text));
+
+        // Visual Studio wrote no copy.
         if (text is null)
         {
             Warn($"Resource dictionary '{name}' merged by {owner} is left empty: Visual Studio's prepared copy '{path}' does not exist.");
             return null;
         }
 
+        // The dictionary was read before, from the same text.
         if (_cache.TryGet(path, text, _options.ReadFile, out PreparedResourceDictionary? cached))
         {
             dependencies.AddRange(cached.Dependencies);
@@ -311,6 +318,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             return cached;
         }
 
+        // The copy is no well-formed XAML.
         XElement? root;
         try
         {
@@ -322,12 +330,14 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             return null;
         }
 
+        // The copy has no root element.
         if (root is null)
         {
             Warn($"Resource dictionary '{name}' merged by {owner} is left empty: its prepared copy '{path}' has no root element.");
             return null;
         }
 
+        // The root element is no dictionary.
         if (!IsDictionaryRoot(root.Name))
         {
             Warn($"Resource dictionary '{name}' merged by {owner} is left empty: its root element <{root.Name.LocalName}> is not a resource dictionary.");
@@ -483,11 +493,13 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
     /// </summary>
     public bool IsDictionaryRoot(XName name)
     {
+        // One of the dictionary types of WinUI.
         if (name.LocalName is "ResourceDictionary" or "XamlControlsResources" or "ColorPaletteResources")
         {
             return true;
         }
 
+        // A class of the project that derives from ResourceDictionary.
         try
         {
             return _options.IsDictionaryType?.Invoke(name) == true;
@@ -527,15 +539,9 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         }
     }
 
-    private void Warn(string message)
-    {
-        _options.ReportWarning?.Invoke(message);
-    }
+    private void Warn(string message) => _options.ReportWarning?.Invoke(message);
 
-    private void Report(string message)
-    {
-        _options.Report?.Invoke(message);
-    }
+    private void Report(string message) => _options.Report?.Invoke(message);
 
     /// <summary>
     /// Marks the root of a dictionary an expansion inserted.
@@ -693,10 +699,7 @@ internal sealed class ResourceDictionarySourceContent
     /// <summary>
     /// Creates the content of a source for the WinUI runtime to load.
     /// </summary>
-    public static ResourceDictionarySourceContent FromRuntime(string uri)
-    {
-        return new(ResourceDictionarySourceContentKind.Runtime, uri, null);
-    }
+    public static ResourceDictionarySourceContent FromRuntime(string uri) => new(ResourceDictionarySourceContentKind.Runtime, uri, null);
 }
 
 /// <summary>

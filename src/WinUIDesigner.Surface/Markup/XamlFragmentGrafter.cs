@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using WinUIDesigner.Markup;
 
 namespace WinUIDesigner.Surface.Markup;
 
@@ -29,18 +30,15 @@ namespace WinUIDesigner.Surface.Markup;
 /// </remarks>
 internal static class XamlFragmentGrafter
 {
-    private const string _MarkupCompatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
-    private const string _XamlLanguageNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
-
-    private static readonly XNamespace _MarkupCompatibility = _MarkupCompatibilityNamespace;
+    private static readonly XNamespace _MarkupCompatibility = XamlNamespaces.MarkupCompatibility;
     private static readonly XName _IgnorableName = _MarkupCompatibility + "Ignorable";
 
     // Directives that only the root element of a document may carry.
     private static readonly XName[] _RootOnlyDirectives =
     [
-        XName.Get("Class", _XamlLanguageNamespace),
-        XName.Get("ClassModifier", _XamlLanguageNamespace),
-        XName.Get("Subclass", _XamlLanguageNamespace),
+        XName.Get("Class", XamlNamespaces.XamlLanguage),
+        XName.Get("ClassModifier", XamlNamespaces.XamlLanguage),
+        XName.Get("Subclass", XamlNamespaces.XamlLanguage),
     ];
 
     /// <summary>
@@ -55,6 +53,7 @@ internal static class XamlFragmentGrafter
     {
         ArgumentNullException.ThrowIfNull(fragment);
 
+        // What mc:Ignorable lists is removed, as the reader would skip it.
         if (fragment.Attribute(_IgnorableName) is { } ignorable)
         {
             var namespaces = new HashSet<string>(StringComparer.Ordinal);
@@ -73,11 +72,13 @@ internal static class XamlFragmentGrafter
             }
         }
 
+        // The reader accepts the attributes of markup compatibility on the root of a document only.
         foreach (XAttribute attribute in fragment.Attributes().Where(attribute => attribute.Name.Namespace == _MarkupCompatibility).ToList())
         {
             attribute.Remove();
         }
 
+        // So are the directives of a class with code behind.
         RemoveClassDirectives(fragment);
     }
 
@@ -190,7 +191,7 @@ internal static class XamlFragmentGrafter
     {
         for (int number = 1; ; number++)
         {
-            string candidate = prefix + "_" + number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string candidate = FormattableString.Invariant($"{prefix}_{number}");
             if (!taken.Contains(candidate))
             {
                 return candidate;
@@ -258,14 +259,14 @@ internal static class XamlFragmentGrafter
 
     private static string RenameReferences(string value, string prefix, string replacement, Regex reference)
     {
-        return value.IndexOf(prefix + ":", StringComparison.Ordinal) < 0
+        return value.IndexOf($"{prefix}:", StringComparison.Ordinal) < 0
             ? value
-            : reference.Replace(value, replacement + ":");
+            : reference.Replace(value, $"{replacement}:");
     }
 
     private static Regex CreateReferencePattern(string prefix)
     {
-        return new Regex(@"(?<![\w.:\-])" + Regex.Escape(prefix) + @":(?=[\p{L}_])", RegexOptions.CultureInvariant);
+        return new Regex($@"(?<![\w.:\-]){Regex.Escape(prefix)}:(?=[\p{{L}}_])", RegexOptions.CultureInvariant);
     }
 
     /// <summary>
@@ -284,9 +285,9 @@ internal static class XamlFragmentGrafter
             {
                 renamed = replacement;
             }
-            else if (token.StartsWith(prefix + ":", StringComparison.Ordinal))
+            else if (token.StartsWith($"{prefix}:", StringComparison.Ordinal))
             {
-                renamed = replacement + token[prefix.Length..];
+                renamed = $"{replacement}{token[prefix.Length..]}";
             }
 
             changed |= !ReferenceEquals(renamed, token);

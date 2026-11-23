@@ -59,7 +59,8 @@ internal sealed class ResourceEntryQuarantine(ResourceCopyOrigins origins, Func<
 
     private static readonly Regex _ResourceReference = new(
         @"\{\s*(?:StaticResource|ThemeResource)\s+(?:ResourceKey\s*=\s*)?(?<key>[^\s,}]+)\s*\}",
-        RegexOptions.CultureInvariant);
+        RegexOptions.CultureInvariant
+    );
 
     /// <summary>
     /// Gets the number of resources left out so far.
@@ -255,10 +256,7 @@ internal sealed class ResourceEntryQuarantine(ResourceCopyOrigins origins, Func<
         return entry;
     }
 
-    private bool IsDictionaryElement(XName name)
-    {
-        return name.LocalName == "ResourceDictionary" || isDictionary(name);
-    }
+    private bool IsDictionaryElement(XName name) => name.LocalName == "ResourceDictionary" || isDictionary(name);
 
     private static string? GetKey(XElement entry)
     {

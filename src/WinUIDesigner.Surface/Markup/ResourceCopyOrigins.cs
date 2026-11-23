@@ -31,18 +31,12 @@ internal sealed class ResourceCopyOrigins
     /// <summary>
     /// Records that <paramref name="copy"/>, the root element of a dictionary, comes from <paramref name="origin"/>.
     /// </summary>
-    public void Add(XElement copy, ResourceCopyOrigin origin)
-    {
-        _origins.AddOrUpdate(copy, origin);
-    }
+    public void Add(XElement copy, ResourceCopyOrigin origin) => _origins.AddOrUpdate(copy, origin);
 
     /// <summary>
     /// Returns where the dictionary whose root element is <paramref name="copy"/> comes from.
     /// </summary>
-    public bool TryGetOrigin(XElement copy, [NotNullWhen(true)] out ResourceCopyOrigin? origin)
-    {
-        return _origins.TryGetValue(copy, out origin);
-    }
+    public bool TryGetOrigin(XElement copy, [NotNullWhen(true)] out ResourceCopyOrigin? origin) => _origins.TryGetValue(copy, out origin);
 
     /// <summary>
     /// Duplicates <paramref name="template"/> and carries the origins of its elements over to the duplicate: the

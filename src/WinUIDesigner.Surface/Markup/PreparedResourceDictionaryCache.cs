@@ -120,10 +120,7 @@ internal sealed class PreparedResourceDictionaryCache(int capacity = PreparedRes
     /// <summary>
     /// Forgets every dictionary.
     /// </summary>
-    public void Clear()
-    {
-        _entries.Clear();
-    }
+    public void Clear() => _entries.Clear();
 
     private static bool AreCurrent(IReadOnlyList<KeyValuePair<string, string?>> dependencies, Func<string, string?> readFile)
     {

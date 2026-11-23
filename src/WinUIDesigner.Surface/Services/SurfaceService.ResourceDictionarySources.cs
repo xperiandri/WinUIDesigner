@@ -151,6 +151,7 @@ internal sealed partial class SurfaceService
     /// <param name="value">The value of the property, the source as Visual Studio passes it on.</param>
     private void SetResourceDictionarySource(object owner, object? value)
     {
+        // Only a dictionary has a source of this kind.
         if (owner is not ResourceDictionary target)
         {
             WinUIDesignerLogger.LogWarning("Surface", $"A construction action sets a resource dictionary source on {owner.GetType().FullName}, which is no resource dictionary; the action is ignored.");
@@ -160,12 +161,14 @@ internal sealed partial class SurfaceService
         // A dictionary whose source changes loses what the old source brought.
         RemoveResourceDictionarySourceContent(target);
 
+        // An empty source merges nothing.
         string? source = value as string ?? value?.ToString();
         if (string.IsNullOrWhiteSpace(source))
         {
             return;
         }
 
+        // A source that cannot be merged has been reported.
         ResourceDictionary? content = LoadResourceDictionarySource(source, DescribeActionDocument());
         if (content is null)
         {
@@ -204,12 +207,14 @@ internal sealed partial class SurfaceService
     /// </summary>
     private void RestoreResourceDictionarySourceContent(object owner, string fullPropertyName)
     {
+        // Nothing was merged for a source of this object.
         if (owner is not ResourceDictionary target
             || !_appliedResourceDictionarySources.TryGetValue(target, out AppliedResourceDictionarySource? applied))
         {
             return;
         }
 
+        // Only the clearing of the merged dictionaries takes the content away.
         int separator = fullPropertyName.IndexOf(':');
         string propertyName = separator < 0 ? fullPropertyName : fullPropertyName[..separator];
         if (propertyName == nameof(ResourceDictionary.MergedDictionaries) && !target.MergedDictionaries.Contains(applied.Dictionary))
@@ -239,6 +244,7 @@ internal sealed partial class SurfaceService
         {
             case ResourceDictionarySourceContentKind.Prepared:
                 {
+                    // A copy that Visual Studio prepared, read with the XAML reader.
                     string name = ResourceDictionarySourceUri.GetDisplayName(content.Uri!);
                     XElement dictionary = content.Dictionary!;
                     PrepareForXamlReader(dictionary);
@@ -276,6 +282,7 @@ internal sealed partial class SurfaceService
 
             case ResourceDictionarySourceContentKind.Runtime:
                 {
+                    // A source outside the solution, loaded by the runtime.
                     ResourceDictionary? loaded = LoadDictionaryWithRuntime(content.Uri!, out string? error);
                     if (loaded is null)
                     {
@@ -288,6 +295,7 @@ internal sealed partial class SurfaceService
                 }
 
             default:
+                // An empty source, or one that cannot be merged and has been reported.
                 return null;
         }
     }
@@ -323,6 +331,7 @@ internal sealed partial class SurfaceService
     {
         try
         {
+            // The reader returns something else than a dictionary.
             if (XamlReader.Load(RuntimeDictionaryProbe.CreateXaml(uri)) is not ResourceDictionary probe)
             {
                 return "the XAML reader did not return a resource dictionary.";
@@ -332,6 +341,7 @@ internal sealed partial class SurfaceService
         }
         catch (Exception ex)
         {
+            // The runtime cannot load it.
             return DescribeException(ex);
         }
     }
@@ -342,12 +352,16 @@ internal sealed partial class SurfaceService
     /// </summary>
     private static int CountResources(ResourceDictionary dictionary)
     {
+        // Its own resources.
         int count = dictionary.Count;
+
+        // Those of the dictionaries it merges.
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
             count += CountResources(merged);
         }
 
+        // Those of its theme dictionaries.
         foreach (object? theme in dictionary.ThemeDictionaries.Values)
         {
             if (theme is ResourceDictionary themed)
@@ -376,26 +390,24 @@ internal sealed partial class SurfaceService
             return false;
         }
 
-        Type? type = XamlRuntimeUtilities.ResolveType(clrNamespace + "." + name.LocalName);
+        Type? type = XamlRuntimeUtilities.ResolveType($"{clrNamespace}.{name.LocalName}");
         return type is not null && typeof(ResourceDictionary).IsAssignableFrom(type);
     }
 
     private void ReportResourceDictionaryProblem(string message)
     {
+        // A problem is a warning the first time in a request.
         if (_reportedResourceDictionaryProblems.Add(message))
         {
             WinUIDesignerLogger.LogWarning("Surface", message);
         }
         else
         {
-            WinUIDesignerLogger.LogTrace("Surface", "Reported before in this request: " + message);
+            WinUIDesignerLogger.LogTrace("Surface", $"Reported before in this request: {message}");
         }
     }
 
-    private string DescribeActionDocument()
-    {
-        return _actionDocumentId != 0 ? $"document {_actionDocumentId}" : "the document being edited";
-    }
+    private string DescribeActionDocument() => _actionDocumentId != 0 ? $"document {_actionDocumentId}" : "the document being edited";
 
     private static string DescribeException(Exception exception)
     {
