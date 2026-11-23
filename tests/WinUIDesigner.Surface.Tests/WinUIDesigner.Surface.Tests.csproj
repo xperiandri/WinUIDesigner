@@ -20,6 +20,22 @@
 		<Reference Include="Microsoft.VisualStudio.DesignTools.RuntimeHostBase">
 			<HintPath>$(VsInstallRoot)/Common7/IDE/PrivateAssemblies/Microsoft.VisualStudio.DesignTools.RuntimeHostBase.dll</HintPath>
 		</Reference>
+		<Reference Include="Microsoft.VisualStudio.DesignTools.RuntimeHost">
+			<HintPath>$(VsInstallRoot)/Common7/IDE/PrivateAssemblies/Microsoft.VisualStudio.DesignTools.RuntimeHost.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The resource references of construction actions: the protocol, the scope walk, the theme lookup, its registry, the tracking of properties and the pass over them. -->
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/StaticResourceReference.cs" Link="StaticResourceReference.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceReference.cs" Link="ThemeResourceReference.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ResourceReferenceProtocol.cs" Link="ResourceReferenceProtocol.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ResourceScopeWalk.cs" Link="ResourceScopeWalk.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceThemes.cs" Link="ThemeResourceThemes.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceLookup.cs" Link="ThemeResourceLookup.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceRegistry.cs" Link="ThemeResourceRegistry.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourceTracking.cs" Link="ThemeResourceTracking.cs" Visible="false" />
+		<Compile Include="../../src/WinUIDesigner.Surface/Common/ThemeResourcePass.cs" Link="ThemeResourcePass.cs" Visible="false" />
 	</ItemGroup>
 
 </Project>

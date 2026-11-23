@@ -63,6 +63,12 @@ internal sealed partial class DesignerSurface : IDisposable
 
     public FrameworkElement Content => _content;
 
+    /// <summary>
+    /// The theme that the surface shows the document in: the one of the artboard colours, else the one that the
+    /// project's application requests; <see cref="ElementTheme.Default"/> when neither is known.
+    /// </summary>
+    public ElementTheme PreviewTheme => _previewRequestedTheme ?? _appRequestedTheme;
+
     public bool IsFrozen { get; private set; }
 
     public event Action<double>? DpiChanged;

@@ -84,6 +84,7 @@ internal sealed partial class SurfaceService
 
             await DispatcherOperation.InvokeAsync(_dispatcherQueue, () =>
             {
+                ElementTheme previousAppRequestedTheme = _appRequestedTheme;
                 foreach (CreateDocumentInfo resourceDocument in resourceDocumentsToBuild)
                 {
                     InvalidateResourceDocument(resourceDocument.DocumentId);
@@ -117,6 +118,14 @@ internal sealed partial class SurfaceService
                 foreach (DesignerSurface surface in _surfaces.Values)
                 {
                     surface.SetRequestedTheme(_appRequestedTheme);
+                }
+
+                // App.xaml is rebuilt for every surface, and only a theme that it changed moves the references. They are evaluated
+                // again after the rebuild, by the pass of the creation of the surface: now Application.Resources lacks the
+                // dictionary of App.xaml, so a pass would give a key that App.xaml overrides the value that the framework defines.
+                if (_appRequestedTheme != previousAppRequestedTheme)
+                {
+                    _themeReferencesNeedReapply = true;
                 }
 
                 return true;
@@ -190,6 +199,9 @@ internal sealed partial class SurfaceService
                     surface.DpiChanged += dpi => _protocolHandler.PostMessage((int)DesignerMessageId.SurfaceDpiChanged, new SurfaceDpiChangedEvent { DocumentId = documentId, SurfaceDpi = dpi });
                     surface.SetRequestedTheme(_appRequestedTheme);
                     _surfaces[documentId] = surface;
+
+                    // The references of a document built from actions were evaluated before it had a surface.
+                    ReapplyThemeReferences($"the creation of the surface of document {documentId}");
 
                     _visualTreeService.RegisterSourceInfo(requestInfo.Document, result.PreparedXaml, root);
 
@@ -372,6 +384,15 @@ internal sealed partial class SurfaceService
                     && TryParseColor(request.CheckerboardColor2, out Windows.UI.Color color2))
                 {
                     surface.SetCheckerboardColors(color1, color2);
+
+                    // The colours decide the preview theme, for the documents and resources built from actions too.
+                    _lastPreviewTheme = surface.PreviewTheme;
+                    WinUIDesignerLogger.LogTrace("Surface", $"Artboard colours of document {request.DocumentId}: the preview theme is {_lastPreviewTheme}.");
+                    ThemeResourcePass.ReapplyThenComplete(
+                        () => ReapplyThemeReferences($"the artboard colours of document {request.DocumentId}"),
+                        CompleteActionBatch,
+                        layoutError => WinUIDesignerLogger.LogWarning("Surface", "Layout after the artboard colours also failed.", layoutError)
+                    );
                 }
 
                 return new ResponseWithError { HResult = 0 };
@@ -670,6 +691,9 @@ internal sealed partial class SurfaceService
             {
                 surface.SetRequestedTheme(_appRequestedTheme);
             }
+
+            // Evaluated again by the next pass: CreateSurface rebuilds App.xaml right after this.
+            _themeReferencesNeedReapply = true;
         }
 
         if (_designTimeResourceDocumentId == resourceDocumentId)
@@ -718,10 +742,19 @@ internal sealed partial class SurfaceService
         _objectIdentity.GetHandle(root);
         _visualTreeService.PublishMutation(root, VisualMutationType.Add);
         PublishSurfaceBounds(documentId, surface);
+
+        // The content is under the surface now; its references are evaluated again at the end of the batch.
+        _themeReferencesNeedReapply = true;
     }
 
     private void CompleteActionBatch()
     {
+        // A RequestedTheme changed, or content came under a surface, during this batch.
+        if (_themeReferencesNeedReapply)
+        {
+            ReapplyThemeReferences("an action batch");
+        }
+
         foreach (var entry in _surfaces)
         {
             using var scope = _objectIdentity.EnterDocument(entry.Key);
