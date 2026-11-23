@@ -265,12 +265,22 @@ internal sealed class DroppedChildren : IChildCollectionAccess
     /// <remarks>
     /// The reader fails the whole document for another type, such as WinUI's explicit collections
     /// (<see cref="Microsoft.UI.Xaml.Media.Animation.TransitionCollection"/>, <see cref="GradientStopCollection"/>). An
-    /// element whose type cannot be found counts as one that can: the load without marks is the safety net for it.
+    /// element whose type cannot be found, or cannot be looked up, counts as one that can: the load without marks is
+    /// the safety net for it.
     /// </remarks>
     internal static bool CanCarryMark(XElement owner)
     {
-        Type[] types = [.. ResolveElementTypes(owner.Name.LocalName, owner.Name.NamespaceName)];
-        return types.Length == 0 || types.Any(typeof(DependencyObject).IsAssignableFrom);
+        try
+        {
+            Type[] types = [.. ResolveElementTypes(owner.Name.LocalName, owner.Name.NamespaceName)];
+            return types.Length == 0 || types.Any(typeof(DependencyObject).IsAssignableFrom);
+        }
+        catch (Exception ex)
+        {
+            // A project type whose assembly cannot be loaded must not fail the whole document.
+            WinUIDesignerLogger.LogTrace("Surface", $"Child indices: the type of <{owner.Name.LocalName}> could not be looked up: {ex.Message}");
+            return true;
+        }
     }
 
     /// <summary>
