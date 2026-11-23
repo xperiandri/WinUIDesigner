@@ -8,10 +8,12 @@ using WinUIDesigner.Surface.Common;
 using XSurfUwp;
 
 /// <summary>
-/// Sends Visual Studio's child actions, serialized and read back with Visual Studio's own serializer, through the
-/// translator the surface uses, and checks the collections that result. The collections are plain lists. SurfaceService.Execute
-/// needs WinUI and is not compiled here, so the replay is a dispatch of its own; it hands the child actions to the same
-/// translator, with the same queue for the setters that wait for the end of the batch, and mirrors nothing else of Execute.
+/// Sends Visual Studio's child and dictionary actions, serialized and read back with Visual Studio's own serializer,
+/// through the code the surface uses, and checks the collections that result. The collections are plain lists.
+/// SurfaceService.Execute needs WinUI and is not compiled here, so the replay is a dispatch of its own: it hands the
+/// child actions to the same translator and the dictionary actions to the same DictionaryEntryActions that Execute
+/// uses, with the same queue for the setters that wait for the end of the batch. The few other cases its sequences
+/// need are copies: connecting to the live tree, creating objects, GetProperty, SetProperty and ClearCollectionProperty.
 /// </summary>
 [TestClass]
 public sealed class DroppedChildActionTests
@@ -735,8 +737,9 @@ public sealed class DroppedChildActionTests
     }
 
     /// <summary>
-    /// Executes the child actions of a batch through the translator and the queue of waiting setters that
-    /// SurfaceService.Execute uses. The other kinds of action are mirrored only as far as the sequences need them.
+    /// Executes the child and dictionary actions of a batch through the translator, DictionaryEntryActions and the queue
+    /// of waiting setters that SurfaceService.Execute uses. The other kinds of action are copies of its cases, made only
+    /// as far as the sequences need them.
     /// </summary>
     private sealed class Replay
     {
