@@ -212,8 +212,8 @@ internal sealed partial class SurfaceService
 
         // Only the clearing of the merged dictionaries takes the content away.
         int separator = fullPropertyName.IndexOf(':');
-        string propertyName = separator < 0 ? fullPropertyName : fullPropertyName[..separator];
-        if (propertyName == nameof(ResourceDictionary.MergedDictionaries) && !target.MergedDictionaries.Contains(applied.Dictionary))
+        ReadOnlySpan<char> propertyName = fullPropertyName.AsSpan(0, separator < 0 ? fullPropertyName.Length : separator);
+        if (propertyName.Equals(nameof(ResourceDictionary.MergedDictionaries), StringComparison.Ordinal) && !target.MergedDictionaries.Contains(applied.Dictionary))
         {
             target.MergedDictionaries.Add(applied.Dictionary);
         }

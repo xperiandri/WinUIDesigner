@@ -219,9 +219,11 @@ internal sealed class ResourceEntryQuarantine(
         }
         catch (XmlException)
         {
+            // The text is no XML, so no position in it means anything.
             return false;
         }
 
+        // The text has no root element.
         if (parsedRoot is null)
         {
             return false;
@@ -248,6 +250,7 @@ internal sealed class ResourceEntryQuarantine(
             }
         }
 
+        // No attribute starts at the position.
         return false;
     }
 

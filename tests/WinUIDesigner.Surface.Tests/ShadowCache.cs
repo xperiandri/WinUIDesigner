@@ -64,10 +64,7 @@ internal sealed class ShadowCache
     /// <summary>
     /// Writes the prepared copy of the dictionary <paramref name="uri"/> names, as Visual Studio does.
     /// </summary>
-    public void Add(string uri, string xaml)
-    {
-        _files[ResourceDictionarySourceUri.TryGetLocalPath(uri, ContentDirectory)!] = xaml;
-    }
+    public void Add(string uri, string xaml) => _files[ResourceDictionarySourceUri.TryGetLocalPath(uri, ContentDirectory)!] = xaml;
 
     /// <summary>
     /// Writes the copy of the file of the dictionary <paramref name="uri"/> names that the build laid out, beside
@@ -121,7 +118,5 @@ internal sealed class ShadowCache
     /// <summary>
     /// Returns the <c>x:Key</c> of an element.
     /// </summary>
-    public static string? KeyOf(XElement element)
-    {
-        return (string?)element.Attribute(XName.Get("Key", XamlNamespaces.XamlLanguage));
-    }}
+    public static string? KeyOf(XElement element) => (string?)element.Attribute(XName.Get("Key", XamlNamespaces.XamlLanguage));
+}

@@ -52,17 +52,21 @@ internal static class ResourceDictionarySourceUri
     public static bool TryGetDesignTimeDocumentId(string? value, out int documentId)
     {
         documentId = 0;
+
+        // An empty value names no copy.
         if (string.IsNullOrEmpty(value))
         {
             return false;
         }
 
+        // The name of a prepared copy has the marker.
         int start = value.LastIndexOf(DesignTimeFileMarker, StringComparison.OrdinalIgnoreCase);
         if (start < 0)
         {
             return false;
         }
 
+        // The id is followed by the next "~".
         start += DesignTimeFileMarker.Length;
         int end = value.IndexOf('~', start);
         if (end <= start)
@@ -70,6 +74,7 @@ internal static class ResourceDictionarySourceUri
             return false;
         }
 
+        // The id is made of digits.
         for (int index = start; index < end; index++)
         {
             if (value[index] is < '0' or > '9')

@@ -16,7 +16,6 @@ using WinUIDesigner.Surface.Markup;
 [TestClass]
 public sealed class XamlFragmentGrafterTests
 {
-
     private static readonly XNamespace _P = XamlNamespaces.Presentation;
 
     [TestMethod]

@@ -68,11 +68,13 @@ internal static class TransitiveProjectLookup
             IReadOnlyList<T> path = pending.Dequeue();
             foreach (T reference in referencesOf(path[path.Count - 1]) ?? Enumerable.Empty<T>())
             {
+                // Reached before, by a path that is not longer: a cycle of references ends here.
                 if (!visited.Add(identityOf(reference)))
                 {
                     continue;
                 }
 
+                // The nearest project with the name wins.
                 T[] referencePath = path.Concat(new[] { reference }).ToArray();
                 if (Matches(reference))
                 {

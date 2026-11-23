@@ -448,6 +448,7 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
         string? error;
         if (_options.LoadWithRuntime is not { } load)
         {
+            // Nothing is there to ask the runtime.
             error = "the designer cannot load dictionaries by URI.";
         }
         else
@@ -458,10 +459,12 @@ internal sealed class ResourceDictionarySourceExpander(ResourceDictionarySourceO
             }
             catch (Exception ex)
             {
+                // The question itself failed, which is an answer: it does not load.
                 error = ex.Message;
             }
         }
 
+        // It loads: remembered for good. It does not: remembered for this request.
         if (error is null)
         {
             _runtimeLoadable.Add(uri);
