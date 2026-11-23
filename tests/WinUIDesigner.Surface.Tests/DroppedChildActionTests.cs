@@ -394,6 +394,36 @@ public sealed class DroppedChildActionTests
     }
 
     [TestMethod]
+    public void AMergedDictionaryThatConstructionActionsBuiltEndsAtItsStandInToo()
+    {
+        // The dropped dictionary reached the collection as a stand-in; the edit of its brush, and the rename of its
+        // key, then address the stand-in through the dictionary, as they do after the load of prepared XAML.
+        var replay = new Replay();
+        var merged = new FakePanel();
+        replay.Live[_PanelHandle] = merged;
+        replay.Live[_PanelHandle + 1] = "Accent";
+
+        replay.Run(
+            [
+                new ConnectToLiveTreeAction(_PanelHandle, -1, 0),
+                new GetPropertyAction(-1, _Children, -3, 0),
+                .. StandIn(-4, 0),
+                new GetChildAction(-3, 0, -5),
+                new ConnectToLiveTreeAction(_PanelHandle + 1, -7, 0),
+                new GetDictionaryEntryAction(-5, -7, -9),
+                new CreateInstanceAction(-11, "Item:red"),
+                new SetPropertyAction(-9, "Color", -11, 0),
+                new RemoveDictionaryEntryAction(-5, -7),
+                new AddDictionaryEntryAction(-5, -7, -11),
+            ]
+        );
+
+        CollectionAssert.AreEqual(new[] { 0 }, replay.Holes(merged.Children));
+        Assert.IsEmpty(merged.Children);
+        Assert.IsInstanceOfType<DroppedElement>(replay.Get(-9), "An entry of a stand-in is the stand-in again.");
+    }
+
+    [TestMethod]
     public void ChangesOfTheEntriesOfADroppedMergedDictionaryChangeNothing()
     {
         var replay = new Replay();

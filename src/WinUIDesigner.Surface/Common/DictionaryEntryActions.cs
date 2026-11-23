@@ -37,7 +37,7 @@ internal interface IDictionaryEntryAccess
 /// </summary>
 /// <remarks>
 /// <para>
-/// Visual Studio builds nothing beneath a dropped element, with one exception: the entries of a dropped merged
+/// Visual Studio builds almost nothing beneath a dropped element: the exception is the entries of a dropped merged
 /// dictionary. Its dictionary-entry builder reaches an entry through the proxy of the dictionary, which stays valid, so
 /// a change of the entry sends GetDictionaryEntry, UpdateDictionaryValue, AddDictionaryEntry and RemoveDictionaryEntry
 /// for the dictionary, and the actions that follow address the entry that the lookup gave.
