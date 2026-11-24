@@ -1,0 +1,25 @@
+<!--  Copyright (c) 0x5BFA. All rights reserved. Licensed under MIT License.  -->
+<!--
+    This dictionary is never loaded. It exists for the XAML compiler: a type gets an entry in the generated XAML
+    metadata only when compiled markup mentions it, and XamlReader.Load finds the attached properties of a framework
+    type through that metadata alone, when the type is not one that the framework itself resolves. The styles of a
+    library that copy a control template of WinUI use some of them, and the reader rejects the whole style:
+
+      The attachable property 'State' was not found in type 'AnimatedIcon'.
+      The attachable property 'HorizontalOrientationMargin' was not found in type 'InfoBarPanel'.
+
+    Naming them here makes the reader know them. Add another attached property of a framework type when a reader
+    rejection names it.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border
+        x:Key="AnimatedIconState"
+        AnimatedIcon.State="Normal" />
+    <InfoBarPanel x:Key="InfoBarPanelMargins">
+        <TextBlock
+            InfoBarPanel.HorizontalOrientationMargin="0"
+            InfoBarPanel.VerticalOrientationMargin="0" />
+    </InfoBarPanel>
+</ResourceDictionary>
