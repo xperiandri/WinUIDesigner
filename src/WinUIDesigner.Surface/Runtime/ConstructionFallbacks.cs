@@ -63,6 +63,26 @@ internal sealed class ConstructionFallbacks
     }
 
     /// <summary>
+    /// Tells whether a document can be built without <paramref name="action"/> when it fails: the action sets or clears a
+    /// property of an object, or adds a child to one, so its failure costs that object one detail and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// An action that builds an object, or names the content of the document, cannot be left out: the actions after it
+    /// work on the object it was to make.
+    /// </remarks>
+    public static bool CanGoOnWithout(XamlAction action) => action is SetPropertyAction or ClearPropertyAction or AddChildAction;
+
+    /// <summary>
+    /// Records that <paramref name="action"/> failed with <paramref name="exception"/> and that the document was built
+    /// without it, for Visual Studio to show on the element of the action.
+    /// </summary>
+    public void RecordFailure(XamlAction action, Exception exception)
+    {
+        Exception failure = exception is TargetInvocationException { InnerException: { } inner } ? inner : exception;
+        _failures.Add(new ActionError { XamlAction = action, Error = failure.ToString() });
+    }
+
+    /// <summary>
     /// Forgets the failures of an earlier batch that ended before they were taken.
     /// </summary>
     public void Clear() => _failures.Clear();

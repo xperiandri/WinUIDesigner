@@ -20,6 +20,9 @@ internal sealed partial class SurfaceService
     private readonly ResourceScopeService _resourceScopes;
     private readonly Dictionary<long, object?> _actionObjects = [];
     private readonly Dictionary<long, object?> _trackedActionObjects = [];
+    // The number of actions that a document may be built without, see BuildDocument.
+    private const int _MaxLeftOutActions = 100;
+
     private readonly ConstructionFallbacks _constructionFallbacks = new();
 
     private ResponseWithError HandleExecuteActions(ExecuteXamlActionsRequestInfo request)
@@ -152,6 +155,7 @@ internal sealed partial class SurfaceService
         object? root = null;
         var deferredSetterInsertions = new List<DeferredSetterInsertion>();
         var actions = XamlActionJsonSerializer.Deserialize(document.Actions ?? []);
+        int leftOutActions = 0;
 
         for (int index = 0; index < actions.Count; index++)
         {
@@ -187,6 +191,18 @@ internal sealed partial class SurfaceService
                     }
                 }
 #endif
+                // A property that cannot be set, or a child that cannot be added, costs its element one detail and not the
+                // document: the rest of it is worth showing, and Visual Studio shows why on the element. A document in which
+                // this happens again and again is not worth it.
+                if (ConstructionFallbacks.CanGoOnWithout(action) && leftOutActions < _MaxLeftOutActions)
+                {
+                    leftOutActions++;
+                    _constructionFallbacks.RecordFailure(action, ex);
+                    WinUIDesignerLogger.LogWarning("Surface", $"Document {document.DocumentId}: the action number {index} ({action.Action}) failed; the document is built without it.", ex);
+                    TrackActionObjects();
+                    continue;
+                }
+
                 // The objects that fallbacks replaced so far are reported with the failure: Visual Studio shows why
                 // they were replaced on their elements, not only the error of the action that failed afterwards.
                 throw new DocumentConstructionException(ex, action, _constructionFallbacks.TakeFailures());
