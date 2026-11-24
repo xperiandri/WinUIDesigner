@@ -231,6 +231,15 @@ internal static class XamlRuntimeUtilities
         string propertyName = propertySeparator < 0 ? fullPropertyName : fullPropertyName[..propertySeparator];
         Type? declaringType = (propertySeparator < 0 ? null : ResolveType(fullPropertyName[(propertySeparator + 1)..])) ?? targetType;
         DependencyProperty? dependencyProperty = declaringType is null ? null : FindDependencyProperty(declaringType, propertyName);
+
+        // The default of a shadow of Visual Studio's designer is the default of the property it shadows on the element asked about.
+        if (dependencyProperty is null && targetType is not null && DesignTimeShadows.TryGetShadowedProperty(fullPropertyName, out string shadowedName))
+        {
+            propertyName = shadowedName;
+            declaringType = targetType;
+            dependencyProperty = FindDependencyProperty(targetType, shadowedName);
+        }
+
         if (dependencyProperty is not null)
         {
             // VS also asks about properties of candidate parent/control types. The
@@ -688,6 +697,13 @@ internal static class XamlRuntimeUtilities
             ?? declaringType?.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
         dependencyProperty = FindDependencyProperty(declaringType ?? targetType, propertyName)
             ?? FindDependencyProperty(targetType, propertyName);
+
+        // A shadow of Visual Studio's designer that the surface does not declare stands for the property it shadows.
+        if (property is null && dependencyProperty is null && DesignTimeShadows.TryGetShadowedProperty(fullPropertyName, out string shadowedName))
+        {
+            property = targetType.GetProperty(shadowedName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+            dependencyProperty = FindDependencyProperty(targetType, shadowedName);
+        }
     }
 
     private static DependencyProperty? FindDependencyProperty(Type type, string propertyName)
