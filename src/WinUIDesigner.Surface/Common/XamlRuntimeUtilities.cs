@@ -57,6 +57,13 @@ internal static class XamlRuntimeUtilities
             return typeof(Microsoft.UI.Xaml.Controls.ContentControl);
         }
 
+        // The other stand-ins of Visual Studio's UWP surface name its assembly "UwpSurface", which this process does
+        // not have: the type of WinUI, or of this surface, that takes their place is found by its full name.
+        if (UwpStandIns.GetRuntimeTypeName(candidate) is { } standInTypeName)
+        {
+            return typeof(UIElement).Assembly.GetType(standInTypeName) ?? typeof(XamlRuntimeUtilities).Assembly.GetType(standInTypeName);
+        }
+
         Type? type = Type.GetType(candidate, throwOnError: false);
         if (type is not null)
         {
@@ -123,6 +130,13 @@ internal static class XamlRuntimeUtilities
             return Enum.Parse(type, value ?? string.Empty, ignoreCase: true);
         }
 
+        // The markup form of NaN for the size of an element (Width="Auto"); neither the XAML binding helper nor the
+        // type converter of Double reads it.
+        if (type == typeof(double) && value.AsSpan().Trim().Equals("Auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return double.NaN;
+        }
+
         try
         {
             return XamlBindingHelper.ConvertValue(type, value ?? string.Empty);
@@ -143,14 +157,31 @@ internal static class XamlRuntimeUtilities
     public static object? GetPropertyValue(object target, string fullPropertyName)
     {
         ResolveProperty(target, fullPropertyName, out PropertyInfo? property, out DependencyProperty? dependencyProperty);
+
+        // The property of the element gives the value its own type, which GetValue does not: a native collection that
+        // GetValue returns is a bare DependencyObject (CommandBar.PrimaryCommands), and a collection that the getter
+        // creates on first use is null there (Trigger.Actions of Microsoft.Xaml.Interactivity), so AddChild fails on both.
+        if (property?.CanRead == true && property.DeclaringType!.IsInstanceOfType(target) && TryGetPropertyValue(property, target, out object? typedValue) && typedValue is not null)
+        {
+            return typedValue;
+        }
+
         if (dependencyProperty is not null && target is DependencyObject dependencyObject)
         {
-            return dependencyObject.GetValue(dependencyProperty);
+            // An attached collection can be null until its static accessor creates it (Interaction.Behaviors);
+            // the XAML parser obtains such a collection through that accessor too.
+            return dependencyObject.GetValue(dependencyProperty) ?? GetAttachedPropertyValue(target, fullPropertyName);
         }
 
         if (property?.CanRead == true)
         {
             return property.GetValue(target);
+        }
+
+        // An attached collection that has a static accessor and no property field (VisualStateManager.VisualStateGroups).
+        if (TryGetAttachedPropertyValue(target, fullPropertyName, out object? attachedValue))
+        {
+            return attachedValue;
         }
 
         int propertySeparator = fullPropertyName.IndexOf(':');
@@ -181,13 +212,20 @@ internal static class XamlRuntimeUtilities
             if (value is BindingBase binding)
                 BindingOperations.SetBinding(dependencyObject, dependencyProperty, binding);
             else
-                dependencyObject.SetValue(dependencyProperty, value);
+                dependencyObject.SetValue(dependencyProperty, GetBrushOfColor(value, property?.PropertyType) ?? value);
             return;
         }
 
         if (property?.CanWrite == true)
         {
             property.SetValue(target, CoerceValue(value, property.PropertyType));
+            return;
+        }
+
+        // The name of an object that has no writable Name (VisualStateGroup, VisualState): the XAML parser registers it in
+        // the name scope, and a static preview has no use for it.
+        if (fullPropertyName.StartsWith("Name:", StringComparison.Ordinal))
+        {
             return;
         }
 
@@ -690,6 +728,36 @@ internal static class XamlRuntimeUtilities
             ?? FindDependencyProperty(targetType, propertyName);
     }
 
+    // Reads a property of the element through its getter. The getter of a property of the project can fail at design
+    // time, and then the dependency property is what is left to read.
+    private static bool TryGetPropertyValue(PropertyInfo property, object target, out object? value)
+    {
+        try
+        {
+            value = property.GetValue(target);
+            return true;
+        }
+        catch (TargetInvocationException)
+        {
+            value = null;
+            return false;
+        }
+    }
+
+    // Reads the property through the static Get<Name> accessor of the type that declares it, when that type has one.
+    private static object? GetAttachedPropertyValue(object target, string fullPropertyName)
+    {
+        return TryGetAttachedPropertyValue(target, fullPropertyName, out object? value) ? value : null;
+    }
+
+    private static bool TryGetAttachedPropertyValue(object target, string fullPropertyName, out object? value)
+    {
+        value = null;
+        int propertySeparator = fullPropertyName.IndexOf(':');
+        Type? declaringType = propertySeparator < 0 ? null : ResolveType(fullPropertyName[(propertySeparator + 1)..]);
+        return declaringType is not null && AttachedPropertyGetter.TryGetValue(declaringType, fullPropertyName.AsSpan(0, propertySeparator), target, out value);
+    }
+
     private static DependencyProperty? FindDependencyProperty(Type type, string propertyName)
     {
         for (Type? current = type; current is not null; current = current.BaseType)
@@ -935,6 +1003,21 @@ internal static class XamlRuntimeUtilities
             return ConvertString(targetType, text);
         }
 
+        if (GetBrushOfColor(value, targetType) is { } brush)
+        {
+            return brush;
+        }
+
         return Convert.ChangeType(value, Nullable.GetUnderlyingType(targetType) ?? targetType, CultureInfo.InvariantCulture);
+    }
+
+    // The XAML parser gives a property of a brush the brush of a color that a resource holds (Foreground="{StaticResource
+    // TextFillColorPrimary}", where the resource is a Color). Setting the color itself is refused by the framework with
+    // E_FAIL ("Unspecified error").
+    private static Microsoft.UI.Xaml.Media.SolidColorBrush? GetBrushOfColor(object? value, Type? propertyType)
+    {
+        return value is Windows.UI.Color color && propertyType is not null && typeof(Microsoft.UI.Xaml.Media.Brush).IsAssignableFrom(propertyType)
+            ? new Microsoft.UI.Xaml.Media.SolidColorBrush(color)
+            : null;
     }
 }
