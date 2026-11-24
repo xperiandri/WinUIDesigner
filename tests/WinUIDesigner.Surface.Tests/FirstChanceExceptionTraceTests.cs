@@ -1,6 +1,7 @@
 // Copyright (c) 0x5BFA. All rights reserved.
 // Licensed under MIT License.
 
+using System.Runtime.CompilerServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WinUIDesigner.Surface.Runtime;
 
@@ -22,7 +23,9 @@ public sealed class FirstChanceExceptionTraceTests
 
         string line = Assert.ContainsSingle(trace.Exceptions);
         Assert.StartsWith("System.InvalidOperationException (0x80131509): the first line", line);
-        Assert.Contains("ThrowTheFailure", line);
+        // The throwing method comes first: neither this class nor the exception dispatch of the runtime (one frame more on
+        // .NET 9 and later) are in front of it.
+        Assert.Contains("the first line at FirstChanceExceptionTraceTests.ThrowTheFailure", line);
         Assert.DoesNotContain("second line", line);
     }
 
@@ -81,5 +84,7 @@ public sealed class FirstChanceExceptionTraceTests
         Assert.IsEmpty(trace.Exceptions);
     }
 
+    // Not inlined, so that this method is a frame of its own in the stack at the place where the exception is thrown.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowTheFailure() => throw new InvalidOperationException("the first line\r\nthe second line");
 }

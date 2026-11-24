@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Text;
 
@@ -65,7 +66,7 @@ internal sealed class FirstChanceExceptionTrace : IDisposable
 
         try
         {
-            string line = Describe(e.Exception, new StackTrace(skipFrames: 2, fNeedFileInfo: false));
+            string line = Describe(e.Exception, new StackTrace(fNeedFileInfo: false));
             lock (_exceptions)
             {
                 if (_exceptions.Count < _capacity)
@@ -96,13 +97,22 @@ internal sealed class FirstChanceExceptionTrace : IDisposable
         var text = new StringBuilder();
         text.Append($"{exception.GetType().FullName} (0x{exception.HResult:X8}): {message}");
 
-        StackFrame[] frames = stack.GetFrames();
-        for (int index = 0; index < frames.Length && index < _Frames; index++)
+        // The stack starts with the handler of this class and, from .NET 9 on, with the exception dispatch of the runtime
+        // (System.Runtime.EH.DispatchEx); the first frame after them is the place where the exception was thrown. A fixed
+        // number of frames to skip would cut the throwing method off on .NET 8.
+        StackFrame[] frames = [.. stack.GetFrames().SkipWhile(IsDispatchFrame).Take(_Frames)];
+        for (int index = 0; index < frames.Length; index++)
         {
             var method = frames[index].GetMethod();
             text.Append(index == 0 ? " at " : " < ").Append($"{method?.DeclaringType?.FullName}.{method?.Name}");
         }
 
         return text.ToString();
+    }
+
+    private static bool IsDispatchFrame(StackFrame frame)
+    {
+        Type? type = frame.GetMethod()?.DeclaringType;
+        return type == typeof(FirstChanceExceptionTrace) || type?.FullName?.StartsWith("System.Runtime.EH", StringComparison.Ordinal) == true;
     }
 }
