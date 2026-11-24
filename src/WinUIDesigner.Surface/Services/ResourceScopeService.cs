@@ -134,7 +134,8 @@ internal sealed class ResourceScopeService(ObjectIdentityRegistry identity)
                 application.MergedDictionaries.Add(dictionary);
             }
 
-            return XamlReader.Load(xaml) ?? throw new InvalidOperationException("XAML parsing returned no object.");
+            // A template comes as text with the marks of Visual Studio on its elements, which the reader rejects.
+            return XamlReader.Load(TemplateInstrumentation.Remove(xaml)) ?? throw new InvalidOperationException("XAML parsing returned no object.");
         }
         finally
         {
